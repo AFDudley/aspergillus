@@ -9,6 +9,7 @@ from aspergillus.rules.level2 import (
     GlobalMutableState,
     ImpureFunction,
     LowAssertionDensity,
+    MixedIOAndLogic,
     UnboundedLoop,
 )
 
@@ -20,6 +21,7 @@ add_lint_rule_tests_to_module(
         GlobalMutableState(),
         UnboundedLoop(),
         ImpureFunction(),
+        MixedIOAndLogic(),
     ],
 )
 

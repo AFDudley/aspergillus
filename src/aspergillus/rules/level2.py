@@ -417,3 +417,86 @@ class ImpureFunction(LintRule):
                 node,
                 self.MESSAGE.format(calls=", ".join(sorted(io_calls))),
             )
+
+
+class MixedIOAndLogic(LintRule):
+    """ASP206: Function mixes I/O with non-trivial logic.
+
+    The functional core / imperative shell pattern separates pure
+    business logic from I/O. This rule flags functions that do both:
+    they call I/O functions AND have enough non-I/O statements to
+    suggest business logic is mixed in.
+
+    Threshold: function has I/O calls AND >3 non-I/O statements
+    (assignments, returns, conditionals, loops).
+
+    Orchestrator functions that just wire I/O calls together (call A,
+    pass result to B, return) are fine — the statement threshold
+    filters them out.
+    """
+
+    MESSAGE = (
+        "ASP206: Function mixes I/O ({io_calls}) with {logic_count} logic statements"
+        " — consider functional core / imperative shell"
+    )
+    LOGIC_THRESHOLD = 3
+    METADATA_DEPENDENCIES = (cst.metadata.PositionProvider,)
+
+    VALID = [
+        Valid(
+            "def orchestrator():\n" "    data = fetch()\n" "    save(data)\n" "    return data\n"
+        ),
+        Valid(
+            "def pure_logic(items: list) -> int:\n"
+            "    assert len(items) > 0\n"
+            "    assert all(x > 0 for x in items)\n"
+            "    total = sum(items)\n"
+            "    avg = total / len(items)\n"
+            "    return int(avg)\n"
+        ),
+    ]
+    INVALID = [
+        Invalid(
+            "def mixed(url: str) -> int:\n"
+            "    data = urllib.request.urlopen(url)\n"
+            "    assert data is not None\n"
+            "    assert len(data) > 0\n"
+            "    parsed = json.loads(data)\n"
+            "    total = sum(parsed['values'])\n"
+            "    avg = total / len(parsed['values'])\n"
+            "    result = int(avg * 100)\n"
+            "    return result\n"
+        ),
+    ]
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+        io_calls = _find_io_calls(node.body)
+        if not io_calls:
+            return
+
+        logic_count = self._count_logic_statements(node.body)
+        if logic_count > self.LOGIC_THRESHOLD:
+            self.report(
+                node,
+                self.MESSAGE.format(
+                    io_calls=", ".join(sorted(io_calls)),
+                    logic_count=logic_count,
+                ),
+            )
+
+    @staticmethod
+    def _count_logic_statements(body: cst.BaseSuite) -> int:
+        """Count non-trivial logic statements (assignments, returns, ifs, loops)."""
+        count = 0
+        if isinstance(body, cst.IndentedBlock):
+            for stmt in body.body:
+                if isinstance(stmt, cst.SimpleStatementLine):
+                    for item in stmt.body:
+                        if isinstance(
+                            item,
+                            cst.Assign | cst.AnnAssign | cst.AugAssign | cst.Return | cst.Assert,
+                        ):
+                            count += 1
+                elif isinstance(stmt, cst.If | cst.For | cst.While):
+                    count += 1
+        return count
