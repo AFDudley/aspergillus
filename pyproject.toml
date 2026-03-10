@@ -1,0 +1,39 @@
+[project]
+name = "aspergillus"
+version = "0.1.0"
+description = "NASA-grade Python linter built on Fixit/LibCST"
+requires-python = ">=3.10"
+
+dependencies = [
+    "fixit>=2.1.0",
+    "libcst>=1.1.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
+]
+
+[tool.fixit]
+enable = [".src.aspergillus.rules"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
