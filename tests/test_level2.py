@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fixit.testing import add_lint_rule_tests_to_module
 
-from aspergillus.rules.level2 import FunctionTooLong
+from aspergillus.rules.level2 import FunctionTooLong, LowAssertionDensity
 
-add_lint_rule_tests_to_module(globals(), [FunctionTooLong()])
+add_lint_rule_tests_to_module(globals(), [FunctionTooLong(), LowAssertionDensity()])
 
 
 def test_asp201_threshold() -> None:
