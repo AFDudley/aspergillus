@@ -111,3 +111,111 @@ class LowAssertionDensity(LintRule):
                         if isinstance(item, cst.Assert):
                             count += 1
         return count
+
+
+class GlobalMutableState(LintRule):
+    """ASP203: No global mutable state.
+
+    NASA Power of 10 Rule #3 (adapted): No mutable state at module scope.
+    Module-level assignments to mutable types (list, dict, set literals)
+    create shared mutable state that is hard to reason about and test.
+
+    Allowed: frozenset, tuple, str, int, float, bool, None, re.compile,
+    type aliases, constants (ALL_CAPS with immutable values).
+    """
+
+    MESSAGE = "ASP203: Global mutable state: {name} = {type}"
+
+    VALID = [
+        Valid("TIMEOUT: int = 30"),
+        Valid('NAME: str = "hello"'),
+        Valid("ITEMS: tuple[int, ...] = (1, 2, 3)"),
+        Valid('ITEMS: frozenset[str] = frozenset({"a", "b"})'),
+        Valid('PATTERN = re.compile(r"^foo$")'),
+        Valid(
+            "class Foo:\n" "    data: list[int] = []\n"  # class-level, not module-level
+        ),
+        Valid(
+            "def foo():\n" "    cache = {}\n"  # local, not global
+        ),
+    ]
+    INVALID = [
+        Invalid("CACHE = {}"),
+        Invalid("REGISTRY: list[str] = []"),
+        Invalid("HANDLERS = set()"),
+        Invalid("STATE = dict()"),
+        Invalid("ITEMS = list()"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> bool:
+        self._depth += 1
+        return True
+
+    def leave_FunctionDef(self, node: cst.FunctionDef) -> None:
+        self._depth -= 1
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        self._depth += 1
+        return True
+
+    def leave_ClassDef(self, node: cst.ClassDef) -> None:
+        self._depth -= 1
+
+    def visit_Assign(self, node: cst.Assign) -> None:
+        """Catch: CACHE = {}"""
+        if self._depth > 0:
+            return
+        if self._is_mutable_value(node.value):
+            name = self._extract_name(node.targets[0].target)
+            self.report(
+                node,
+                self.MESSAGE.format(name=name, type=self._mutable_type(node.value)),
+            )
+
+    def visit_AnnAssign(self, node: cst.AnnAssign) -> None:
+        """Catch: CACHE: dict[str, int] = {}"""
+        if self._depth > 0:
+            return
+        if node.value is not None and self._is_mutable_value(node.value):
+            name = self._extract_name(node.target)
+            self.report(
+                node,
+                self.MESSAGE.format(name=name, type=self._mutable_type(node.value)),
+            )
+
+    @staticmethod
+    def _is_mutable_value(node: cst.BaseExpression) -> bool:
+        """Check if the value is a mutable literal or constructor."""
+        if isinstance(node, cst.Dict):
+            return True
+        if isinstance(node, cst.List):
+            return True
+        if isinstance(node, cst.Set):
+            return True
+        if isinstance(node, cst.Call):
+            func = node.func
+            if isinstance(func, cst.Name) and func.value in ("dict", "list", "set"):
+                return True
+        return False
+
+    @staticmethod
+    def _mutable_type(node: cst.BaseExpression) -> str:
+        if isinstance(node, cst.Dict):
+            return "dict literal"
+        if isinstance(node, cst.List):
+            return "list literal"
+        if isinstance(node, cst.Set):
+            return "set literal"
+        if isinstance(node, cst.Call) and isinstance(node.func, cst.Name):
+            return f"{node.func.value}() call"
+        return "mutable"
+
+    @staticmethod
+    def _extract_name(node: cst.BaseAssignTargetExpression) -> str:
+        if isinstance(node, cst.Name):
+            return node.value
+        return "<complex>"
