@@ -329,3 +329,91 @@ def _extract_names(node: cst.BaseExpression) -> set[str]:
     elif isinstance(node, cst.UnaryOperation):
         names.update(_extract_names(node.expression))
     return names
+
+
+def _resolve_call_name(node: cst.BaseExpression) -> str | None:
+    """Resolve a call target to a dotted name string.
+
+    print -> "print"
+    subprocess.run -> "subprocess.run"
+    self.log.info -> "log.info" (strips self)
+    """
+    if isinstance(node, cst.Name):
+        return node.value
+    if isinstance(node, cst.Attribute):
+        parts: list[str] = [node.attr.value]
+        current = node.value
+        while isinstance(current, cst.Attribute):
+            parts.append(current.attr.value)
+            current = current.value
+        if isinstance(current, cst.Name):
+            if current.value != "self":
+                parts.append(current.value)
+        parts.reverse()
+        return ".".join(parts)
+    return None
+
+
+def _find_io_calls(body: cst.BaseSuite) -> set[str]:
+    """Find calls to known I/O functions in a function body."""
+    from aspergillus.io_blocklist import IO_FUNCTIONS
+
+    found: set[str] = set()
+    if not isinstance(body, cst.IndentedBlock):
+        return found
+    _walk_for_io_calls(body, found, IO_FUNCTIONS)
+    return found
+
+
+def _walk_for_io_calls(
+    node: cst.CSTNode,
+    found: set[str],
+    io_functions: frozenset[str],
+) -> None:
+    """Recursively walk CST looking for Call nodes to I/O functions."""
+    if isinstance(node, cst.Call):
+        name = _resolve_call_name(node.func)
+        if name and name in io_functions:
+            found.add(name)
+    for child in node.children:
+        if isinstance(child, cst.CSTNode):
+            _walk_for_io_calls(child, found, io_functions)
+
+
+class ImpureFunction(LintRule):
+    """ASP205: Function calls known I/O — mark as impure or refactor.
+
+    NASA Level 2: 70%+ of functions should be pure. This rule flags
+    functions that call known I/O functions (from io_blocklist.py).
+
+    The function is not necessarily wrong — orchestrator/shell functions
+    are expected to do I/O. But the flag encourages separating pure
+    logic from I/O at the boundaries.
+    """
+
+    MESSAGE = "ASP205: Function calls I/O: {calls}"
+
+    VALID = [
+        Valid(
+            "def add(a: int, b: int) -> int:\n"
+            "    assert a >= 0\n"
+            "    assert b >= 0\n"
+            "    return a + b\n"
+        ),
+    ]
+    INVALID = [
+        Invalid(
+            "def save(data: str) -> None:\n"
+            "    assert data\n"
+            "    assert isinstance(data, str)\n"
+            "    print(data)\n"
+        ),
+    ]
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+        io_calls = _find_io_calls(node.body)
+        if io_calls:
+            self.report(
+                node,
+                self.MESSAGE.format(calls=", ".join(sorted(io_calls))),
+            )

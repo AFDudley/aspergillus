@@ -7,13 +7,20 @@ from fixit.testing import add_lint_rule_tests_to_module
 from aspergillus.rules.level2 import (
     FunctionTooLong,
     GlobalMutableState,
+    ImpureFunction,
     LowAssertionDensity,
     UnboundedLoop,
 )
 
 add_lint_rule_tests_to_module(
     globals(),
-    [FunctionTooLong(), LowAssertionDensity(), GlobalMutableState(), UnboundedLoop()],
+    [
+        FunctionTooLong(),
+        LowAssertionDensity(),
+        GlobalMutableState(),
+        UnboundedLoop(),
+        ImpureFunction(),
+    ],
 )
 
 
