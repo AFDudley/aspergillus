@@ -4,6 +4,6 @@ from __future__ import annotations
 
 from fixit.testing import add_lint_rule_tests_to_module
 
-from aspergillus.rules.level3 import RaiseInsteadOfResult
+from aspergillus.rules.level3 import OptionalReturnType, RaiseInsteadOfResult
 
-add_lint_rule_tests_to_module(globals(), [RaiseInsteadOfResult()])
+add_lint_rule_tests_to_module(globals(), [RaiseInsteadOfResult(), OptionalReturnType()])

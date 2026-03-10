@@ -104,3 +104,69 @@ def _search_for_return(node: cst.CSTNode) -> bool:
             if _search_for_return(child):
                 return True
     return False
+
+
+class OptionalReturnType(LintRule):
+    """ASP302: Function returns Optional — consider stronger type.
+
+    Functions annotated with `-> X | None` or `-> Optional[X]` use
+    None as a sentinel for "no value" or "error." Consider using a
+    Result type or raising (for __init__) to make the failure mode
+    explicit.
+
+    Exempt: __init__, dunders, test functions.
+    """
+
+    MESSAGE = "ASP302: Function returns Optional/None — consider Result type or stronger return"
+
+    VALID = [
+        Valid(
+            "def get_value() -> int:\n" "    assert True\n" "    assert True\n" "    return 42\n"
+        ),
+        Valid("def __init__(self) -> None:\n" "    self.x = 1\n"),
+    ]
+    INVALID = [
+        Invalid(
+            "def find(key: str) -> int | None:\n"
+            "    assert isinstance(key, str)\n"
+            "    assert len(key) > 0\n"
+            "    return None\n"
+        ),
+        Invalid(
+            "from typing import Optional\n"
+            "def find(key: str) -> Optional[int]:\n"
+            "    assert isinstance(key, str)\n"
+            "    assert len(key) > 0\n"
+            "    return None\n"
+        ),
+    ]
+
+    EXEMPT_PREFIXES = ("test_", "__")
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+        name = node.name.value
+        if any(name.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return
+
+        if node.returns is None:
+            return
+
+        annotation = node.returns.annotation
+        if self._is_optional(annotation):
+            self.report(node, self.MESSAGE)
+
+    @staticmethod
+    def _is_optional(node: cst.BaseExpression) -> bool:
+        """Check if annotation is Optional[X] or X | None."""
+        # X | None (BinaryOperation with BitOr)
+        if isinstance(node, cst.BinaryOperation):
+            if isinstance(node.operator, cst.BitOr):
+                if (isinstance(node.right, cst.Name) and node.right.value == "None") or (
+                    isinstance(node.left, cst.Name) and node.left.value == "None"
+                ):
+                    return True
+        # Optional[X]
+        if isinstance(node, cst.Subscript):
+            if isinstance(node.value, cst.Name) and node.value.value == "Optional":
+                return True
+        return False
