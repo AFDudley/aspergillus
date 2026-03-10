@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
 
@@ -219,3 +221,111 @@ class GlobalMutableState(LintRule):
         if isinstance(node, cst.Name):
             return node.value
         return "<complex>"
+
+
+class UnboundedLoop(LintRule):
+    """ASP204: Loops must have a provably fixed upper bound.
+
+    NASA Power of 10 Rule #2: Every loop must have a provable upper
+    bound. `for` loops over iterables are bounded by definition.
+    `while True` and `while <condition>` without an obvious counter
+    or break are flagged.
+
+    Allowed patterns:
+    - `for x in iterable` (bounded by iterable length)
+    - `while condition` where condition references a counter that
+      is incremented in the body (heuristic)
+    - `while True` with a `break` statement in the body
+    """
+
+    MESSAGE = "ASP204: Unbounded loop — add a counter, break, or use `for`"
+
+    VALID = [
+        Valid("for i in range(10):\n" "    print(i)\n"),
+        Valid("while True:\n" "    data = read()\n" "    if not data:\n" "        break\n"),
+        Valid("count = 0\n" "while count < 100:\n" "    count += 1\n"),
+    ]
+    INVALID = [
+        Invalid("while True:\n" "    process()\n"),
+        Invalid("while condition:\n" "    process()\n"),
+    ]
+
+    def visit_While(self, node: cst.While) -> None:
+        if self._has_break(node.body):
+            return
+        if self._has_counter_pattern(node):
+            return
+        self.report(node, self.MESSAGE)
+
+    @staticmethod
+    def _has_counter_pattern(node: cst.While) -> bool:
+        """Heuristic: condition references a name that is modified in the body."""
+        cond_names = _extract_names(node.test)
+        if not cond_names:
+            return False
+        if not isinstance(node.body, cst.IndentedBlock):
+            return False
+        for stmt in node.body.body:
+            if isinstance(stmt, cst.SimpleStatementLine):
+                for item in stmt.body:
+                    if isinstance(item, cst.AugAssign) and isinstance(item.target, cst.Name):
+                        if item.target.value in cond_names:
+                            return True
+                    if isinstance(item, cst.Assign):
+                        for target in item.targets:
+                            if (
+                                isinstance(target.target, cst.Name)
+                                and target.target.value in cond_names
+                            ):
+                                return True
+        return False
+
+    @staticmethod
+    def _has_break(body: cst.BaseSuite) -> bool:
+        """Check if body contains a Break statement (not in nested loops)."""
+        if not isinstance(body, cst.IndentedBlock):
+            return False
+        return _find_break_in_stmts(body.body)
+
+
+def _find_break_in_stmts(stmts: Sequence[cst.BaseStatement]) -> bool:
+    """Recursively search for break, skipping nested loops."""
+    for stmt in stmts:
+        if isinstance(stmt, cst.SimpleStatementLine):
+            for item in stmt.body:
+                if isinstance(item, cst.Break):
+                    return True
+        elif isinstance(stmt, cst.If):
+            if isinstance(stmt.body, cst.IndentedBlock) and _find_break_in_stmts(stmt.body.body):
+                return True
+            orelse = stmt.orelse
+            if isinstance(orelse, cst.Else) and isinstance(orelse.body, cst.IndentedBlock):
+                if _find_break_in_stmts(orelse.body.body):
+                    return True
+            elif isinstance(orelse, cst.If):
+                if _find_break_in_stmts((orelse,)):
+                    return True
+        elif isinstance(stmt, cst.While | cst.For):
+            # Don't descend into nested loops — their breaks don't count
+            pass
+        elif isinstance(stmt, cst.Try | cst.TryStar):
+            if isinstance(stmt.body, cst.IndentedBlock) and _find_break_in_stmts(stmt.body.body):
+                return True
+    return False
+
+
+def _extract_names(node: cst.BaseExpression) -> set[str]:
+    """Extract all Name references from an expression."""
+    names: set[str] = set()
+    if isinstance(node, cst.Name):
+        names.add(node.value)
+    elif isinstance(node, cst.Comparison):
+        names.update(_extract_names(node.left))
+        for target in node.comparisons:
+            names.update(_extract_names(target.comparator))
+    elif isinstance(node, cst.BooleanOperation):
+        names.update(_extract_names(node.left))
+        names.update(_extract_names(node.right))
+    elif isinstance(node, cst.UnaryOperation):
+        names.update(_extract_names(node.expression))
+    return names

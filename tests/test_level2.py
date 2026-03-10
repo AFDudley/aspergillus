@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from fixit.testing import add_lint_rule_tests_to_module
 
-from aspergillus.rules.level2 import FunctionTooLong, GlobalMutableState, LowAssertionDensity
+from aspergillus.rules.level2 import (
+    FunctionTooLong,
+    GlobalMutableState,
+    LowAssertionDensity,
+    UnboundedLoop,
+)
 
 add_lint_rule_tests_to_module(
-    globals(), [FunctionTooLong(), LowAssertionDensity(), GlobalMutableState()]
+    globals(),
+    [FunctionTooLong(), LowAssertionDensity(), GlobalMutableState(), UnboundedLoop()],
 )
 
 
