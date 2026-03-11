@@ -10,10 +10,14 @@ resolution-markers = [
 [[package]]
 name = "aspergillus"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "fixit" },
     { name = "libcst" },
+]
+
+[package.dev-dependencies]
+dev = [
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -24,6 +28,10 @@ dependencies = [
 requires-dist = [
     { name = "fixit", specifier = ">=2.1.0" },
     { name = "libcst", specifier = ">=1.1.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "pre-commit", specifier = ">=4.0.0" },
     { name = "pytest", specifier = ">=8.0.0" },

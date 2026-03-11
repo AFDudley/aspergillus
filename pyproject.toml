@@ -3,18 +3,25 @@ name = "aspergillus"
 version = "0.1.0"
 description = "NASA-grade Python linter built on Fixit/LibCST"
 requires-python = ">=3.10"
-
 dependencies = [
     "fixit>=2.1.0",
     "libcst>=1.1.0",
+]
+
+[dependency-groups]
+dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "pre-commit>=4.0.0",
     "pytest>=8.0.0",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.fixit]
-enable = [".src.aspergillus.rules"]
+enable = ["aspergillus.rules"]
 
 [tool.ruff]
 line-length = 100

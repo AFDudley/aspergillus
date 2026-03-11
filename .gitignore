@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Pebbles runtime state (config is tracked, db is not)
+.pebbles/pebbles.db
+.pebbles/events.jsonl
