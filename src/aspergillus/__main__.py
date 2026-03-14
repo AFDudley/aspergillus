@@ -23,7 +23,6 @@ from pathlib import Path
 from fixit.api import fixit_bytes
 from fixit.ftypes import Config, QualifiedRule
 
-
 # Matches "ASP201", "ASP302", etc. at the start of a message.
 _RULE_CODE_RE = re.compile(r"^(ASP\d{3})")
 
