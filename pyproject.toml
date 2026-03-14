@@ -16,6 +16,9 @@ dev = [
     "pytest>=8.0.0",
 ]
 
+[project.scripts]
+aspergillus = "aspergillus.__main__:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
