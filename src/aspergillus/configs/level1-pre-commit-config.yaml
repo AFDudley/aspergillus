@@ -1,0 +1,46 @@
+# Level 1: Static Analysis + Code Hygiene
+# Copy this into your project's .pre-commit-config.yaml.
+# These hooks implement NASA Level 1 quality checks using external tools.
+# Aspergillus Level 2+ rules layer on top of these.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--allow-multiple-documents']
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-ast            # syntax check
+      - id: debug-statements     # no breakpoint() in production
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        additional_dependencies: []  # add your project's type stubs here
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+
+  # Level 2+: add aspergillus as a local hook after the above
+  # - repo: local
+  #   hooks:
+  #     - id: aspergillus
+  #       name: aspergillus
+  #       entry: uv run python -m aspergillus --level 2
+  #       language: system
+  #       types: [python]

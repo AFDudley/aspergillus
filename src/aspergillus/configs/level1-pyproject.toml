@@ -1,0 +1,50 @@
+# Level 1: Static Analysis + Code Hygiene
+# Copy these sections into your project's pyproject.toml.
+# See docs/design.md for rationale.
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RET",  # flake8-return
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate (commented-out code)
+    "PL",   # pylint
+    "PERF", # perflint
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",    # line too long (black handles this)
+    "PLR0913", # too many arguments (sometimes necessary)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert in tests is fine
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+strict = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # assert is intentional (NASA rule #5)
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --tb=short"

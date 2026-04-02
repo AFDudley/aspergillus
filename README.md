@@ -31,6 +31,28 @@ checking), and ruff-format (formatting) — no overlap.
 | `ASP301` | Raise where Result type could be used |
 | `ASP302` | Optional/None return type |
 
+### Level 1 — External Tools (not aspergillus)
+
+Handled by ruff, black, mypy, bandit. Aspergillus assumes these are
+already configured. See [docs/design.md](docs/design.md) for details.
+
+### Level 4 — Planned
+
+| Rule | Description |
+|------|-------------|
+| `ASP401` | Missing precondition assertions |
+| `ASP402` | Missing postcondition assertions |
+| `ASP403` | Missing class invariant check |
+| `ASP404` | No property-based tests for pure function |
+
+### Level 5 — Planned
+
+| Rule | Description |
+|------|-------------|
+| `ASP501` | Unverified financial calculation |
+| `ASP502` | Unverified state machine transition |
+| `ASP503` | Unverified invariant preservation |
+
 ## Installation
 
 ```bash
