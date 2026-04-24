@@ -1,0 +1,23 @@
+{
+  "name": "@afdudley/aspergillus-ts",
+  "version": "0.1.0",
+  "description": "Aspergillus TypeScript CLI — init and check commands",
+  "type": "module",
+  "bin": {
+    "aspergillus-ts": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test",
+    "start": "bun run src/index.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": ">=18",
+    "typescript": ">=5.4"
+  }
+}
