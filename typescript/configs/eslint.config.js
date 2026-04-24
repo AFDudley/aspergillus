@@ -47,6 +47,13 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
+      // Type-aware linting — required by rules like
+      // `@typescript-eslint/no-floating-promises`. `projectService` auto-
+      // discovers the nearest tsconfig.json from cwd, so consumers don't
+      // need to hard-code a tsconfigRootDir.
+      parserOptions: {
+        projectService: true,
+      },
     },
     rules: {
       // Level 1 baseline — lands at error.
