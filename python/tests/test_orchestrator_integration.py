@@ -9,14 +9,21 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# The orchestrator lives in the d-c venv; add it to import path.
+import pytest
+
+# The orchestrator lives in the d-c venv (provisioned by `exophial patch-dc`);
+# skip cleanly when the venv isn't present so `pytest` stays green on dev
+# machines without exophial deployed.
 _DC_SITE = Path.home() / ".exophial/dc/venv/lib/python3.12/site-packages"
 if str(_DC_SITE) not in sys.path:
     sys.path.insert(0, str(_DC_SITE))
 
-from dagster_composable.utilities.validation_orchestrator.validation_orchestrator_impl import (  # noqa: E402
-    _run_aspergillus_check,
-)
+try:
+    from dagster_composable.utilities.validation_orchestrator.validation_orchestrator_impl import (  # noqa: E402
+        _run_aspergillus_check,
+    )
+except ImportError:
+    pytest.skip("dagster_composable not available (exophial d-c venv missing)", allow_module_level=True)
 
 
 class TestAspergilllusCleanFile:
