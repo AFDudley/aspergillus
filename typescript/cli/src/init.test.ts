@@ -47,12 +47,86 @@ describe('init', () => {
     );
   });
 
-  test('does not overwrite existing files', async () => {
-    const path = join(tmp, 'eslint.config.js');
-    writeFileSync(path, 'existing-content');
+  test('backs up .prettierrc and writes fresh wrapper', async () => {
+    writeFileSync(join(tmp, '.prettierrc'), '{ "printWidth": 120 }');
     const code = await init({ target: tmp });
     expect(code).toBe(0);
-    expect(readFileSync(path, 'utf8')).toBe('existing-content');
+    expect(existsSync(join(tmp, '.prettierrc'))).toBe(false);
+    expect(existsSync(join(tmp, '.prettierrc.local.bak'))).toBe(true);
+    expect(
+      readFileSync(join(tmp, '.prettierrc.local.bak'), 'utf8'),
+    ).toContain('printWidth');
+    const wrapper = readFileSync(join(tmp, 'prettier.config.cjs'), 'utf8');
+    expect(wrapper).toContain('aspergillus/typescript/configs/prettier.config.cjs');
+  });
+
+  test('backs up eslint.config.mjs variant', async () => {
+    writeFileSync(join(tmp, 'eslint.config.mjs'), 'export default [];');
+    const code = await init({ target: tmp });
+    expect(code).toBe(0);
+    expect(existsSync(join(tmp, 'eslint.config.mjs'))).toBe(false);
+    expect(existsSync(join(tmp, 'eslint.config.mjs.local.bak'))).toBe(true);
+    expect(existsSync(join(tmp, 'eslint.config.js'))).toBe(true);
+  });
+
+  test('backs up non-wrapper eslint.config.js', async () => {
+    writeFileSync(join(tmp, 'eslint.config.js'), 'export default [{ rules: {} }];');
+    const code = await init({ target: tmp });
+    expect(code).toBe(0);
+    expect(existsSync(join(tmp, 'eslint.config.js.local.bak'))).toBe(true);
+    const wrapper = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
+    expect(wrapper).toContain('aspergillus/typescript/configs/eslint.config.js');
+  });
+
+  test('leaves existing aspergillus wrapper alone (idempotent re-init)', async () => {
+    await init({ target: tmp });
+    const original = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
+    const code = await init({ target: tmp });
+    expect(code).toBe(0);
+    expect(existsSync(join(tmp, 'eslint.config.js.local.bak'))).toBe(false);
+    expect(readFileSync(join(tmp, 'eslint.config.js'), 'utf8')).toBe(original);
+  });
+
+  test('warns about inline "prettier" key in package.json', async () => {
+    writeFileSync(
+      join(tmp, 'package.json'),
+      JSON.stringify({ name: 'x', prettier: { printWidth: 120 } }),
+    );
+    // capture stdout
+    const chunks: string[] = [];
+    const orig = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((s: string) => {
+      chunks.push(s);
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      const code = await init({ target: tmp });
+      expect(code).toBe(0);
+    } finally {
+      process.stdout.write = orig;
+    }
+    const out = chunks.join('');
+    expect(out).toContain('"prettier" key in package.json');
+    // package.json must not be renamed/touched
+    expect(existsSync(join(tmp, 'package.json'))).toBe(true);
+  });
+
+  test('detects npm when package-lock.json is present', async () => {
+    writeFileSync(join(tmp, 'package-lock.json'), '{}');
+    const chunks: string[] = [];
+    const orig = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((s: string) => {
+      chunks.push(s);
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await init({ target: tmp });
+    } finally {
+      process.stdout.write = orig;
+    }
+    const out = chunks.join('');
+    expect(out).toContain('npm install -D');
+    expect(out).toContain('(npm detected)');
   });
 
   test('creates the target dir if missing', async () => {
