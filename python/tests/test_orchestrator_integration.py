@@ -23,18 +23,15 @@ try:
         _run_aspergillus_check,
     )
 except ImportError:
-    pytest.skip("dagster_composable not available (exophial d-c venv missing)", allow_module_level=True)
+    pytest.skip(
+        "dagster_composable not available (exophial d-c venv missing)", allow_module_level=True
+    )
 
 
 class TestAspergilllusCleanFile:
     """Aspergillus check on clean code should pass."""
 
-    CLEAN_CODE = (
-        "def short() -> int:\n"
-        "    assert True\n"
-        "    assert True\n"
-        "    return 1\n"
-    )
+    CLEAN_CODE = "def short() -> int:\n    assert True\n    assert True\n    return 1\n"
 
     def test_status_passed(self) -> None:
         result = _run_aspergillus_check(self.CLEAN_CODE, "clean.py")
