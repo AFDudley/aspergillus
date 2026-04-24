@@ -5,8 +5,13 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
-dist/
-build/
+# Python build/dist dirs only — root-level. The TS CLI also has
+# typescript/cli/lib/ but we specifically want that gitignored too;
+# see below.
+/dist/
+/build/
+
+typescript/cli/*.tsbuildinfo
 
 # npm (root package.json publishes the CLI via `files:`; dist builds on install)
 node_modules/

@@ -15,11 +15,11 @@
     "./pre-commit": "./typescript/configs/pre-commit-config.yaml"
   },
   "bin": {
-    "aspergillus-ts": "./typescript/cli/dist/index.js"
+    "aspergillus-ts": "./typescript/cli/lib/index.js"
   },
   "files": [
-    "typescript/configs",
-    "typescript/cli/dist",
+    "typescript/configs/**",
+    "typescript/cli/lib/**",
     "typescript/cli/package.json",
     "README.md",
     "LICENSE"

@@ -4,9 +4,11 @@
   "description": "Aspergillus TypeScript CLI — init and check commands",
   "type": "module",
   "bin": {
-    "aspergillus-ts": "dist/index.js"
+    "aspergillus-ts": "lib/index.js"
   },
-  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "bun test",
