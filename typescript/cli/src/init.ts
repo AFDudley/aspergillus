@@ -1,10 +1,9 @@
-import { existsSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Reference configs live in ../../configs/ relative to the compiled CLI
-// (dist/init.js → ../../configs/). During `bun test`, __filename points
-// into src/, so ../../configs/ resolves to typescript/configs/ either way.
+// Reference configs live in ../../configs/ relative to the compiled CLI.
+// Works at both bun-test time (src/) and post-build (dist/).
 const here = dirname(fileURLToPath(import.meta.url));
 const CONFIGS_DIR = resolve(here, '..', '..', 'configs');
 
@@ -21,32 +20,54 @@ const DEV_DEPS = [
 
 type InitOpts = { target: string };
 
-// `.pre-commit-config.yaml` in the consumer is conventionally dotfiled;
-// the reference ships it as `pre-commit-config.yaml` to keep the configs
-// directory visible, and we add the dot on copy.
-const FILES: ReadonlyArray<readonly [sourceName: string, destName: string]> = [
-  ['eslint.config.js', 'eslint.config.js'],
-  ['tsconfig.base.json', 'tsconfig.base.json'],
-  ['prettier.config.cjs', 'prettier.config.cjs'],
-  ['pre-commit-config.yaml', '.pre-commit-config.yaml'],
-];
+function relImport(from: string, to: string): string {
+  const rel = relative(from, to).replace(/\\/g, '/');
+  return rel.startsWith('.') ? rel : './' + rel;
+}
+
+function writeIfMissing(path: string, content: string, label: string): void {
+  if (existsSync(path)) {
+    process.stdout.write(`skip (exists): ${label}\n`);
+    return;
+  }
+  writeFileSync(path, content);
+  process.stdout.write(`wrote: ${label}\n`);
+}
 
 export async function init({ target }: InitOpts): Promise<number> {
   mkdirSync(target, { recursive: true });
-  const availableSources = new Set(readdirSync(CONFIGS_DIR));
-  for (const [src, dest] of FILES) {
-    if (!availableSources.has(src)) {
-      process.stderr.write(`missing reference config: ${src}\n`);
-      return 1;
-    }
-    const destPath = join(target, dest);
-    if (existsSync(destPath)) {
-      process.stdout.write(`skip (exists): ${dest}\n`);
-      continue;
-    }
-    copyFileSync(join(CONFIGS_DIR, src), destPath);
-    process.stdout.write(`wrote: ${dest}\n`);
+  const rel = relImport(target, CONFIGS_DIR);
+
+  const eslintWrapper = `// Aspergillus wrapper. Spreads the vendored reference config; add
+// repo-specific overrides after the spread.
+import base from '${rel}/eslint.config.js';
+
+export default [...base];
+`;
+
+  const prettierWrapper = `// Aspergillus wrapper. Spreads the vendored reference; add overrides below.
+module.exports = {
+  ...require('${rel}/prettier.config.cjs'),
+};
+`;
+
+  const tsconfigWrapper =
+    JSON.stringify({ extends: `${rel}/tsconfig.base.json` }, null, 2) + '\n';
+
+  writeIfMissing(join(target, 'eslint.config.js'), eslintWrapper, 'eslint.config.js');
+  writeIfMissing(join(target, 'prettier.config.cjs'), prettierWrapper, 'prettier.config.cjs');
+  writeIfMissing(join(target, 'tsconfig.json'), tsconfigWrapper, 'tsconfig.json');
+
+  // Pre-commit has no native extends mechanism; copy the scaffold verbatim.
+  const preCommitSrc = join(CONFIGS_DIR, 'pre-commit-config.yaml');
+  const preCommitDest = join(target, '.pre-commit-config.yaml');
+  if (existsSync(preCommitDest)) {
+    process.stdout.write('skip (exists): .pre-commit-config.yaml\n');
+  } else {
+    copyFileSync(preCommitSrc, preCommitDest);
+    process.stdout.write('wrote: .pre-commit-config.yaml\n');
   }
+
   process.stdout.write('\nNext: install devDependencies —\n');
   process.stdout.write(`  bun add -D ${DEV_DEPS.join(' ')}\n`);
   return 0;

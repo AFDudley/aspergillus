@@ -26,15 +26,21 @@ apps, shared libraries).
    cd vendor/aspergillus/typescript/cli && bun install && bun run build && cd -
    ```
 
-3. **Run `init` to copy reference configs into the repo root:**
+3. **Run `init` to write consumer configs at the repo root:**
 
    ```bash
    node vendor/aspergillus/typescript/cli/dist/index.js init
    ```
 
-   `init` writes (but never overwrites) `eslint.config.js`,
-   `tsconfig.base.json`, `prettier.config.cjs`, and `.pre-commit-config.yaml`,
-   then prints the `bun add -D …` command for peer devDependencies.
+   `init` writes (but never overwrites):
+   - `eslint.config.js` — wrapper that spreads the vendored reference
+   - `prettier.config.cjs` — wrapper that spreads the vendored reference
+   - `tsconfig.json` — extends the vendored `tsconfig.base.json`
+   - `.pre-commit-config.yaml` — scaffold copy (no extends mechanism in pre-commit; consumer owns it)
+
+   Consumers freely add overrides in the wrapper files without breaking
+   `aspergillus-ts check`. Then `init` prints the `bun add -D …` command
+   for peer devDependencies.
 
 4. **Install the printed devDependencies, then run the linter once with
    auto-fix:**

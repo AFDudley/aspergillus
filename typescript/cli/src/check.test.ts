@@ -1,13 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
+import { init } from './init.js';
 import { check } from './check.js';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const CONFIGS_DIR = resolve(here, '..', '..', 'configs');
 
 describe('check', () => {
   let tmp: string;
@@ -20,26 +17,42 @@ describe('check', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test('returns 0 when consumer matches reference byte-for-byte', async () => {
-    mkdirSync(tmp, { recursive: true });
-    copyFileSync(join(CONFIGS_DIR, 'eslint.config.js'), join(tmp, 'eslint.config.js'));
-    copyFileSync(join(CONFIGS_DIR, 'tsconfig.base.json'), join(tmp, 'tsconfig.base.json'));
-    copyFileSync(join(CONFIGS_DIR, 'prettier.config.cjs'), join(tmp, 'prettier.config.cjs'));
-    copyFileSync(join(CONFIGS_DIR, 'pre-commit-config.yaml'), join(tmp, '.pre-commit-config.yaml'));
+  test('returns 0 immediately after init', async () => {
+    await init({ target: tmp });
     const code = await check({ target: tmp });
     expect(code).toBe(0);
   });
 
-  test('returns 1 when a file is missing', async () => {
+  test('returns 0 when the consumer has added overrides to wrappers', async () => {
+    await init({ target: tmp });
+    writeFileSync(
+      join(tmp, 'eslint.config.js'),
+      `import base from './vendor/aspergillus/typescript/configs/eslint.config.js';
+export default [...base, { rules: { 'no-console': 'error' } }];
+`,
+    );
+    const code = await check({ target: tmp });
+    expect(code).toBe(0);
+  });
+
+  test('returns 1 when a config is missing', async () => {
     const code = await check({ target: tmp });
     expect(code).toBe(1);
   });
 
-  test('returns 1 when a file has drifted', async () => {
-    copyFileSync(join(CONFIGS_DIR, 'eslint.config.js'), join(tmp, 'eslint.config.js'));
-    copyFileSync(join(CONFIGS_DIR, 'tsconfig.base.json'), join(tmp, 'tsconfig.base.json'));
-    copyFileSync(join(CONFIGS_DIR, 'prettier.config.cjs'), join(tmp, 'prettier.config.cjs'));
-    writeFileSync(join(tmp, '.pre-commit-config.yaml'), 'drifted content\n');
+  test('returns 1 when eslint.config.js no longer imports the vendored config', async () => {
+    await init({ target: tmp });
+    writeFileSync(join(tmp, 'eslint.config.js'), 'export default [];');
+    const code = await check({ target: tmp });
+    expect(code).toBe(1);
+  });
+
+  test('returns 1 when tsconfig.json extends something else', async () => {
+    await init({ target: tmp });
+    writeFileSync(
+      join(tmp, 'tsconfig.json'),
+      JSON.stringify({ extends: './other/tsconfig.json' }),
+    );
     const code = await check({ target: tmp });
     expect(code).toBe(1);
   });
