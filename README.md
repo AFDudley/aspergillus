@@ -1,137 +1,48 @@
 # aspergillus
 
-NASA-grade Python linter built on [Fixit](https://fixit.readthedocs.io/)/[LibCST](https://libcst.readthedocs.io/).
+NASA-grade code quality rules, applied across multiple languages.
 
 Named after *Aspergillus nidulans*, the first fungus NASA intentionally
 grew on the International Space Station.
 
-## What it does
+## What it is
 
-Enforces structural code quality rules derived from NASA's Power of 10,
-adapted for Python. Complements ruff (general linting), mypy (type
-checking), and ruff-format (formatting) — no overlap.
+A rule set derived from NASA's Power of 10, ported to:
 
-## Rules
+- **Python** — Fixit/LibCST rule-pack. Implements ASP201–206 (Level 2)
+  and ASP301–302 (Level 3) as custom lint rules.
+- **TypeScript** — reference ESLint/tsconfig/Prettier configs plus a
+  stub `aspergillus-ts` CLI. Composes stock plugins; no custom rules.
+- **Rust** — reference clippy/Cargo-lints configs. Placeholder tier.
 
-### Level 2 — Blocking
+See [`docs/design.md`](docs/design.md) for the full rule table and
+per-language mappings.
 
-| Rule | Description |
-|------|-------------|
-| `ASP201` | Function too long (>60 lines) |
-| `ASP202` | Low assertion density (<2 per function) |
-| `ASP203` | Global mutable state |
-| `ASP204` | Unbounded loop (while without provable bound) |
-| `ASP205` | Impure function (calls I/O from blocklist) |
-| `ASP206` | Mixed I/O and logic (functional core / imperative shell violation) |
+## Repository layout
 
-### Level 3 — Warning
+| Path | Contents |
+|------|----------|
+| `docs/` | Design, implementation notes, this repo's spec/plan history |
+| `python/` | Python package, tests, pre-commit config |
+| `typescript/` | Reference configs + stub CLI |
+| `rust/` | Reference clippy/Cargo lint configs (placeholder) |
 
-| Rule | Description |
-|------|-------------|
-| `ASP301` | Raise where Result type could be used |
-| `ASP302` | Optional/None return type |
+## Adoption
 
-### Level 1 — External Tools (not aspergillus)
+Consumers pull aspergillus as a git subtree and use the language
+subtree(s) they need:
 
-Handled by ruff, black, mypy, bandit. Aspergillus assumes these are
-already configured. See [docs/design.md](docs/design.md) for details.
+- Python — see `python/` (install via `uv tool install ./python`).
+- TypeScript — see `typescript/README.md`.
+- Rust — see `rust/README.md`.
 
-### Level 4 — Planned
+## Levels
 
-| Rule | Description |
-|------|-------------|
-| `ASP401` | Missing precondition assertions |
-| `ASP402` | Missing postcondition assertions |
-| `ASP403` | Missing class invariant check |
-| `ASP404` | No property-based tests for pure function |
+- **Level 1** — external tooling baseline (ruff, ESLint, clippy, …).
+  Not aspergillus code; aspergillus ships reference configs only.
+- **Level 2** — structural rules (ASP201–206). Blocking.
+- **Level 3** — error-handling rules (ASP301–302). Blocking in strict
+  adopters.
+- **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
-### Level 5 — Planned
-
-| Rule | Description |
-|------|-------------|
-| `ASP501` | Unverified financial calculation |
-| `ASP502` | Unverified state machine transition |
-| `ASP503` | Unverified invariant preservation |
-
-## Installation
-
-```bash
-uv pip install .
-```
-
-Or as a development dependency in another project:
-
-```bash
-uv add --dev aspergillus@{path/to/aspergillus}
-```
-
-## Usage
-
-### With fixit directly
-
-```bash
-# Run all aspergillus rules
-fixit lint src/
-
-# Fixit discovers rules via [tool.fixit] in pyproject.toml
-```
-
-### As a pre-commit hook (recommended)
-
-Add aspergillus as a git subtree in the consuming repo, then add a
-local hook:
-
-```yaml
-# .pre-commit-config.yaml
-- repo: local
-  hooks:
-    - id: aspergillus
-      name: aspergillus
-      entry: uv run python -m fixit lint
-      language: system
-      types: [python]
-```
-
-The consuming repo's `pyproject.toml` needs:
-
-```toml
-[tool.fixit]
-enable = ["aspergillus.rules"]
-```
-
-## I/O Blocklist
-
-ASP205 and ASP206 use a curated blocklist of ~40 known I/O functions
-(builtins, subprocess, os, logging, socket, shutil, pathlib). Extend
-per-repo:
-
-```toml
-[tool.aspergillus]
-extra_io_functions = ["requests.get", "httpx.post"]
-```
-
-## Suppression
-
-Suppress individual violations inline:
-
-```python
-CACHE: dict[str, str] = {}  # noqa: ASP203
-```
-
-## Development
-
-```bash
-# Install dependencies
-uv sync
-
-# Run tests
-uv run pytest
-
-# Run pre-commit (ruff + mypy + formatting)
-uv run pre-commit run --all-files
-```
-
-## Design
-
-See [docs/design.md](docs/design.md) for architecture decisions,
-enforcement model, and rule rationale.
+See [`docs/design.md`](docs/design.md) for the authoritative rule table.
