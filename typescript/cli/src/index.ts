@@ -2,8 +2,8 @@
 // Aspergillus TypeScript CLI.
 // Commands: init, check. See typescript/README.md for adoption workflow.
 
-import { init } from './init.js';
 import { check } from './check.js';
+import { init } from './init.js';
 
 const USAGE = `aspergillus-ts <command>
 
@@ -50,5 +50,5 @@ export async function main(argv: readonly string[]): Promise<number> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main(process.argv).then((code) => process.exit(code));
+  void main(process.argv).then((code) => process.exit(code));
 }

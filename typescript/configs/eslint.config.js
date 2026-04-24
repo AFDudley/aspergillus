@@ -32,6 +32,10 @@ export default [
       'coverage/**',
       '.next/**',
       '.expo/**',
+      // Subtree-model: consumers pull aspergillus into vendor/ and should
+      // not be linting its internal sources. Also covers generic vendor
+      // dirs in any other convention.
+      'vendor/**',
     ],
   },
 
