@@ -27,7 +27,7 @@ describe('check', () => {
     await init({ target: tmp });
     writeFileSync(
       join(tmp, 'eslint.config.js'),
-      `import base from './vendor/aspergillus/typescript/configs/eslint.config.js';
+      `import base from '@afdudley/aspergillus/eslint-config';
 export default [...base, { rules: { 'no-console': 'error' } }];
 `,
     );
@@ -40,7 +40,7 @@ export default [...base, { rules: { 'no-console': 'error' } }];
     expect(code).toBe(1);
   });
 
-  test('returns 1 when eslint.config.js no longer imports the vendored config', async () => {
+  test('returns 1 when eslint.config.js no longer imports the aspergillus package', async () => {
     await init({ target: tmp });
     writeFileSync(join(tmp, 'eslint.config.js'), 'export default [];');
     const code = await check({ target: tmp });

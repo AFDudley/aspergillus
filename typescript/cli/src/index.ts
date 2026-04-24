@@ -2,6 +2,9 @@
 // Aspergillus TypeScript CLI.
 // Commands: init, check. See typescript/README.md for adoption workflow.
 
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { check } from './check.js';
 import { init } from './init.js';
 
@@ -49,6 +52,18 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run when invoked directly as a CLI. Uses realpath comparison so that
+// symlinked bin entries (e.g. node_modules/.bin/aspergillus-ts) match.
+function isMainEntry(): boolean {
+  try {
+    const modulePath = realpathSync(fileURLToPath(import.meta.url));
+    const argv1 = process.argv[1];
+    return argv1 !== undefined && realpathSync(argv1) === modulePath;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainEntry()) {
   void main(process.argv).then((code) => process.exit(code));
 }

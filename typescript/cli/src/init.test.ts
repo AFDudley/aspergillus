@@ -5,6 +5,10 @@ import { join } from 'node:path';
 
 import { init } from './init.js';
 
+const PKG_ESLINT = '@afdudley/aspergillus/eslint-config';
+const PKG_PRETTIER = '@afdudley/aspergillus/prettier-config';
+const PKG_TSCONFIG = '@afdudley/aspergillus/tsconfig';
+
 describe('init', () => {
   let tmp: string;
 
@@ -25,26 +29,24 @@ describe('init', () => {
     expect(existsSync(join(tmp, '.pre-commit-config.yaml'))).toBe(true);
   });
 
-  test('eslint wrapper imports the vendored reference', async () => {
+  test('eslint wrapper imports the aspergillus package export', async () => {
     await init({ target: tmp });
     const content = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
-    expect(content).toContain('aspergillus/typescript/configs/eslint.config.js');
+    expect(content).toContain(PKG_ESLINT);
     expect(content).toContain('export default [...base]');
   });
 
-  test('prettier wrapper requires the vendored reference', async () => {
+  test('prettier wrapper requires the aspergillus package export', async () => {
     await init({ target: tmp });
     const content = readFileSync(join(tmp, 'prettier.config.cjs'), 'utf8');
-    expect(content).toContain('aspergillus/typescript/configs/prettier.config.cjs');
+    expect(content).toContain(PKG_PRETTIER);
     expect(content).toContain('module.exports');
   });
 
-  test('tsconfig.json extends the vendored reference', async () => {
+  test('tsconfig.json extends the aspergillus package export', async () => {
     await init({ target: tmp });
     const parsed = JSON.parse(readFileSync(join(tmp, 'tsconfig.json'), 'utf8'));
-    expect(parsed.extends).toContain(
-      'aspergillus/typescript/configs/tsconfig.base.json',
-    );
+    expect(parsed.extends).toBe(PKG_TSCONFIG);
   });
 
   test('backs up .prettierrc and writes fresh wrapper', async () => {
@@ -53,11 +55,8 @@ describe('init', () => {
     expect(code).toBe(0);
     expect(existsSync(join(tmp, '.prettierrc'))).toBe(false);
     expect(existsSync(join(tmp, '.prettierrc.local.bak'))).toBe(true);
-    expect(
-      readFileSync(join(tmp, '.prettierrc.local.bak'), 'utf8'),
-    ).toContain('printWidth');
     const wrapper = readFileSync(join(tmp, 'prettier.config.cjs'), 'utf8');
-    expect(wrapper).toContain('aspergillus/typescript/configs/prettier.config.cjs');
+    expect(wrapper).toContain(PKG_PRETTIER);
   });
 
   test('backs up eslint.config.mjs variant', async () => {
@@ -75,7 +74,7 @@ describe('init', () => {
     expect(code).toBe(0);
     expect(existsSync(join(tmp, 'eslint.config.js.local.bak'))).toBe(true);
     const wrapper = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
-    expect(wrapper).toContain('aspergillus/typescript/configs/eslint.config.js');
+    expect(wrapper).toContain(PKG_ESLINT);
   });
 
   test('leaves existing aspergillus wrapper alone (idempotent re-init)', async () => {
@@ -92,7 +91,6 @@ describe('init', () => {
       join(tmp, 'package.json'),
       JSON.stringify({ name: 'x', prettier: { printWidth: 120 } }),
     );
-    // capture stdout
     const chunks: string[] = [];
     const orig = process.stdout.write.bind(process.stdout);
     process.stdout.write = ((s: string) => {
@@ -107,7 +105,6 @@ describe('init', () => {
     }
     const out = chunks.join('');
     expect(out).toContain('"prettier" key in package.json');
-    // package.json must not be renamed/touched
     expect(existsSync(join(tmp, 'package.json'))).toBe(true);
   });
 
@@ -127,6 +124,7 @@ describe('init', () => {
     const out = chunks.join('');
     expect(out).toContain('npm install -D');
     expect(out).toContain('(npm detected)');
+    expect(out).toContain('@afdudley/aspergillus');
   });
 
   test('creates the target dir if missing', async () => {

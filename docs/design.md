@@ -68,34 +68,74 @@ which is more precise than pattern-matching call sites.
 
 ## Distribution
 
-### Phase 1 — Subtree (current)
+Each language subtree has its own distribution path. TypeScript uses
+npm; Python uses uv; Rust uses a file copy.
 
-Consumers pull aspergillus as a git subtree at `vendor/aspergillus/`:
+### TypeScript
+
+- **Phase 1 (current): git-URL npm install.** Consumers add
+  `github:AFDudley/aspergillus#main` as a devDependency. npm clones the
+  repo, runs the root `prepare` script (builds `typescript/cli/dist/`
+  via `tsc`), and exposes the package via the `exports` map:
+
+  ```bash
+  npm install -D github:AFDudley/aspergillus#main @eslint/js typescript-eslint \
+    eslint-plugin-import eslint-plugin-unused-imports eslint-config-prettier \
+    eslint prettier typescript
+  npx aspergillus-ts init
+  ```
+
+  Wrappers reference the package directly:
+
+  ```js
+  // eslint.config.js
+  import base from '@afdudley/aspergillus/eslint-config';
+  export default [...base];
+  ```
+  ```json
+  // tsconfig.json
+  { "extends": "@afdudley/aspergillus/tsconfig" }
+  ```
+  ```cjs
+  // prettier.config.cjs
+  module.exports = { ...require('@afdudley/aspergillus/prettier-config') };
+  ```
+
+  No `vendor/` directory in consumers; aspergillus lives under
+  `node_modules/@afdudley/aspergillus/` like any other dependency.
+
+- **Phase 2 (planned): registry publish.** Once the package stabilizes
+  across 3+ consumer repos, publish `@afdudley/aspergillus` to
+  GitHub Packages. Consumer migration is one line:
+
+  ```diff
+  - "@afdudley/aspergillus": "github:AFDudley/aspergillus#main"
+  + "@afdudley/aspergillus": "^0.1.0"
+  ```
+
+  Package name, `exports` paths, and import specifiers stay identical.
+
+### Python
 
 ```bash
-git subtree add --prefix vendor/aspergillus <repo-url> main --squash
+uv tool install git+https://github.com/AFDudley/aspergillus.git#subdirectory=python
 ```
 
-- **Python consumer:** `uv tool install ./vendor/aspergillus/python`; set
-  `[tool.fixit] enable = ["aspergillus.rules"]` in `pyproject.toml`.
-- **TypeScript consumer:** build the CLI (`cd vendor/aspergillus/typescript/cli && bun install && bun run build`),
-  run `node vendor/aspergillus/typescript/cli/dist/index.js init`,
-  install printed devDependencies.
-- **Rust consumer:** copy `vendor/aspergillus/rust/configs/clippy.toml` to
-  repo root; paste `cargo-lints.toml` into `Cargo.toml`.
+Then in the consumer's `pyproject.toml`:
 
-Updates: `git subtree pull --prefix vendor/aspergillus <repo-url> main --squash`.
+```toml
+[tool.fixit]
+enable = ["aspergillus.rules"]
+```
 
-### Phase 2 — Published packages (planned)
+### Rust
 
-Once the reference configs stabilize across 3+ consumer repos:
+```bash
+curl -fsSL https://raw.githubusercontent.com/AFDudley/aspergillus/main/rust/configs/clippy.toml -o clippy.toml
+```
 
-- Python: already publishable from `python/` (uv, PyPI or private index).
-- TypeScript: publish `@afdudley/eslint-config`, `@afdudley/tsconfig`,
-  `@afdudley/prettier-config`, `@afdudley/aspergillus-ts` to
-  GitHub Packages. Consumer config collapses to one-line `extends:`.
-- Rust: publish a proc-macro crate or cargo-template (TBD) for cargo-lints
-  injection.
+Paste `rust/configs/cargo-lints.toml` contents into the consumer's
+`Cargo.toml` under `[lints.clippy]`.
 
 ## Enforcement model
 

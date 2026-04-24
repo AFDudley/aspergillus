@@ -10,65 +10,77 @@ apps, shared libraries).
 - `configs/tsconfig.base.json` — strict TypeScript compiler baseline
 - `configs/prettier.config.cjs` — Prettier 3 config
 - `configs/pre-commit-config.yaml` — pre-commit hooks (ESLint + Prettier)
-- `cli/` — `aspergillus-ts` stub CLI (`init`, `check`)
+- `cli/` — `aspergillus-ts` CLI (`init`, `check`)
 
-## Adoption (subtree era)
+Consumers install aspergillus via npm (from GitHub in Phase 1, from a
+registry later in Phase 2). The CLI exposes `init` / `check` as a
+standard npm bin.
 
-1. **Add aspergillus as a subtree** in your repo:
+## Adoption
 
-   ```bash
-   git subtree add --prefix vendor/aspergillus <repo-url> main --squash
-   ```
-
-2. **Build the CLI once:**
+1. **Install aspergillus and peer devDependencies:**
 
    ```bash
-   cd vendor/aspergillus/typescript/cli && bun install && bun run build && cd -
+   npm install -D github:AFDudley/aspergillus#main @eslint/js typescript-eslint \
+     eslint-plugin-import eslint-plugin-unused-imports eslint-config-prettier \
+     eslint prettier typescript
    ```
 
-3. **Run `init` to write consumer configs at the repo root:**
+   (Use your project's package manager — `bun add -D …`, `pnpm add -D …`,
+   `yarn add -D …` all work.)
+
+2. **Run `init` to write consumer wrappers at the repo root:**
 
    ```bash
-   node vendor/aspergillus/typescript/cli/dist/index.js init
+   npx aspergillus-ts init
    ```
 
-   `init` writes (but never overwrites):
-   - `eslint.config.js` — wrapper that spreads the vendored reference
-   - `prettier.config.cjs` — wrapper that spreads the vendored reference
-   - `tsconfig.json` — extends the vendored `tsconfig.base.json`
-   - `.pre-commit-config.yaml` — scaffold copy (no extends mechanism in pre-commit; consumer owns it)
+   `init` writes:
+   - `eslint.config.js` — spreads `@afdudley/aspergillus/eslint-config`
+   - `prettier.config.cjs` — spreads `@afdudley/aspergillus/prettier-config`
+   - `tsconfig.json` — `extends: "@afdudley/aspergillus/tsconfig"`
+   - `.pre-commit-config.yaml` — scaffold copy (consumer owns it)
 
-   Consumers freely add overrides in the wrapper files without breaking
-   `aspergillus-ts check`. Then `init` prints the `bun add -D …` command
-   for peer devDependencies.
+   If any of those files (or equivalent variants like `.prettierrc`,
+   `eslint.config.mjs`, etc.) already exist, `init` renames them to
+   `<name>.local.bak` and writes fresh aspergillus wrappers. Consumers
+   port any repo-specific overrides into the wrappers below the spread.
 
-4. **Install the printed devDependencies, then run the linter once with
-   auto-fix:**
+3. **Run the tools:**
 
    ```bash
-   bun run eslint . --fix
+   npx eslint . --fix
+   npx prettier --write .
+   npx tsc --noEmit
    ```
 
-5. **Pull updates** by re-running the subtree pull and then `check`:
+4. **Detect drift via `check` (optional, wire into CI):**
 
    ```bash
-   git subtree pull --prefix vendor/aspergillus <repo-url> main --squash
-   node vendor/aspergillus/typescript/cli/dist/index.js check
+   npx aspergillus-ts check
    ```
 
-   `check` exits non-zero on any drift from the reference. Wire it into CI
-   if you want drift enforcement.
+   Exits non-zero if any wrapper no longer references aspergillus.
+
+5. **Update aspergillus:**
+
+   ```bash
+   npm update @afdudley/aspergillus
+   npx aspergillus-ts check
+   ```
 
 ## Severity-flip workflow
 
-Every new rule lands at `warn`. It stays at `warn` until the tree has zero
-violations for that rule; then a dedicated PR flips it to `error`. Rationale:
-separates the "adopt the rule" change (reviewable mechanics) from the
-"fix every existing violation" change (reviewable scope).
+Every new aspergillus rule lands at `warn`. It stays `warn` until the
+tree has zero violations for that rule; then a dedicated PR flips it to
+`error`. Rationale: separates the "adopt the rule" change (reviewable
+mechanics) from the "fix every existing violation" change (reviewable
+scope).
 
 This is the main incremental axis — not level-preset switching. Level 2
-and Level 3 rules are appended to the same `eslint.config.js` over time;
-each new rule is subject to the warn→error flip.
+and Level 3 rules are appended to the same reference `eslint.config.js`
+over time; each new rule is subject to the warn→error flip in each
+consumer.
 
 ## Rule mapping (summary)
 
@@ -86,23 +98,37 @@ mapping. For TypeScript the short form is:
 | 301 | `functional/no-throw-statements`, `@okee-tech/neverthrow/must-consume-result` |
 | 302 | `strictNullChecks` in tsconfig + neverthrow-typed returns |
 
-## Future: published packages
+## Distribution phases
 
-Once the reference configs stabilize across 3+ consumer repos, these will
-be published to GitHub Packages as `@afdudley/eslint-config`,
-`@afdudley/tsconfig`, `@afdudley/prettier-config`, and
-`@afdudley/aspergillus-ts`. Consumer config collapses to:
+- **Phase 1 (current): git-URL npm install.** Consumers add
+  `github:AFDudley/aspergillus#main` as a devDependency. npm clones the
+  repo, runs the root `prepare` script (which builds `typescript/cli/dist/`
+  via `tsc`), and exposes the package via the `exports` map. Works with
+  `npm`, `pnpm`, `yarn`, and `bun` — no registry auth needed.
 
-```js
-// eslint.config.js
-import base from '@afdudley/eslint-config';
-export default [...base, /* repo overrides */];
+- **Phase 2 (planned): registry publish.** Once the package stabilizes,
+  publish `@afdudley/aspergillus` to GitHub Packages. Consumers migrate
+  with a one-line change in `package.json`:
+
+  ```diff
+  - "@afdudley/aspergillus": "github:AFDudley/aspergillus#main"
+  + "@afdudley/aspergillus": "^0.1.0"
+  ```
+
+  Package name, `exports` paths, and import specifiers stay identical.
+  No changes required in `eslint.config.js`, `prettier.config.cjs`, or
+  `tsconfig.json`.
+
+## Development
+
+Aspergillus's own CLI tests run under bun:
+
+```bash
+cd typescript/cli
+bun install
+bun test
+bun run build
 ```
 
-```json
-// tsconfig.json
-{ "extends": "@afdudley/tsconfig" }
-```
-
-Trigger: N=3 TS consumers, or the first breaking change that needs
-coordinated updates across consumers.
+Consumers do not need bun — the root `prepare` script uses `tsc` via
+npm-installed `typescript`.

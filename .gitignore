@@ -8,6 +8,10 @@ __pycache__/
 dist/
 build/
 
+# npm (root package.json publishes the CLI via `files:`; dist builds on install)
+node_modules/
+package-lock.json
+
 # Pebbles runtime state (config is tracked, db is not)
 .pebbles/pebbles.db
 .pebbles/events.jsonl

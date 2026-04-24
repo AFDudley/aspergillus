@@ -1,21 +1,24 @@
-import { existsSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, renameSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, copyFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   CONFLICTS,
   INLINE_KEYS,
+  PACKAGE_SPECIFIERS,
   isEslintWrapper,
   isPrettierWrapper,
   isTsconfigWrapper,
 } from './wrappers.js';
 
-// Reference configs live in ../../configs/ relative to the compiled CLI.
-// Works at both bun-test time (src/) and post-build (dist/).
+// Reference pre-commit scaffold lives next to the configs. Works at both
+// bun-test time (src/) and post-build (dist/).
 const here = dirname(fileURLToPath(import.meta.url));
 const CONFIGS_DIR = resolve(here, '..', '..', 'configs');
 
+// Peer devDependencies consumers install alongside aspergillus itself.
 const DEV_DEPS = [
+  '@afdudley/aspergillus',
   '@eslint/js',
   'typescript-eslint',
   'eslint-plugin-import',
@@ -27,11 +30,6 @@ const DEV_DEPS = [
 ] as const;
 
 type InitOpts = { target: string };
-
-function relImport(from: string, to: string): string {
-  const rel = relative(from, to).replace(/\\/g, '/');
-  return rel.startsWith('.') ? rel : './' + rel;
-}
 
 function detectPackageManager(target: string): 'bun' | 'pnpm' | 'yarn' | 'npm' {
   if (existsSync(join(target, 'bun.lock')) || existsSync(join(target, 'bun.lockb'))) return 'bun';
@@ -54,8 +52,6 @@ function devDepCommand(pm: 'bun' | 'pnpm' | 'yarn' | 'npm'): string {
   }
 }
 
-// Human-readable error message for filesystem failures. Anything else
-// rethrows — only convert OS-level errors, not bugs.
 function describeError(err: unknown): string | null {
   if (err instanceof Error && typeof (err as NodeJS.ErrnoException).code === 'string') {
     return (err as NodeJS.ErrnoException).message;
@@ -72,44 +68,6 @@ function readOrNull(path: string): string | null {
 }
 
 type Slot = 'eslint' | 'prettier' | 'tsconfig' | 'preCommit';
-
-// Look at every known conflicting filename for `slot` in `target`. If a
-// match already IS the aspergillus wrapper, return `our-wrapper`. If it's
-// a competing config, back it up and return `backed-up`. If none exist,
-// return `none`.
-function handleConflicts(
-  target: string,
-  slot: Slot,
-  backups: { from: string; to: string }[],
-): 'our-wrapper' | 'backed-up' | 'none' {
-  const candidates = CONFLICTS[slot];
-  const wrapperName = wrapperFilenameFor(slot);
-  let sawConflict = false;
-
-  for (const name of candidates) {
-    const path = join(target, name);
-    if (!existsSync(path)) continue;
-
-    // Is this the slot's primary filename AND already our wrapper? Leave it.
-    if (name === wrapperName) {
-      const src = readOrNull(path);
-      if (src !== null && isWrapperFor(slot, src)) {
-        return 'our-wrapper';
-      }
-    }
-
-    const backupPath = path + '.local.bak';
-    // If a .local.bak already exists, append a timestamp to avoid clobbering.
-    const finalBackup = existsSync(backupPath)
-      ? `${backupPath}.${Date.now()}`
-      : backupPath;
-    renameSync(path, finalBackup);
-    backups.push({ from: name, to: finalBackup.slice(target.length + 1) });
-    sawConflict = true;
-  }
-
-  return sawConflict ? 'backed-up' : 'none';
-}
 
 function wrapperFilenameFor(slot: Slot): string {
   switch (slot) {
@@ -137,6 +95,38 @@ function isWrapperFor(slot: Slot, src: string): boolean {
       // file as "owned by the consumer" and skip.
       return true;
   }
+}
+
+function handleConflicts(
+  target: string,
+  slot: Slot,
+  backups: { from: string; to: string }[],
+): 'our-wrapper' | 'backed-up' | 'none' {
+  const candidates = CONFLICTS[slot];
+  const wrapperName = wrapperFilenameFor(slot);
+  let sawConflict = false;
+
+  for (const name of candidates) {
+    const path = join(target, name);
+    if (!existsSync(path)) continue;
+
+    if (name === wrapperName) {
+      const src = readOrNull(path);
+      if (src !== null && isWrapperFor(slot, src)) {
+        return 'our-wrapper';
+      }
+    }
+
+    const backupPath = path + '.local.bak';
+    const finalBackup = existsSync(backupPath)
+      ? `${backupPath}.${Date.now()}`
+      : backupPath;
+    renameSync(path, finalBackup);
+    backups.push({ from: name, to: finalBackup.slice(target.length + 1) });
+    sawConflict = true;
+  }
+
+  return sawConflict ? 'backed-up' : 'none';
 }
 
 function detectInlineConfigs(target: string): string[] {
@@ -169,31 +159,28 @@ export async function init({ target }: InitOpts): Promise<number> {
 
 async function runInit({ target }: InitOpts): Promise<number> {
   mkdirSync(target, { recursive: true });
-  const rel = relImport(target, CONFIGS_DIR);
   const backups: { from: string; to: string }[] = [];
 
-  const eslintWrapper = `// Aspergillus wrapper. Spreads the vendored reference config; add
-// repo-specific overrides after the spread.
-import base from '${rel}/eslint.config.js';
+  const eslintWrapper = `// Aspergillus wrapper. Spreads the package reference; add repo-specific
+// overrides after the spread.
+import base from '${PACKAGE_SPECIFIERS.eslint}';
 
 export default [...base];
 `;
 
-  const prettierWrapper = `// Aspergillus wrapper. Spreads the vendored reference; add overrides below.
+  const prettierWrapper = `// Aspergillus wrapper. Spreads the package reference; add overrides below.
 module.exports = {
-  ...require('${rel}/prettier.config.cjs'),
+  ...require('${PACKAGE_SPECIFIERS.prettier}'),
 };
 `;
 
   const tsconfigWrapper =
-    JSON.stringify({ extends: `${rel}/tsconfig.base.json` }, null, 2) + '\n';
+    JSON.stringify({ extends: PACKAGE_SPECIFIERS.tsconfig }, null, 2) + '\n';
 
   writeSlot(target, 'eslint', eslintWrapper, backups);
   writeSlot(target, 'prettier', prettierWrapper, backups);
   writeSlot(target, 'tsconfig', tsconfigWrapper, backups);
 
-  // Pre-commit has no native extends mechanism; copy the scaffold verbatim,
-  // but only if the consumer doesn't already have their own.
   const preCommitResult = handleConflicts(target, 'preCommit', backups);
   if (preCommitResult === 'our-wrapper') {
     process.stdout.write(`skip (exists): .pre-commit-config.yaml\n`);
@@ -205,13 +192,13 @@ module.exports = {
     process.stdout.write(`wrote: .pre-commit-config.yaml\n`);
   }
 
-  printBackupSummary(backups, rel);
+  printBackupSummary(backups);
 
   const inline = detectInlineConfigs(target);
   if (inline.length > 0) printInlineWarning(inline);
 
   const pm = detectPackageManager(target);
-  process.stdout.write(`\nNext: install devDependencies (${pm} detected) —\n`);
+  process.stdout.write(`\nNext: install aspergillus and its peer devDependencies (${pm} detected) —\n`);
   process.stdout.write(`  ${devDepCommand(pm)}\n`);
   return 0;
 }
@@ -232,10 +219,7 @@ function writeSlot(
   process.stdout.write(`wrote: ${wrapperFilenameFor(slot)}\n`);
 }
 
-function printBackupSummary(
-  backups: { from: string; to: string }[],
-  rel: string,
-): void {
+function printBackupSummary(backups: { from: string; to: string }[]): void {
   if (backups.length === 0) return;
   process.stdout.write('\n─ Backed up existing configs ──────────────────────\n');
   process.stdout.write(
@@ -250,7 +234,7 @@ function printBackupSummary(
       'wrappers, below the spread. Example for prettier:\n\n' +
       '  // prettier.config.cjs\n' +
       '  module.exports = {\n' +
-      `    ...require('${rel}/prettier.config.cjs'),\n` +
+      `    ...require('${PACKAGE_SPECIFIERS.prettier}'),\n` +
       '    printWidth: 120,                  // ← your overrides\n' +
       '  };\n\n' +
       'Delete the .local.bak files once you have migrated the overrides.\n',

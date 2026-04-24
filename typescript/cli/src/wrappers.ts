@@ -1,12 +1,20 @@
 // Wrapper-detection: is a given file the aspergillus wrapper form, or
 // something else? Used by init (to decide back-up vs skip) and check
 // (to detect drift).
+//
+// Consumers reference aspergillus via package exports:
+//   eslint.config.js   → import from '@afdudley/aspergillus/eslint-config'
+//   prettier.config.cjs → require('@afdudley/aspergillus/prettier-config')
+//   tsconfig.json      → "extends": "@afdudley/aspergillus/tsconfig"
 
-const ESLINT_IMPORT_RE =
-  /from\s+['"][^'"]*aspergillus\/typescript\/configs\/eslint\.config\.js['"]/;
-const PRETTIER_REQUIRE_RE =
-  /require\(\s*['"][^'"]*aspergillus\/typescript\/configs\/prettier\.config\.cjs['"]\s*\)/;
-const TSCONFIG_EXTENDS_SUFFIX = 'aspergillus/typescript/configs/tsconfig.base.json';
+export const PACKAGE_SPECIFIERS = {
+  eslint: '@afdudley/aspergillus/eslint-config',
+  prettier: '@afdudley/aspergillus/prettier-config',
+  tsconfig: '@afdudley/aspergillus/tsconfig',
+} as const;
+
+const ESLINT_IMPORT_RE = /from\s+['"]@afdudley\/aspergillus\/eslint-config['"]/;
+const PRETTIER_REQUIRE_RE = /require\(\s*['"]@afdudley\/aspergillus\/prettier-config['"]\s*\)/;
 
 export function isEslintWrapper(src: string): boolean {
   return ESLINT_IMPORT_RE.test(src);
@@ -19,10 +27,7 @@ export function isPrettierWrapper(src: string): boolean {
 export function isTsconfigWrapper(src: string): boolean {
   try {
     const parsed = JSON.parse(src) as { extends?: unknown };
-    return (
-      typeof parsed.extends === 'string' &&
-      parsed.extends.endsWith(TSCONFIG_EXTENDS_SUFFIX)
-    );
+    return parsed.extends === PACKAGE_SPECIFIERS.tsconfig;
   } catch {
     return false;
   }

@@ -23,19 +23,17 @@ export async function check({ target }: CheckOpts): Promise<number> {
   const eslintSrc = readOrNull(join(target, 'eslint.config.js'));
   if (eslintSrc === null) fail('missing: eslint.config.js');
   else if (!isEslintWrapper(eslintSrc))
-    fail('drifted: eslint.config.js (no import of aspergillus eslint.config.js)');
+    fail('drifted: eslint.config.js (no import of @afdudley/aspergillus/eslint-config)');
 
   const prettierSrc = readOrNull(join(target, 'prettier.config.cjs'));
   if (prettierSrc === null) fail('missing: prettier.config.cjs');
   else if (!isPrettierWrapper(prettierSrc))
-    fail('drifted: prettier.config.cjs (no require of aspergillus prettier.config.cjs)');
+    fail('drifted: prettier.config.cjs (no require of @afdudley/aspergillus/prettier-config)');
 
   const tsconfigSrc = readOrNull(join(target, 'tsconfig.json'));
   if (tsconfigSrc === null) fail('missing: tsconfig.json');
   else if (!isTsconfigWrapper(tsconfigSrc))
-    fail(
-      'drifted: tsconfig.json (extends does not point at aspergillus tsconfig.base.json)',
-    );
+    fail('drifted: tsconfig.json (extends does not point at @afdudley/aspergillus/tsconfig)');
 
   // Scaffold-only; consumer owns the contents after init.
   if (!existsSync(join(target, '.pre-commit-config.yaml'))) {
