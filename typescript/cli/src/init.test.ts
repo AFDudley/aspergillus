@@ -61,4 +61,11 @@ describe('init', () => {
     expect(code).toBe(0);
     expect(existsSync(join(nested, 'eslint.config.js'))).toBe(true);
   });
+
+  test('returns 1 with a clean error message when target is a file', async () => {
+    const filePath = join(tmp, 'not-a-dir');
+    writeFileSync(filePath, '');
+    const code = await init({ target: filePath });
+    expect(code).toBe(1);
+  });
 });

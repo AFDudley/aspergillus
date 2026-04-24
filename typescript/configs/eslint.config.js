@@ -8,7 +8,9 @@
 // Level 2 and Level 3 rules are appended by follow-up work; this file
 // currently enforces only the Level 1 baseline (external-tool tier).
 //
-// Required peer devDependencies (install in the consumer repo):
+// Required peer devDependencies (install in the consumer repo). These are
+// the same list `aspergillus-ts init` prints after it runs:
+//   eslint prettier typescript
 //   @eslint/js typescript-eslint eslint-plugin-import
 //   eslint-plugin-unused-imports eslint-config-prettier
 //

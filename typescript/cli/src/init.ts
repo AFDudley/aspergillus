@@ -34,7 +34,27 @@ function writeIfMissing(path: string, content: string, label: string): void {
   process.stdout.write(`wrote: ${label}\n`);
 }
 
+// Human-readable error message for filesystem / config failures. Anything
+// else rethrows — only convert OS-level errors, not bugs.
+function describeError(err: unknown): string | null {
+  if (err instanceof Error && typeof (err as NodeJS.ErrnoException).code === 'string') {
+    return (err as NodeJS.ErrnoException).message;
+  }
+  return null;
+}
+
 export async function init({ target }: InitOpts): Promise<number> {
+  try {
+    return await runInit({ target });
+  } catch (err) {
+    const msg = describeError(err);
+    if (msg === null) throw err;
+    process.stderr.write(`aspergillus-ts init failed: ${msg}\n`);
+    return 1;
+  }
+}
+
+async function runInit({ target }: InitOpts): Promise<number> {
   mkdirSync(target, { recursive: true });
   const rel = relImport(target, CONFIGS_DIR);
 
