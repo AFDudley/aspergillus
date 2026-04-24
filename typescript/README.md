@@ -54,6 +54,20 @@ standard npm bin.
    npx tsc --noEmit
    ```
 
+   **Note on memory:** the baseline config enables type-aware rules
+   (`@typescript-eslint/no-floating-promises`), which load the full
+   TypeScript type graph. On any non-trivial project this exceeds
+   Node's default 2 GB heap and ESLint OOMs. Wrap the lint invocation:
+
+   ```jsonc
+   // package.json
+   "scripts": {
+     "lint": "NODE_OPTIONS=--max-old-space-size=4096 eslint ."
+   }
+   ```
+
+   4 GB is comfortable for most repos; large monorepos may want 8 GB.
+
 4. **Detect drift via `check` (optional, wire into CI):**
 
    ```bash
