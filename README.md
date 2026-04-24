@@ -15,14 +15,53 @@ A rule set derived from NASA's Power of 10, ported to:
   stub `aspergillus-ts` CLI. Composes stock plugins; no custom rules.
 - **Rust** — reference clippy/Cargo-lints configs. Placeholder tier.
 
-See [`docs/design.md`](docs/design.md) for the full rule table and
-per-language mappings.
+See [`docs/design.md`](docs/design.md) for the full per-language
+rule-mapping table.
+
+## The rules at a glance
+
+### Level 2 — structural (blocking)
+
+- **ASP201 — Functions stay under 60 lines.** Long functions hide bugs
+  and resist change; the 60-line ceiling forces decomposition into
+  units a reader can hold in their head at once.
+- **ASP202 — At least 2 assertions per function.** Assertions catch
+  contract violations at the point of failure, before bad state
+  propagates into downstream data corruption or silent wrong answers.
+- **ASP203 — No global mutable state.** Modules stay testable in
+  isolation — no more "this test passed until I changed an unrelated
+  module." Eliminates whole classes of non-deterministic bugs.
+- **ASP204 — No unbounded loops.** Every loop must have a provable
+  termination bound. You cannot accidentally ship an infinite loop
+  into production or a runaway retry loop into an outage.
+- **ASP205 — No impure functions in core code.** Business logic is
+  testable without mocks, stubs, or fixtures; I/O is concentrated at
+  the edges of the system where it belongs.
+- **ASP206 — Functional core, imperative shell.** Side effects live at
+  the boundary. The core is pure and deterministic — same input always
+  produces the same output, so it behaves identically in tests and
+  production.
+
+### Level 3 — error handling (blocking for strict adopters)
+
+- **ASP301 — Results, not exceptions.** Error paths appear in function
+  signatures via `Result<T, E>` / `neverthrow` / similar. No hidden
+  control-flow jumps; callers cannot forget to handle a failure.
+- **ASP302 — No `Optional` / `None` / `null` returns.** Force callers
+  to handle "not there" explicitly — no silent `NoneType has no
+  attribute …` crashes three layers down the call stack.
+
+### Level 4/5 — planned, not implemented
+
+Contracts and property-based tests (L4), formal verification via SMT
+solvers (L5). Applied selectively to safety-critical or financial
+logic.
 
 ## Repository layout
 
 | Path | Contents |
 |------|----------|
-| `docs/` | Design, implementation notes, this repo's spec/plan history |
+| `docs/` | Design, implementation notes, spec/plan history |
 | `python/` | Python package, tests, pre-commit config |
 | `typescript/` | Reference configs + stub CLI |
 | `rust/` | Reference clippy/Cargo lint configs (placeholder) |
@@ -32,9 +71,9 @@ per-language mappings.
 Consumers pull aspergillus as a git subtree and use the language
 subtree(s) they need:
 
-- Python — see `python/` (install via `uv tool install ./python`).
-- TypeScript — see `typescript/README.md`.
-- Rust — see `rust/README.md`.
+- **Python** — see `python/` (install via `uv tool install ./python`).
+- **TypeScript** — see [`typescript/README.md`](typescript/README.md).
+- **Rust** — see [`rust/README.md`](rust/README.md).
 
 ## Levels
 
@@ -45,4 +84,5 @@ subtree(s) they need:
   adopters.
 - **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
-See [`docs/design.md`](docs/design.md) for the authoritative rule table.
+See [`docs/design.md`](docs/design.md) for the authoritative
+per-language rule-mapping table.
