@@ -13,7 +13,9 @@
 //   console.assert(...)     — JS host
 //
 // Consumers extend the lists via `assertionNames` (bare callee name)
-// or `memberPatterns` (full `obj.method` form).
+// or `memberPatterns` (single-dot `object.method` form — multi-dot
+// paths like `chai.assert.ok` are not matched; list `chai.assert` in
+// `assertionNames` instead so its namespace methods all count).
 
 const DEFAULT_MIN = 2;
 const DEFAULT_MIN_FUNCTION_LENGTH = 10;
