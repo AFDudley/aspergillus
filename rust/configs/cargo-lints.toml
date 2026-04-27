@@ -1,0 +1,12 @@
+# Aspergillus reference lints.
+# Paste into consumer `Cargo.toml`.
+
+[lints.clippy]
+too_many_lines = "warn"       # ASP201 — flip to "deny" when zero violations
+unwrap_used = "deny"          # ASP301 — prefer Result<T, E>
+expect_used = "deny"          # ASP301
+panic = "deny"                # ASP301
+todo = "deny"
+# ASP203 (no global mutable state) — language enforces; no safe `static mut`
+# ASP204 (no unbounded loops) — manual; prefer iterators
+# ASP202 (assertion density) — manual; future dylint rule planned

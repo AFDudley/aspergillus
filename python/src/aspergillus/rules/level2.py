@@ -24,7 +24,7 @@ class FunctionTooLong(LintRule):
             "def short():\n" + "".join(f"    x{i} = {i}\n" for i in range(58)) + "    return x0\n"
         ),
         Valid("def one_liner(): pass"),
-        Valid("class Foo:\n" "    def method(self):\n" "        pass\n"),
+        Valid("class Foo:\n    def method(self):\n        pass\n"),
     ]
     INVALID = [
         Invalid(
@@ -70,9 +70,9 @@ class LowAssertionDensity(LintRule):
         ),
         Valid("def tiny(): return 1"),  # too short, exempt
         Valid(
-            "def test_something():\n" "    result = compute()\n" "    assert result == 42\n"
+            "def test_something():\n    result = compute()\n    assert result == 42\n"
         ),  # test function, exempt
-        Valid("def __init__(self, x: int):\n" "    self.x = x\n"),  # dunder, exempt
+        Valid("def __init__(self, x: int):\n    self.x = x\n"),  # dunder, exempt
     ]
     INVALID = [
         Invalid(
@@ -135,10 +135,10 @@ class GlobalMutableState(LintRule):
         Valid('ITEMS: frozenset[str] = frozenset({"a", "b"})'),
         Valid('PATTERN = re.compile(r"^foo$")'),
         Valid(
-            "class Foo:\n" "    data: list[int] = []\n"  # class-level, not module-level
+            "class Foo:\n    data: list[int] = []\n"  # class-level, not module-level
         ),
         Valid(
-            "def foo():\n" "    cache = {}\n"  # local, not global
+            "def foo():\n    cache = {}\n"  # local, not global
         ),
     ]
     INVALID = [
@@ -241,13 +241,13 @@ class UnboundedLoop(LintRule):
     MESSAGE = "ASP204: Unbounded loop — add a counter, break, or use `for`"
 
     VALID = [
-        Valid("for i in range(10):\n" "    print(i)\n"),
-        Valid("while True:\n" "    data = read()\n" "    if not data:\n" "        break\n"),
-        Valid("count = 0\n" "while count < 100:\n" "    count += 1\n"),
+        Valid("for i in range(10):\n    print(i)\n"),
+        Valid("while True:\n    data = read()\n    if not data:\n        break\n"),
+        Valid("count = 0\nwhile count < 100:\n    count += 1\n"),
     ]
     INVALID = [
-        Invalid("while True:\n" "    process()\n"),
-        Invalid("while condition:\n" "    process()\n"),
+        Invalid("while True:\n    process()\n"),
+        Invalid("while condition:\n    process()\n"),
     ]
 
     def visit_While(self, node: cst.While) -> None:
@@ -443,9 +443,7 @@ class MixedIOAndLogic(LintRule):
     METADATA_DEPENDENCIES = (cst.metadata.PositionProvider,)
 
     VALID = [
-        Valid(
-            "def orchestrator():\n" "    data = fetch()\n" "    save(data)\n" "    return data\n"
-        ),
+        Valid("def orchestrator():\n    data = fetch()\n    save(data)\n    return data\n"),
         Valid(
             "def pure_logic(items: list) -> int:\n"
             "    assert len(items) > 0\n"

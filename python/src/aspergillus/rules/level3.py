@@ -27,7 +27,7 @@ class RaiseInsteadOfResult(LintRule):
             "    assert isinstance(a, (int, float))\n"
             "    return a / b\n"
         ),
-        Valid("def fail_always() -> None:\n" "    raise NotImplementedError\n"),
+        Valid("def fail_always() -> None:\n    raise NotImplementedError\n"),
         Valid(
             "def __init__(self, x: int) -> None:\n"
             "    if x < 0:\n"
@@ -120,10 +120,8 @@ class OptionalReturnType(LintRule):
     MESSAGE = "ASP302: Function returns Optional/None — consider Result type or stronger return"
 
     VALID = [
-        Valid(
-            "def get_value() -> int:\n" "    assert True\n" "    assert True\n" "    return 42\n"
-        ),
-        Valid("def __init__(self) -> None:\n" "    self.x = 1\n"),
+        Valid("def get_value() -> int:\n    assert True\n    assert True\n    return 42\n"),
+        Valid("def __init__(self) -> None:\n    self.x = 1\n"),
     ]
     INVALID = [
         Invalid(

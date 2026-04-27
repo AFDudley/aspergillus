@@ -5,8 +5,17 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
-dist/
-build/
+# Python build/dist dirs only — root-level. The TS CLI also has
+# typescript/cli/lib/ but we specifically want that gitignored too;
+# see below.
+/dist/
+/build/
+
+typescript/cli/lib/
+typescript/cli/*.tsbuildinfo
+
+# npm
+node_modules/
 
 # Pebbles runtime state (config is tracked, db is not)
 .pebbles/pebbles.db

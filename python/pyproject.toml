@@ -45,5 +45,7 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
 
+# Resolved relative to the invocation directory. Run pytest from `python/`:
+#   cd python && uv run pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
