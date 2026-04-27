@@ -81,6 +81,19 @@ export default [
     },
   },
 
+  // Level 2 — lands at warn pending severity-flip. Each rule flips to
+  // `error` in a dedicated PR once the consumer has zero violations.
+  {
+    files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    rules: {
+      // ASP201 — function too long. NASA Power of 10 #4: ≤60 lines.
+      'max-lines-per-function': [
+        'warn',
+        { max: 60, skipBlankLines: true, skipComments: true, IIFEs: true },
+      ],
+    },
+  },
+
   // Keep Prettier last so it disables conflicting formatting rules.
   prettierConfig,
 ];
