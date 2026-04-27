@@ -25,10 +25,12 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepare": "tsc -p typescript/cli/tsconfig.json && node -e \"require('fs').chmodSync('typescript/cli/lib/index.js', 0o755)\""
+    "prepare": "tsc -p typescript/cli/tsconfig.json && node -e \"require('fs').chmodSync('typescript/cli/lib/index.js', 0o755)\"",
+    "test": "bun test typescript/rules"
   },
   "devDependencies": {
     "@types/node": ">=18",
+    "eslint": "^9.0.0",
     "typescript": ">=5.4"
   },
   "engines": {
