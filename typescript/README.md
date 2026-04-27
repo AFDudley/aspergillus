@@ -22,8 +22,8 @@ standard npm bin.
 
    ```bash
    npm install -D github:AFDudley/aspergillus#main @eslint/js typescript-eslint \
-     eslint-plugin-import eslint-plugin-unused-imports eslint-config-prettier \
-     eslint prettier typescript
+     eslint-plugin-import eslint-plugin-unused-imports eslint-plugin-functional \
+     eslint-config-prettier eslint prettier typescript
    ```
 
    (Use your project's package manager — `bun add -D …`, `pnpm add -D …`,
@@ -96,21 +96,32 @@ and Level 3 rules are appended to the same reference `eslint.config.js`
 over time; each new rule is subject to the warn→error flip in each
 consumer.
 
+### Currently at `warn`
+
+The following rules currently land at `warn` in this package's reference config. Consumers should adopt them, fix violations on their own schedule, and contribute severity-flip PRs back to aspergillus once the rule reaches zero violations across consumers.
+
+- `max-lines-per-function` (ASP201)
+- `aspergillus/asp202-min-assertions` (ASP202)
+- `no-restricted-syntax` (ASP203)
+- `functional/no-loop-statements` (ASP204)
+- `@typescript-eslint/no-explicit-any` (Level 1 promotion candidate)
+- `no-console` (Level 1 promotion candidate)
+
 ## Rule mapping (summary)
 
 See `../docs/design.md` for the authoritative ASP ID ↔ per-language tool
 mapping. For TypeScript the short form is:
 
-| ASP | Tooling |
-|-----|---------|
-| 201 | `max-lines-per-function` |
-| 202 | Manual (assertion density — code review) |
-| 203 | `functional/no-let`, `functional/immutable-data` |
-| 204 | `functional/no-loop-statements` |
-| 205 | `eslint-plugin-boundaries` (architecture enforcement) |
-| 206 | `eslint-plugin-boundaries` + project layering |
-| 301 | `functional/no-throw-statements`, `@okee-tech/neverthrow/must-consume-result` |
-| 302 | `strictNullChecks` in tsconfig + neverthrow-typed returns |
+| ASP | Tooling                                                            |
+|-----|--------------------------------------------------------------------|
+| 201 | `max-lines-per-function` — ESLint core                             |
+| 202 | `aspergillus/asp202-min-assertions` — custom rule, this package    |
+| 203 | `no-restricted-syntax` — bans module-level `let`/`var`/`export let`/`export var` |
+| 204 | `functional/no-loop-statements` — strict over-approximation; see design.md |
+| 205 | `eslint-plugin-boundaries` (architecture enforcement) — *not yet in config*  |
+| 206 | `eslint-plugin-boundaries` + project layering — *not yet in config*          |
+| 301 | `functional/no-throw-statements`, `@okee-tech/neverthrow/must-consume-result` — *not yet in config* |
+| 302 | `strictNullChecks` in tsconfig + neverthrow-typed returns — *not yet in config* |
 
 ## Distribution phases
 
