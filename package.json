@@ -1,6 +1,6 @@
 {
   "name": "@afdudley/aspergillus",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "NASA-grade code quality rules for TypeScript (ESLint/Prettier/tsconfig configs + aspergillus-ts CLI)",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,6 +10,7 @@
   },
   "exports": {
     "./eslint-config": "./typescript/configs/eslint.config.js",
+    "./eslint-rules": "./typescript/rules/index.js",
     "./tsconfig": "./typescript/configs/tsconfig.base.json",
     "./prettier-config": "./typescript/configs/prettier.config.cjs",
     "./pre-commit": "./typescript/configs/pre-commit-config.yaml"
@@ -21,6 +22,9 @@
     "typescript/configs/**",
     "typescript/cli/lib/**",
     "typescript/cli/package.json",
+    "typescript/rules/**",
+    "!typescript/rules/**/*.test.js",
+    "!typescript/rules/package.json",
     "README.md",
     "LICENSE"
   ],
