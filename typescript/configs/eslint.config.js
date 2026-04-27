@@ -91,6 +91,34 @@ export default [
         'warn',
         { max: 60, skipBlankLines: true, skipComments: true, IIFEs: true },
       ],
+
+      // ASP203 — no global mutable state. NASA Power of 10 #6 (narrowed):
+      // bans module-level mutable bindings and mutable exports. Local
+      // `let` inside functions is intentionally allowed — the rule's
+      // intent is global, not lexical, immutability.
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector: 'Program > VariableDeclaration[kind="let"]',
+          message:
+            'ASP203: module-level `let` is mutable global state. Use `const`, or move state inside a function.',
+        },
+        {
+          selector: 'Program > VariableDeclaration[kind="var"]',
+          message:
+            'ASP203: module-level `var` is mutable global state. Use `const`, or move state inside a function.',
+        },
+        {
+          selector: 'ExportNamedDeclaration > VariableDeclaration[kind="let"]',
+          message:
+            'ASP203: `export let` exposes mutable state across modules. Export a `const` or a getter.',
+        },
+        {
+          selector: 'ExportNamedDeclaration > VariableDeclaration[kind="var"]',
+          message:
+            'ASP203: `export var` exposes mutable state across modules. Export a `const` or a getter.',
+        },
+      ],
     },
   },
 
