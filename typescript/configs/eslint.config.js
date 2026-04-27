@@ -20,6 +20,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
+import functional from 'eslint-plugin-functional';
 import unusedImports from 'eslint-plugin-unused-imports';
 import prettierConfig from 'eslint-config-prettier';
 
@@ -85,6 +86,9 @@ export default [
   // `error` in a dedicated PR once the consumer has zero violations.
   {
     files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    plugins: {
+      functional,
+    },
     rules: {
       // ASP201 — function too long. NASA Power of 10 #4: ≤60 lines.
       'max-lines-per-function': [
@@ -119,6 +123,14 @@ export default [
             'ASP203: `export var` exposes mutable state across modules. Export a `const` or a getter.',
         },
       ],
+
+      // ASP204 — no unbounded loops. NASA Power of 10 #2 calls for a
+      // statically-determinable iteration bound. There is no off-the-
+      // shelf rule for that exact predicate, so we use the strict
+      // approximation `no-loop-statements` (bans all loops). Lands at
+      // warn so consumers can audit loops case-by-case; replace with a
+      // more precise rule when one exists. See docs/design.md ASP204.
+      'functional/no-loop-statements': 'warn',
     },
   },
 
