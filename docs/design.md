@@ -35,14 +35,22 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 ### Level 2 — Blocking
 
-| Rule   | Description                              | Python (Fixit)                   | TypeScript                              | Rust |
-|--------|------------------------------------------|----------------------------------|-----------------------------------------|------|
-| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`                | `max-lines-per-function`                | `clippy::too_many_lines` |
-| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity`            | Manual (code review)                    | Manual (planned dylint rule) |
-| ASP203 | No global mutable state                  | `GlobalMutableState`             | `functional/no-let`, `immutable-data`   | Language (no safe `static mut`) |
-| ASP204 | No unbounded loops                       | `UnboundedLoop`                  | `functional/no-loop-statements`         | Manual (prefer iterators) |
-| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`                 | `eslint-plugin-boundaries`              | Module structure (pure core) |
-| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`                | `eslint-plugin-boundaries`              | Module structure |
+| Rule   | Description                              | Python (Fixit)                   | TypeScript                                                | Rust |
+|--------|------------------------------------------|----------------------------------|-----------------------------------------------------------|------|
+| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`                | `max-lines-per-function`                                  | `clippy::too_many_lines` |
+| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity`            | `aspergillus/asp202-min-assertions` (custom)              | Manual (planned dylint rule) |
+| ASP203 | No global mutable state                  | `GlobalMutableState`             | `no-restricted-syntax` (module-level `let`/`var`/`export let`) | Language (no safe `static mut`) |
+| ASP204 | No unbounded loops                       | `UnboundedLoop`                  | `functional/no-loop-statements` (strict; revisit)         | Manual (prefer iterators) |
+| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`                 | `eslint-plugin-boundaries` *(planned)*                    | Module structure (pure core) |
+| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`                | `eslint-plugin-boundaries` *(planned)*                    | Module structure |
+
+#### TypeScript Level 2 — design notes
+
+- **ASP202 (assertion density):** Originally specified as "manual code review" because no off-the-shelf TS rule exists. Aspergillus 0.1.0-rc.2 ships its own `asp202-min-assertions` rule via the `./eslint-rules` plugin export. Default behavior: skip functions under 10 lines; require ≥2 assertion-like calls (`assert`, `invariant`, `console.assert`, `assert.X`); configurable via rule options.
+
+- **ASP203 (no global mutable state):** Implemented via `no-restricted-syntax` patterns banning module-level `let`/`var` and `export let`/`export var`. This is narrower than the original `functional/no-let` mapping — local `let` inside functions remains allowed, matching NASA's actual "global mutable state" intent rather than a blanket ban on `let`.
+
+- **ASP204 (no unbounded loops):** NASA's rule requires loops to have a statically-determinable iteration bound (no `while(true)`). There is no off-the-shelf ESLint rule for that predicate, so the current implementation uses `functional/no-loop-statements` — which bans **all** loops, including bounded `for(let i=0; i<N; i++)`. This is a strict over-approximation chosen because it lands at `warn` and surfaces something useful. **To revisit:** replace with a custom `aspergillus/asp204-bounded-loops` rule that detects only unbounded loop patterns (`while(true)`, `for(;;)`, `while(condition)` where condition isn't statically bounded). Tracked under the next aspergillus TS milestone.
 
 ### Level 3 — Warning
 
