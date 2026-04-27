@@ -1,18 +1,18 @@
-// Aspergillus reference ESLint flat config — Level 1 baseline.
+// Aspergillus reference ESLint flat config — Level 1 + Level 2.
 //
 // Consumers import and spread this from their repo's eslint.config.js:
 //
 //   import base from '../vendor/aspergillus/typescript/configs/eslint.config.js';
 //   export default [...base, /* repo-specific overrides */];
 //
-// Level 2 and Level 3 rules are appended by follow-up work; this file
-// currently enforces only the Level 1 baseline (external-tool tier).
+// Level 2 rules (ASP201–204) land at warn per the severity-flip workflow; Level 3 rules are still pending.
 //
 // Required peer devDependencies (install in the consumer repo). These are
 // the same list `aspergillus-ts init` prints after it runs:
 //   eslint prettier typescript
 //   @eslint/js typescript-eslint eslint-plugin-import
-//   eslint-plugin-unused-imports eslint-config-prettier
+//   eslint-plugin-unused-imports eslint-plugin-functional
+//   eslint-config-prettier
 //
 // Adoption workflow: every new rule lands at "warn", flips to "error"
 // in a dedicated PR once violations reach zero. See typescript/README.md.

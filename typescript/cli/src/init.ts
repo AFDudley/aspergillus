@@ -21,6 +21,7 @@ const DEV_DEPS = [
   '@afdudley/aspergillus',
   '@eslint/js',
   'typescript-eslint',
+  'eslint-plugin-functional',
   'eslint-plugin-import',
   'eslint-plugin-unused-imports',
   'eslint-config-prettier',

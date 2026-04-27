@@ -154,5 +154,21 @@ tester.run('asp202-min-assertions', rule, {
       options: [{ min: 3 }],
       errors: [{ messageId: 'tooFew', data: { count: '2', min: '3' } }],
     },
+
+    // Custom assertionNames REPLACES the default — `assert` no longer counts.
+    {
+      code: `function f(x) {
+        assert(x > 0);
+        assert(x < 100);
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        const d = 4;
+        const e = 5;
+        return x + a + b + c + d + e;
+      }`,
+      options: [{ assertionNames: ['check'] }],
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
   ],
 });
