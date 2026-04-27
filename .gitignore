@@ -14,9 +14,8 @@ __pycache__/
 typescript/cli/lib/
 typescript/cli/*.tsbuildinfo
 
-# npm (root package.json publishes the CLI via `files:`; dist builds on install)
+# npm
 node_modules/
-package-lock.json
 
 # Pebbles runtime state (config is tracked, db is not)
 .pebbles/pebbles.db
