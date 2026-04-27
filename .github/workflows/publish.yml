@@ -46,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.ver.outputs.changed == 'true'
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build CLI
         if: steps.ver.outputs.changed == 'true'
