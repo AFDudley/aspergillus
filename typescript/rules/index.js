@@ -4,6 +4,8 @@
 // equivalent. Add new rules to the `rules` map here and re-export the
 // rule object from a sibling file.
 
+import asp202MinAssertions from './asp202-min-assertions.js';
+
 export default {
   meta: {
     name: '@afdudley/aspergillus',
@@ -12,6 +14,6 @@ export default {
     version: '0.1.0-rc.2',
   },
   rules: {
-    // Populated in Task 3.
+    'asp202-min-assertions': asp202MinAssertions,
   },
 };
