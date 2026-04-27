@@ -23,6 +23,7 @@ import importPlugin from 'eslint-plugin-import';
 import functional from 'eslint-plugin-functional';
 import unusedImports from 'eslint-plugin-unused-imports';
 import prettierConfig from 'eslint-config-prettier';
+import aspergillus from '../rules/index.js';
 
 export default [
   {
@@ -87,6 +88,7 @@ export default [
   {
     files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     plugins: {
+      aspergillus,
       functional,
     },
     rules: {
@@ -131,6 +133,10 @@ export default [
       // warn so consumers can audit loops case-by-case; replace with a
       // more precise rule when one exists. See docs/design.md ASP204.
       'functional/no-loop-statements': 'warn',
+
+      // ASP202 — assertion density. Custom rule shipped by aspergillus;
+      // see typescript/rules/asp202-min-assertions.js.
+      'aspergillus/asp202-min-assertions': 'warn',
     },
   },
 
