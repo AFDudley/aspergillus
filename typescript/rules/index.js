@@ -11,7 +11,7 @@ export default {
     name: '@afdudley/aspergillus',
     // Bumped manually alongside the package version. Used by ESLint flat
     // config in error reporting and cache keys.
-    version: '0.1.0-rc.2',
+    version: '0.1.0-rc.3',
   },
   rules: {
     'asp202-min-assertions': asp202MinAssertions,

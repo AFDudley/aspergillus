@@ -102,8 +102,15 @@ export default [
       // bans module-level mutable bindings and mutable exports. Local
       // `let` inside functions is intentionally allowed — the rule's
       // intent is global, not lexical, immutability.
+      //
+      // Lands at `error`: the rule's scope is narrow and the fix is
+      // mechanical (wrap state in a const-bound object), so the
+      // standard severity-flip warm-up phase isn't needed. To temporarily
+      // demote during a cleanup branch, restate the full rule array
+      // with `'warn'` — flat-config replaces the whole array, so
+      // severity-only overrides clear the selectors and disable the rule.
       'no-restricted-syntax': [
-        'warn',
+        'error',
         {
           selector: 'Program > VariableDeclaration[kind="let"]',
           message:
