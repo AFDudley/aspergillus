@@ -38,19 +38,43 @@ export function parseArgs(argv: readonly string[]): Args {
   let layout: LayoutName | undefined;
   let help = false;
   let command: string | undefined;
-  for (let i = 0; i < rest.length; i++) {
-    const a = rest[i];
-    if (a === '-h' || a === '--help') help = true;
-    else if (a === '--target') target = rest[++i] ?? target;
-    else if (a === '--layout') {
-      const v = rest[++i];
-      if (v !== undefined && isValidLayout(v)) layout = v;
-      else if (v !== undefined) {
+  // Accept both `--flag value` and `--flag=value` forms for any flag that
+  // takes a value. Returns [value, advance] — `advance` is true when the
+  // value was the next arg and the loop index must be advanced past it.
+  function flagValue(arg: string, name: string): [string, boolean] | undefined {
+    if (arg === name) {
+      const next = rest[i + 1];
+      return next !== undefined ? [next, true] : undefined;
+    }
+    if (arg.startsWith(`${name}=`)) return [arg.slice(name.length + 1), false];
+    return undefined;
+  }
+
+  let i = 0;
+  for (; i < rest.length; i++) {
+    const a = rest[i] ?? '';
+    if (a === '-h' || a === '--help') {
+      help = true;
+      continue;
+    }
+    const targetMatch = flagValue(a, '--target');
+    if (targetMatch !== undefined) {
+      target = targetMatch[0];
+      if (targetMatch[1]) i++;
+      continue;
+    }
+    const layoutMatch = flagValue(a, '--layout');
+    if (layoutMatch !== undefined) {
+      const v = layoutMatch[0];
+      if (isValidLayout(v)) layout = v;
+      else
         process.stderr.write(
           `unknown layout: ${v} (valid: ${ALL_LAYOUT_CHOICES.join(', ')})\n`,
         );
-      }
-    } else if (!command) command = a;
+      if (layoutMatch[1]) i++;
+      continue;
+    }
+    if (!command) command = a;
   }
   return { command, target, layout, help };
 }
