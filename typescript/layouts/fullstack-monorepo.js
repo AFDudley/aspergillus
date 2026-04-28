@@ -26,16 +26,22 @@ export default {
   files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
   plugins: { boundaries },
   settings: {
+    // Order matters for overlapping patterns: eslint-plugin-boundaries v6
+    // (@boundaries/elements v2) uses full-path matching when mode:'full' is
+    // set, and resolves ties by first-match-wins within the elements array.
+    // client-shared and shared both match **/shared/** paths, so client-shared
+    // must appear BEFORE shared, and both use mode:'full' to force full-path
+    // evaluation rather than incremental path-segment accumulation.
     'boundaries/elements': [
-      { type: 'shared', pattern: '**/shared/**' },
       { type: 'server-core', pattern: '**/server/core/**' },
       { type: 'server-db', pattern: '**/server/db/**' },
       { type: 'server-services', pattern: '**/server/services/**' },
       { type: 'server-routes', pattern: '**/server/routes/**' },
-      { type: 'client-shared', pattern: '**/client/shared/**' },
+      { type: 'client-shared', pattern: '**/client/shared/**', mode: 'full' },
       { type: 'client-services', pattern: '**/client/services/**' },
       { type: 'client-components', pattern: '**/client/components/**' },
       { type: 'client-pages', pattern: '**/client/pages/**' },
+      { type: 'shared', pattern: '**/shared/**', mode: 'full' },
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],

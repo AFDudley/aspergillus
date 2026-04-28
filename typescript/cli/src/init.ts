@@ -172,12 +172,10 @@ async function runInit(opts: InitOpts): Promise<number> {
   mkdirSync(target, { recursive: true });
   const backups: { from: string; to: string }[] = [];
 
-  const layoutSpec = `@afdudley/aspergillus/layouts/${layout}`;
-
   const layoutImport =
     layout === 'none'
       ? ''
-      : `import layout from '${layoutSpec}';\n`;
+      : `import layout from '@afdudley/aspergillus/layouts/${layout}';\n`;
 
   const layoutSpread = layout === 'none' ? '' : '  layout,\n';
 
@@ -194,13 +192,20 @@ async function runInit(opts: InitOpts): Promise<number> {
 //   '@afdudley/aspergillus/layouts/fullstack-monorepo'
 //   '@afdudley/aspergillus/layouts/generic-3-layer'
 //
-// To customize WITHOUT switching layouts, append your overrides AFTER
-// 'layout' above. Settings merge deeply; the last block wins for any
-// 'boundaries/elements' or rule options you redefine. Example:
+// To customize WITHOUT switching layouts, append a flat-config block
+// AFTER 'layout' above. ESLint flat config REPLACES settings/rule values
+// from later blocks (it does NOT merge arrays), so any 'boundaries/elements'
+// or rule options you redefine fully overwrite the layout's. To ADD a
+// new element while keeping the layout's, spread the layout's elements:
+//   import layout from '@afdudley/aspergillus/layouts/${layout}';
+//   ...
 //   {
-//     settings: { 'boundaries/elements': [
-//       { type: 'core', pattern: 'src/lib/**' },
-//     ] },
+//     settings: {
+//       'boundaries/elements': [
+//         ...layout.settings['boundaries/elements'],
+//         { type: 'rpc', pattern: '**/rpc/**' },
+//       ],
+//     },
 //   },
 `;
 

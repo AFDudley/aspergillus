@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { init } from './init.js';
+import { LAYOUT_NAMES } from './layouts.js';
 
 const PKG_ESLINT = '@afdudley/aspergillus/eslint-config';
 const PKG_PRETTIER = '@afdudley/aspergillus/prettier-config';
@@ -154,14 +155,6 @@ describe('init --layout', () => {
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
   });
-
-  const LAYOUT_NAMES = [
-    'node-service',
-    'rn-app',
-    'react-spa',
-    'fullstack-monorepo',
-    'generic-3-layer',
-  ] as const;
 
   for (const name of LAYOUT_NAMES) {
     test(`writes layout import for --layout=${name}`, async () => {

@@ -16,11 +16,13 @@ export default {
   files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
   plugins: { boundaries },
   settings: {
+    // Order matters: eslint-plugin-boundaries uses first-match-wins. The
+    // catch-all shared/ must appear LAST so it does not shadow other patterns.
     'boundaries/elements': [
-      { type: 'shared', pattern: '**/shared/**' },
       { type: 'services', pattern: '**/services/**' },
       { type: 'components', pattern: '**/components/**' },
       { type: 'pages', pattern: '**/pages/**' },
+      { type: 'shared', pattern: '**/shared/**' },
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],

@@ -109,13 +109,21 @@ export default [
 
 ### Switching layouts
 
-Change the layout import line. Re-running `aspergillus-ts init --layout=<name>`
-also works (existing `eslint.config.js` is backed up to `.local.bak`).
+Change the layout import line in `eslint.config.js`. Re-running
+`aspergillus-ts init --layout=<name>` does NOT replace an existing
+aspergillus wrapper (it detects it as already-installed and skips), so
+edit the file manually:
+
+```diff
+- import layout from '@afdudley/aspergillus/layouts/node-service';
++ import layout from '@afdudley/aspergillus/layouts/rn-app';
+```
 
 ### Overriding without switching
 
-ESLint flat config evaluates blocks in order; later blocks override earlier.
-Append a flat-config block after the layout import:
+Because ESLint flat config replaces settings values rather than merging them,
+override blocks must spread the layout's existing elements/rules explicitly
+to add to them.
 
 ```js
 import base from '@afdudley/aspergillus/eslint-config';
@@ -124,10 +132,13 @@ import layout from '@afdudley/aspergillus/layouts/node-service';
 export default [
   ...base,
   layout,
-  // Override: add a custom element type.
+  // Override: ADD a custom element type without losing the layout's elements.
+  // (ESLint flat config REPLACES settings values from later blocks rather than
+  // merging, so we must spread the layout's existing elements explicitly.)
   {
     settings: {
       'boundaries/elements': [
+        ...layout.settings['boundaries/elements'],
         { type: 'rpc', pattern: '**/rpc/**' },
       ],
     },
@@ -137,6 +148,7 @@ export default [
         {
           default: 'disallow',
           rules: [
+            ...layout.rules['boundaries/dependencies'][1].rules,
             { from: { type: 'rpc' }, allow: { to: { type: ['rpc', 'core'] } } },
           ],
         },
