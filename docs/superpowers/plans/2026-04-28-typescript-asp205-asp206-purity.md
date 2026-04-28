@@ -592,7 +592,7 @@ const LAYOUT_DESCRIPTIONS: Record<LayoutName, string> = {
   'node-service': 'Express/Fastify backend with DB (core/db/services/routes)',
   'rn-app': 'React Native app (core/services/hooks/components/screens)',
   'react-spa': 'React/Vite SPA (shared/services/components/pages)',
-  'fullstack-monorepo': 'Server + client + shared (TrashScan-Explorer-shaped)',
+  'fullstack-monorepo': 'Top-level server/, client/, shared/ dirs (no src/ nesting)',
   'generic-3-layer': 'Minimal FC/IS fallback (core/infra/app)',
   none: 'Skip — declare elements yourself in eslint.config.js',
 };
