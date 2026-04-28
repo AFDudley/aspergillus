@@ -10,7 +10,7 @@ import {
   isPrettierWrapper,
   isTsconfigWrapper,
 } from './wrappers.js';
-import type { LayoutName } from './layouts.js';
+import { promptForLayout, type LayoutName } from './layouts.js';
 
 // Reference pre-commit scaffold lives next to the configs. Works at both
 // bun-test time (src/) and post-build (dist/).
@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const CONFIGS_DIR = resolve(here, '..', '..', 'configs');
 
 // Peer devDependencies consumers install alongside aspergillus itself.
-const DEV_DEPS = [
+const BASE_DEV_DEPS = [
   '@afdudley/aspergillus',
   '@eslint/js',
   'typescript-eslint',
@@ -31,6 +31,8 @@ const DEV_DEPS = [
   'typescript',
 ] as const;
 
+const LAYOUT_DEV_DEPS = ['eslint-plugin-boundaries'] as const;
+
 type InitOpts = { target: string; layout?: LayoutName };
 
 function detectPackageManager(target: string): 'bun' | 'pnpm' | 'yarn' | 'npm' {
@@ -40,8 +42,12 @@ function detectPackageManager(target: string): 'bun' | 'pnpm' | 'yarn' | 'npm' {
   return 'npm'; // default; covers package-lock.json and no-lockfile cases
 }
 
-function devDepCommand(pm: 'bun' | 'pnpm' | 'yarn' | 'npm'): string {
-  const deps = DEV_DEPS.join(' ');
+function depsForLayout(layout: LayoutName): readonly string[] {
+  return layout === 'none' ? BASE_DEV_DEPS : [...BASE_DEV_DEPS, ...LAYOUT_DEV_DEPS];
+}
+
+function devDepCommand(pm: 'bun' | 'pnpm' | 'yarn' | 'npm', layout: LayoutName): string {
+  const deps = depsForLayout(layout).join(' ');
   switch (pm) {
     case 'bun':
       return `bun add -D ${deps}`;
@@ -148,9 +154,9 @@ function detectInlineConfigs(target: string): string[] {
   }
 }
 
-export async function init({ target }: InitOpts): Promise<number> {
+export async function init(opts: InitOpts): Promise<number> {
   try {
-    return await runInit({ target });
+    return await runInit(opts);
   } catch (err) {
     const msg = describeError(err);
     if (msg === null) throw err;
@@ -159,16 +165,54 @@ export async function init({ target }: InitOpts): Promise<number> {
   }
 }
 
-async function runInit({ target }: InitOpts): Promise<number> {
+async function runInit(opts: InitOpts): Promise<number> {
+  const { target } = opts;
+  const layout: LayoutName = opts.layout ?? (await promptForLayout());
+
   mkdirSync(target, { recursive: true });
   const backups: { from: string; to: string }[] = [];
+
+  const layoutSpec = `@afdudley/aspergillus/layouts/${layout}`;
+
+  const layoutImport =
+    layout === 'none'
+      ? ''
+      : `import layout from '${layoutSpec}';\n`;
+
+  const layoutSpread = layout === 'none' ? '' : '  layout,\n';
+
+  const layoutComments =
+    layout === 'none'
+      ? `// To enable ASP205/206 layered-import enforcement, declare
+// settings['boundaries/elements'] in this config (or re-run
+// 'aspergillus-ts init --layout=<name>' to import a preset).
+`
+      : `// To switch layouts: change the import above to one of:
+//   '@afdudley/aspergillus/layouts/node-service'
+//   '@afdudley/aspergillus/layouts/rn-app'
+//   '@afdudley/aspergillus/layouts/react-spa'
+//   '@afdudley/aspergillus/layouts/fullstack-monorepo'
+//   '@afdudley/aspergillus/layouts/generic-3-layer'
+//
+// To customize WITHOUT switching layouts, append your overrides AFTER
+// 'layout' above. Settings merge deeply; the last block wins for any
+// 'boundaries/elements' or rule options you redefine. Example:
+//   {
+//     settings: { 'boundaries/elements': [
+//       { type: 'core', pattern: 'src/lib/**' },
+//     ] },
+//   },
+`;
 
   const eslintWrapper = `// Aspergillus wrapper. Spreads the package reference; add repo-specific
 // overrides after the spread.
 import base from '${PACKAGE_SPECIFIERS.eslint}';
+${layoutImport}
+export default [
+  ...base,
+${layoutSpread}];
 
-export default [...base];
-`;
+${layoutComments}`;
 
   const prettierWrapper = `// Aspergillus wrapper. Spreads the package reference; add overrides below.
 module.exports = {
@@ -196,12 +240,18 @@ module.exports = {
 
   printBackupSummary(backups);
 
+  if (layout !== 'none') {
+    process.stdout.write(`\nASP205/206 layout: ${layout}\n`);
+  } else {
+    process.stdout.write(`\nASP205/206 layout: none (skipped — see eslint.config.js comments)\n`);
+  }
+
   const inline = detectInlineConfigs(target);
   if (inline.length > 0) printInlineWarning(inline);
 
   const pm = detectPackageManager(target);
   process.stdout.write(`\nNext: install aspergillus and its peer devDependencies (${pm} detected) —\n`);
-  process.stdout.write(`  ${devDepCommand(pm)}\n`);
+  process.stdout.write(`  ${devDepCommand(pm, layout)}\n`);
   return 0;
 }
 
