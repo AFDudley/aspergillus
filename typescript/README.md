@@ -18,16 +18,11 @@ standard npm bin.
 
 ## Adoption
 
-1. **Install aspergillus and peer devDependencies:**
+1. **Install aspergillus and peer devDependencies.**
 
-   ```bash
-   npm install -D github:AFDudley/aspergillus#main @eslint/js typescript-eslint \
-     eslint-plugin-import eslint-plugin-unused-imports eslint-plugin-functional \
-     eslint-config-prettier eslint prettier typescript
-   ```
-
-   (Use your project's package manager — `bun add -D …`, `pnpm add -D …`,
-   `yarn add -D …` all work.)
+   `aspergillus-ts init` (next step) prints the exact `npm install -D …`
+   command for your detected package manager and chosen layout. You don't
+   need to memorize the list.
 
 2. **Run `init` to write consumer wrappers at the repo root:**
 
@@ -83,6 +78,79 @@ standard npm bin.
    npx aspergillus-ts check
    ```
 
+## Layouts (ASP205/206)
+
+ASP205 (no impure functions outside I/O boundary) and ASP206 (functional
+core / imperative shell) are enforced via `eslint-plugin-boundaries`.
+Aspergillus ships several preset layouts covering common project shapes.
+You pick one at `aspergillus-ts init` time:
+
+| Layout | Project shape | Key elements |
+|---|---|---|
+| `node-service` | Express/Fastify + DB | `core/`, `db/`, `services/`, `routes/` |
+| `rn-app` | React Native | `core/`, `services/`, `hooks/`, `components/`, `screens/` |
+| `react-spa` | React/Vite SPA | `shared/`, `services/`, `components/`, `pages/` |
+| `fullstack-monorepo` | Server + client + shared | `server/{core,db,services,routes}/`, `client/{shared,services,components,pages}/`, `shared/` |
+| `generic-3-layer` | Fallback / minimal | `core/`, `infra/`, `app/` |
+| `none` | Skip — declare elements yourself | — |
+
+`aspergillus-ts init --layout=<name>` writes the layout as an import in
+your `eslint.config.js`:
+
+```js
+import base from '@afdudley/aspergillus/eslint-config';
+import layout from '@afdudley/aspergillus/layouts/node-service';
+
+export default [
+  ...base,
+  layout,
+];
+```
+
+### Switching layouts
+
+Change the layout import line. Re-running `aspergillus-ts init --layout=<name>`
+also works (existing `eslint.config.js` is backed up to `.local.bak`).
+
+### Overriding without switching
+
+ESLint flat config evaluates blocks in order; later blocks override earlier.
+Append a flat-config block after the layout import:
+
+```js
+import base from '@afdudley/aspergillus/eslint-config';
+import layout from '@afdudley/aspergillus/layouts/node-service';
+
+export default [
+  ...base,
+  layout,
+  // Override: add a custom element type.
+  {
+    settings: {
+      'boundaries/elements': [
+        { type: 'rpc', pattern: '**/rpc/**' },
+      ],
+    },
+    rules: {
+      'boundaries/element-types': [
+        'warn',
+        {
+          default: 'disallow',
+          rules: [{ from: ['rpc'], allow: ['rpc', 'core'] }],
+        },
+      ],
+    },
+  },
+];
+```
+
+### Peer dep
+
+`eslint-plugin-boundaries` is required only when a layout is used. `init`
+prints the install command including it; for `--layout=none`, the command
+omits it. It's declared as an *optional* peer dep in aspergillus's
+`package.json` so npm doesn't warn consumers using `--layout=none`.
+
 ## Severity-flip workflow
 
 Every new aspergillus rule lands at `warn`. It stays `warn` until the
@@ -118,8 +186,8 @@ mapping. For TypeScript the short form is:
 | 202 | `aspergillus/asp202-min-assertions` — custom rule, this package    |
 | 203 | `no-restricted-syntax` — bans module-level `let`/`var`/`export let`/`export var` |
 | 204 | `functional/no-loop-statements` — strict over-approximation; see design.md |
-| 205 | `eslint-plugin-boundaries` (architecture enforcement) — *not yet in config*  |
-| 206 | `eslint-plugin-boundaries` + project layering — *not yet in config*          |
+| 205 | `eslint-plugin-boundaries` (via layouts; see Layouts section above) |
+| 206 | `eslint-plugin-boundaries` (via layouts) |
 | 301 | `functional/no-throw-statements`, `@okee-tech/neverthrow/must-consume-result` — *not yet in config* |
 | 302 | `strictNullChecks` in tsconfig + neverthrow-typed returns — *not yet in config* |
 
