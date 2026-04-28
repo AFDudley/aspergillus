@@ -18,16 +18,11 @@ standard npm bin.
 
 ## Adoption
 
-1. **Install aspergillus and peer devDependencies:**
+1. **Install aspergillus and peer devDependencies.**
 
-   ```bash
-   npm install -D github:AFDudley/aspergillus#main @eslint/js typescript-eslint \
-     eslint-plugin-import eslint-plugin-unused-imports eslint-config-prettier \
-     eslint prettier typescript
-   ```
-
-   (Use your project's package manager — `bun add -D …`, `pnpm add -D …`,
-   `yarn add -D …` all work.)
+   `aspergillus-ts init` (next step) prints the exact `npm install -D …`
+   command for your detected package manager and chosen layout. You don't
+   need to memorize the list.
 
 2. **Run `init` to write consumer wrappers at the repo root:**
 
@@ -83,6 +78,106 @@ standard npm bin.
    npx aspergillus-ts check
    ```
 
+## Layouts (ASP205/206)
+
+ASP205 (no impure functions outside I/O boundary) and ASP206 (functional
+core / imperative shell) are enforced via `eslint-plugin-boundaries`.
+Aspergillus ships several preset layouts covering common project shapes.
+You pick one at `aspergillus-ts init` time:
+
+| Layout | Project shape | Key elements |
+|---|---|---|
+| `node-service` | Express/Fastify + DB | `core/`, `db/`, `services/`, `routes/` |
+| `rn-app` | React Native | `core/`, `services/`, `hooks/`, `components/`, `screens/` |
+| `react-spa` | React/Vite SPA | `shared/`, `services/`, `components/`, `pages/` |
+| `fullstack-monorepo` | Server + client + shared | `server/{core,db,services,routes}/`, `client/{shared,services,components,pages}/`, `shared/` |
+| `generic-3-layer` | Fallback / minimal | `core/`, `infra/`, `app/` |
+| `none` | Skip — declare elements yourself | — |
+
+`aspergillus-ts init --layout=<name>` writes the layout as an import in
+your `eslint.config.js`:
+
+```js
+import base from '@afdudley/aspergillus/eslint-config';
+import layout from '@afdudley/aspergillus/layouts/node-service';
+
+export default [
+  ...base,
+  layout,
+];
+```
+
+### Switching layouts
+
+Change the layout import line in `eslint.config.js`. Re-running
+`aspergillus-ts init --layout=<name>` does NOT replace an existing
+aspergillus wrapper (it detects it as already-installed and skips), so
+edit the file manually:
+
+```diff
+- import layout from '@afdudley/aspergillus/layouts/node-service';
++ import layout from '@afdudley/aspergillus/layouts/rn-app';
+```
+
+### Overriding without switching
+
+Because ESLint flat config replaces settings values rather than merging them,
+override blocks must spread the layout's existing elements/rules explicitly
+to add to them.
+
+```js
+import base from '@afdudley/aspergillus/eslint-config';
+import layout from '@afdudley/aspergillus/layouts/node-service';
+
+export default [
+  ...base,
+  layout,
+  // Override: ADD a custom element type without losing the layout's elements.
+  // (ESLint flat config REPLACES settings values from later blocks rather than
+  // merging, so we must spread the layout's existing elements explicitly.)
+  {
+    settings: {
+      'boundaries/elements': [
+        ...layout.settings['boundaries/elements'],
+        { type: 'rpc', pattern: '**/rpc/**' },
+      ],
+    },
+    rules: {
+      'boundaries/dependencies': [
+        'warn',
+        {
+          default: 'disallow',
+          rules: [
+            ...layout.rules['boundaries/dependencies'][1].rules,
+            { from: { type: 'rpc' }, allow: { to: { type: ['rpc', 'core'] } } },
+          ],
+        },
+      ],
+    },
+  },
+];
+```
+
+### Peer dep
+
+When a layout is chosen, `init` prints an install command that includes both
+`eslint-plugin-boundaries` (the enforcement engine) and
+`eslint-import-resolver-typescript` (maps `.js`-extension imports — the
+TypeScript `moduleResolution: bundler` / `node16` convention — back to the
+actual `.ts` source file so the boundaries rule resolves them correctly).
+For `--layout=none` both packages are omitted from the command.
+
+Both are declared as *optional* peer deps in aspergillus's `package.json` so
+npm does not warn consumers using `--layout=none`.
+
+### Known issues
+
+- **ESLint 10 + `eslint-plugin-import` v2 incompatibility.** ESLint 10 removed
+  an internal API that `eslint-plugin-import` v2 uses. Until v3 of that plugin
+  lands (or v2 patches the issue), pin ESLint to `^9` in your consumer
+  `package.json`. The install command printed by `aspergillus-ts init` does not
+  pin the ESLint version explicitly — verify your lockfile resolves to ESLint 9.
+
 ## Severity-flip workflow
 
 Every new aspergillus rule lands at `warn`. It stays `warn` until the
@@ -96,21 +191,32 @@ and Level 3 rules are appended to the same reference `eslint.config.js`
 over time; each new rule is subject to the warn→error flip in each
 consumer.
 
+### Currently at `warn`
+
+The following rules currently land at `warn` in this package's reference config. Consumers should adopt them, fix violations on their own schedule, and contribute severity-flip PRs back to aspergillus once the rule reaches zero violations across consumers.
+
+- `max-lines-per-function` (ASP201)
+- `aspergillus/asp202-min-assertions` (ASP202)
+- `no-restricted-syntax` (ASP203)
+- `functional/no-loop-statements` (ASP204)
+- `@typescript-eslint/no-explicit-any` (Level 1 promotion candidate)
+- `no-console` (Level 1 promotion candidate)
+
 ## Rule mapping (summary)
 
 See `../docs/design.md` for the authoritative ASP ID ↔ per-language tool
 mapping. For TypeScript the short form is:
 
-| ASP | Tooling |
-|-----|---------|
-| 201 | `max-lines-per-function` |
-| 202 | Manual (assertion density — code review) |
-| 203 | `functional/no-let`, `functional/immutable-data` |
-| 204 | `functional/no-loop-statements` |
-| 205 | `eslint-plugin-boundaries` (architecture enforcement) |
-| 206 | `eslint-plugin-boundaries` + project layering |
-| 301 | `functional/no-throw-statements`, `@okee-tech/neverthrow/must-consume-result` |
-| 302 | `strictNullChecks` in tsconfig + neverthrow-typed returns |
+| ASP | Tooling                                                            |
+|-----|--------------------------------------------------------------------|
+| 201 | `max-lines-per-function` — ESLint core                             |
+| 202 | `aspergillus/asp202-min-assertions` — custom rule, this package    |
+| 203 | `no-restricted-syntax` — bans module-level `let`/`var`/`export let`/`export var` |
+| 204 | `functional/no-loop-statements` — strict over-approximation; see design.md |
+| 205 | `eslint-plugin-boundaries` (via layouts; see Layouts section above) |
+| 206 | `eslint-plugin-boundaries` (via layouts) |
+| 301 | `functional/no-throw-statements`, `@okee-tech/neverthrow/must-consume-result` — *not yet in config* |
+| 302 | `strictNullChecks` in tsconfig + neverthrow-typed returns — *not yet in config* |
 
 ## Distribution phases
 

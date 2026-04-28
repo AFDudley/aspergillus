@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { init } from './init.js';
+import { LAYOUT_NAMES } from './layouts.js';
 
 const PKG_ESLINT = '@afdudley/aspergillus/eslint-config';
 const PKG_PRETTIER = '@afdudley/aspergillus/prettier-config';
@@ -33,7 +34,9 @@ describe('init', () => {
     await init({ target: tmp });
     const content = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
     expect(content).toContain(PKG_ESLINT);
-    expect(content).toContain('export default [...base]');
+    expect(content).toContain('...base,');
+    // Default (no --layout flag, non-TTY) is `none` — no layout import.
+    expect(content).not.toContain('@afdudley/aspergillus/layouts/');
   });
 
   test('prettier wrapper requires the aspergillus package export', async () => {
@@ -139,5 +142,45 @@ describe('init', () => {
     writeFileSync(filePath, '');
     const code = await init({ target: filePath });
     expect(code).toBe(1);
+  });
+});
+
+describe('init --layout', () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'asp-init-layout-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  for (const name of LAYOUT_NAMES) {
+    test(`writes layout import for --layout=${name}`, async () => {
+      await init({ target: tmp, layout: name });
+      const cfg = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
+      expect(cfg).toContain(`@afdudley/aspergillus/layouts/${name}`);
+      expect(cfg).toContain('layout,');
+    });
+  }
+
+  test('writes no layout import for --layout=none', async () => {
+    await init({ target: tmp, layout: 'none' });
+    const cfg = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
+    expect(cfg).not.toContain('@afdudley/aspergillus/layouts/');
+    expect(cfg).not.toMatch(/^\s*layout,/m);
+    expect(cfg).toContain('To enable ASP205/206');
+  });
+
+  test('non-none layout includes the override-instructions comment block', async () => {
+    await init({ target: tmp, layout: 'node-service' });
+    const cfg = readFileSync(join(tmp, 'eslint.config.js'), 'utf8');
+    expect(cfg).toContain('To switch layouts');
+    expect(cfg).toContain('To customize WITHOUT switching layouts');
+    // All 5 layout specifiers should appear in the override comment.
+    for (const name of LAYOUT_NAMES) {
+      expect(cfg).toContain(`'@afdudley/aspergillus/layouts/${name}'`);
+    }
   });
 });
