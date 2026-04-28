@@ -41,16 +41,18 @@ Reference configs live in `python/src/aspergillus/configs/`,
 | ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity`            | `aspergillus/asp202-min-assertions` (custom)              | Manual (planned dylint rule) |
 | ASP203 | No global mutable state                  | `GlobalMutableState`             | `no-restricted-syntax` (module-level `let`/`var`/`export let`) | Language (no safe `static mut`) |
 | ASP204 | No unbounded loops                       | `UnboundedLoop`                  | `functional/no-loop-statements` (strict; revisit)         | Manual (prefer iterators) |
-| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`                 | `eslint-plugin-boundaries` *(planned)*                    | Module structure (pure core) |
-| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`                | `eslint-plugin-boundaries` *(planned)*                    | Module structure |
+| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`                 | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core) |
+| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`                | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure |
 
 #### TypeScript Level 2 — design notes
 
-- **ASP202 (assertion density):** Originally specified as "manual code review" because no off-the-shelf TS rule exists. Aspergillus 0.1.0-rc.2 ships its own `asp202-min-assertions` rule via the `./eslint-rules` plugin export. Default behavior: skip functions under 10 lines; require ≥2 assertion-like calls (`assert`, `invariant`, `console.assert`, `assert.X`); configurable via rule options.
+- **ASP202 (assertion density):** No off-the-shelf TS rule exists for assertion density. Aspergillus ships its own `asp202-min-assertions` rule via the `./eslint-rules` plugin export. Default behavior: skip functions under 10 lines; require ≥2 assertion-like calls (`assert`, `invariant`, `console.assert`, `assert.X`); configurable via rule options.
 
-- **ASP203 (no global mutable state):** Implemented via `no-restricted-syntax` patterns banning module-level `let`/`var` and `export let`/`export var`. This is narrower than the original `functional/no-let` mapping — local `let` inside functions remains allowed, matching NASA's actual "global mutable state" intent rather than a blanket ban on `let`.
+- **ASP203 (no global mutable state):** Implemented via `no-restricted-syntax` patterns banning module-level `let`/`var` and `export let`/`export var`. Local `let` inside functions remains allowed — NASA's intent is "global" mutable state, not a blanket ban on `let`.
 
 - **ASP204 (no unbounded loops):** NASA's rule requires loops to have a statically-determinable iteration bound (no `while(true)`). There is no off-the-shelf ESLint rule for that predicate, so the current implementation uses `functional/no-loop-statements` — which bans **all** loops, including bounded `for(let i=0; i<N; i++)`. This is a strict over-approximation chosen because it lands at `warn` and surfaces something useful. **To revisit:** replace with a custom `aspergillus/asp204-bounded-loops` rule that detects only unbounded loop patterns (`while(true)`, `for(;;)`, `while(condition)` where condition isn't statically bounded). Tracked under the next aspergillus TS milestone.
+
+- **ASP205/206 (purity boundary, FC/IS):** TypeScript's I/O surface is overwhelmingly import-shaped (`import { writeFile } from 'fs'`, `import http from 'node:http'`, the global `fetch`, ORM/RPC clients) rather than named-call-shaped, so `eslint-plugin-boundaries` enforces the FC/IS pattern more precisely than a Python-style I/O name blocklist would. Aspergillus ships several `./layouts/*` config exports (`node-service`, `rn-app`, `react-spa`, `fullstack-monorepo`, `generic-3-layer`) covering common project shapes. `aspergillus-ts init` prompts for a layout (or `--layout=<name>` non-interactively); the chosen layout is imported into the consumer's `eslint.config.js`, where its element/rule definitions can be overridden by appending a later flat-config block. `--layout=none` skips the import (consumer declares elements themselves). Plan: `docs/superpowers/plans/2026-04-28-typescript-asp205-asp206-purity.md`.
 
 ### Level 3 — Warning
 
@@ -65,14 +67,27 @@ Contracts, property-based tests (L4), and formal verification (L5). See
 `python/src/aspergillus/` for the fullest current implementation, and
 this document's history for research pointers.
 
-## I/O blocklist (ASP205/206)
+## Purity / FC/IS enforcement (ASP205/206)
 
-Python's purity and FC/IS rules rely on a curated I/O blocklist (see
-`python/src/aspergillus/io_blocklist.py`). Consumers extend it per-project
-via `[tool.aspergillus] extra_io_functions`. TypeScript's equivalent is
-encoded as architectural boundaries (`eslint-plugin-boundaries`) rather
-than a name blocklist — `core/` is forbidden from importing I/O modules,
-which is more precise than pattern-matching call sites.
+The two languages take different approaches because their I/O surfaces are
+shaped differently:
+
+- **Python** uses a curated I/O blocklist (see
+  `python/src/aspergillus/io_blocklist.py`). Calls to known I/O functions
+  (`subprocess.run`, `urllib.urlopen`, etc.) are pattern-matched inside
+  function bodies. Consumers extend the list per-project via
+  `[tool.aspergillus] extra_io_functions`. The blocklist works because
+  Python's stdlib is the dominant I/O surface and is stable.
+
+- **TypeScript** uses architectural boundaries via `eslint-plugin-boundaries`.
+  TS I/O is overwhelmingly import-shaped (`import { writeFile } from 'fs'`,
+  global `fetch`, third-party clients), and the npm I/O surface turns over
+  too rapidly for a name blocklist to stay current. `eslint-plugin-boundaries`
+  enforces what `core/` may import from, which is more precise. Aspergillus
+  ships preset layouts (`node-service`, `rn-app`, `react-spa`,
+  `fullstack-monorepo`, `generic-3-layer`) consumers select at
+  `aspergillus-ts init` time; the layout is imported as a flat-config block
+  and can be overridden by the consumer.
 
 ## Distribution
 
