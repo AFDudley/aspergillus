@@ -10,6 +10,7 @@ import {
   isPrettierWrapper,
   isTsconfigWrapper,
 } from './wrappers.js';
+import type { LayoutName } from './layouts.js';
 
 // Reference pre-commit scaffold lives next to the configs. Works at both
 // bun-test time (src/) and post-build (dist/).
@@ -30,7 +31,7 @@ const DEV_DEPS = [
   'typescript',
 ] as const;
 
-type InitOpts = { target: string };
+type InitOpts = { target: string; layout?: LayoutName };
 
 function detectPackageManager(target: string): 'bun' | 'pnpm' | 'yarn' | 'npm' {
   if (existsSync(join(target, 'bun.lock')) || existsSync(join(target, 'bun.lockb'))) return 'bun';
