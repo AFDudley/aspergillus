@@ -12,17 +12,30 @@
 //   invariant(...)          — common helper convention
 //   console.assert(...)     — JS host
 //
-// Consumers extend the lists via `assertionNames` (bare callee name)
-// or `memberPatterns` (single-dot `object.method` form — multi-dot
-// paths like `chai.assert.ok` are not matched; list `chai.assert` in
-// `assertionNames` instead so its namespace methods all count).
+// Consumers extend the lists via:
+//   assertionNames        — bare callee name (`check(...)`)
+//   memberPatterns        — single-dot `object.method` form
+//                           (multi-dot paths like `chai.assert.ok` are
+//                           not matched; list `chai.assert` in
+//                           `assertionNames` instead so its namespace
+//                           methods all count)
+//   methodNames           — method name regardless of receiver
+//                           (`schema.parse(...)` counts when 'parse'
+//                           is listed; useful for Zod parse, schema
+//                           validators, etc.)
+//   countThrowStatements  — when true, `throw` statements count as
+//                           assertions. NASA's `assert(cond)` is
+//                           logically `if (!cond) throw`; explicit
+//                           throws enforce preconditions equivalently.
 
 const DEFAULT_MIN = 2;
 const DEFAULT_MIN_FUNCTION_LENGTH = 10;
 const DEFAULT_ASSERTION_NAMES = ['assert', 'invariant'];
 const DEFAULT_MEMBER_PATTERNS = ['console.assert'];
+const DEFAULT_METHOD_NAMES = [];
+const DEFAULT_COUNT_THROW_STATEMENTS = false;
 
-function isAssertionCall(node, assertionNames, memberPatterns) {
+function isAssertionCall(node, assertionNames, memberPatterns, methodNames) {
   if (node.type !== 'CallExpression') return false;
   const callee = node.callee;
 
@@ -33,20 +46,31 @@ function isAssertionCall(node, assertionNames, memberPatterns) {
   if (
     callee.type === 'MemberExpression' &&
     !callee.computed &&
-    callee.object.type === 'Identifier' &&
     callee.property.type === 'Identifier'
   ) {
-    const full = `${callee.object.name}.${callee.property.name}`;
-    if (memberPatterns.includes(full)) return true;
-    // `assert.ok(...)`, `assert.equal(...)` etc. when `assert` is in
-    // assertionNames — namespace methods on a configured name count.
-    if (assertionNames.includes(callee.object.name)) return true;
+    // methodNames: match by property name regardless of receiver shape.
+    // Covers `schema.parse(...)`, `chain().parse(...)`, etc.
+    if (methodNames.includes(callee.property.name)) return true;
+
+    if (callee.object.type === 'Identifier') {
+      const full = `${callee.object.name}.${callee.property.name}`;
+      if (memberPatterns.includes(full)) return true;
+      // `assert.ok(...)`, `assert.equal(...)` etc. when `assert` is in
+      // assertionNames — namespace methods on a configured name count.
+      if (assertionNames.includes(callee.object.name)) return true;
+    }
   }
 
   return false;
 }
 
-function countAssertionsIn(rootBody, assertionNames, memberPatterns) {
+function countAssertionsIn(
+  rootBody,
+  assertionNames,
+  memberPatterns,
+  methodNames,
+  countThrowStatements,
+) {
   let count = 0;
   function walk(node) {
     if (!node || typeof node !== 'object') return;
@@ -65,7 +89,10 @@ function countAssertionsIn(rootBody, assertionNames, memberPatterns) {
     ) {
       return;
     }
-    if (isAssertionCall(node, assertionNames, memberPatterns)) {
+    if (isAssertionCall(node, assertionNames, memberPatterns, methodNames)) {
+      count++;
+    }
+    if (countThrowStatements && node.type === 'ThrowStatement') {
       count++;
     }
     for (const key of Object.keys(node)) {
@@ -92,13 +119,15 @@ export default {
           minFunctionLength: { type: 'number', minimum: 0 },
           assertionNames: { type: 'array', items: { type: 'string' } },
           memberPatterns: { type: 'array', items: { type: 'string' } },
+          methodNames: { type: 'array', items: { type: 'string' } },
+          countThrowStatements: { type: 'boolean' },
         },
         additionalProperties: false,
       },
     ],
     messages: {
       tooFew:
-        "ASP202: function has {{count}} assertion(s); expected at least {{min}}. Add `assert(...)`, `invariant(...)`, or extend the rule's `assertionNames`/`memberPatterns` if you use a different convention.",
+        "ASP202: function has {{count}} assertion(s); expected at least {{min}}. Add `assert(...)`, `invariant(...)`, or extend the rule's `assertionNames`/`memberPatterns`/`methodNames`/`countThrowStatements` if you use a different convention.",
     },
   },
   create(context) {
@@ -107,13 +136,21 @@ export default {
     const minLength = opts.minFunctionLength ?? DEFAULT_MIN_FUNCTION_LENGTH;
     const assertionNames = opts.assertionNames ?? DEFAULT_ASSERTION_NAMES;
     const memberPatterns = opts.memberPatterns ?? DEFAULT_MEMBER_PATTERNS;
+    const methodNames = opts.methodNames ?? DEFAULT_METHOD_NAMES;
+    const countThrowStatements = opts.countThrowStatements ?? DEFAULT_COUNT_THROW_STATEMENTS;
 
     function check(node) {
       if (!node.body || node.body.type !== 'BlockStatement') return;
       const length = node.loc.end.line - node.loc.start.line + 1;
       if (length < minLength) return;
 
-      const count = countAssertionsIn(node.body, assertionNames, memberPatterns);
+      const count = countAssertionsIn(
+        node.body,
+        assertionNames,
+        memberPatterns,
+        methodNames,
+        countThrowStatements,
+      );
       if (count < min) {
         context.report({
           node,

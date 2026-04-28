@@ -91,6 +91,54 @@ tester.run('asp202-min-assertions', rule, {
       options: [{ assertionNames: ['check'] }],
     },
 
+    // methodNames matches `.parse(...)` regardless of receiver. Two
+    // distinct receivers, both count.
+    {
+      code: `function f(input) {
+        const a = schemaA.parse(input);
+        const b = schemaB.parse(input);
+        const c = 1;
+        const d = 2;
+        const e = 3;
+        const g = 4;
+        const h = 5;
+        return [a, b, c, d, e, g, h];
+      }`,
+      options: [{ methodNames: ['parse'] }],
+    },
+
+    // methodNames also matches when the receiver is a chained call
+    // (`z.string().parse(...)`), since we only check the property name.
+    {
+      code: `function f(input) {
+        const a = z.string().parse(input);
+        const b = z.number().parse(input);
+        const c = 1;
+        const d = 2;
+        const e = 3;
+        const g = 4;
+        const h = 5;
+        return [a, b, c, d, e, g, h];
+      }`,
+      options: [{ methodNames: ['parse'] }],
+    },
+
+    // countThrowStatements: throw statements count as assertions when
+    // enabled. Two `if (!x) throw` patterns satisfy min=2.
+    {
+      code: `function f(x, y) {
+        if (!x) throw new Error('x required');
+        if (!y) throw new Error('y required');
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        const d = 4;
+        const e = 5;
+        return x + y + a + b + c + d + e;
+      }`,
+      options: [{ countThrowStatements: true }],
+    },
+
     // Arrow functions with non-block body are skipped (no body to count).
     { code: 'const f = (x) => x + 1;' },
   ],
@@ -168,6 +216,36 @@ tester.run('asp202-min-assertions', rule, {
         return x + a + b + c + d + e;
       }`,
       options: [{ assertionNames: ['check'] }],
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+
+    // methodNames is opt-in: without it, `.parse(...)` doesn't count.
+    {
+      code: `function f(input) {
+        const a = schemaA.parse(input);
+        const b = schemaB.parse(input);
+        const c = 1;
+        const d = 2;
+        const e = 3;
+        const g = 4;
+        const h = 5;
+        return [a, b, c, d, e, g, h];
+      }`,
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+
+    // countThrowStatements is opt-in: without it, `throw` doesn't count.
+    {
+      code: `function f(x, y) {
+        if (!x) throw new Error('x required');
+        if (!y) throw new Error('y required');
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        const d = 4;
+        const e = 5;
+        return x + y + a + b + c + d + e;
+      }`,
       errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
     },
   ],

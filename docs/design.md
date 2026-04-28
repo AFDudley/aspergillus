@@ -46,7 +46,7 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 #### TypeScript Level 2 — design notes
 
-- **ASP202 (assertion density):** No off-the-shelf TS rule exists for assertion density. Aspergillus ships its own `asp202-min-assertions` rule via the `./eslint-rules` plugin export. Default behavior: skip functions under 10 lines; require ≥2 assertion-like calls (`assert`, `invariant`, `console.assert`, `assert.X`); configurable via rule options.
+- **ASP202 (assertion density):** No off-the-shelf TS rule exists for assertion density. Aspergillus ships its own `asp202-min-assertions` rule via the `./eslint-rules` plugin export. Default behavior: skip functions under 10 lines; require ≥2 assertion-like calls (`assert`, `invariant`, `console.assert`, `assert.X`); configurable via rule options. Two extension points cover common precondition-enforcement patterns that aren't named `assert`: `methodNames` matches a method name regardless of receiver (e.g. `methodNames: ['parse']` counts every Zod `schema.parse(input)`), and `countThrowStatements` counts `throw` statements as assertions (NASA's `assert(cond)` is logically `if (!cond) throw`).
 
 - **ASP203 (no global mutable state):** Implemented via `no-restricted-syntax` patterns banning module-level `let`/`var` and `export let`/`export var`. Local `let` inside functions remains allowed — NASA's intent is "global" mutable state, not a blanket ban on `let`.
 
