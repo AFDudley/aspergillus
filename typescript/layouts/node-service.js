@@ -1,12 +1,16 @@
 // ASP205/206 boundary layout for Node.js services (Express/Fastify + DB).
 //
+// Requires (installed automatically by `aspergillus-ts init --layout=node-service`):
+//   eslint-plugin-boundaries     — architectural enforcement
+//   eslint-import-resolver-typescript — maps .js-extension imports to .ts source files
+//
 // Elements (matched via path pattern):
 //   core/     — pure logic. No I/O imports.
 //   db/       — data access. Imports core.
 //   services/ — I/O wrappers. Imports db + core.
 //   routes/   — HTTP shell. Imports services + core (NOT db directly).
 //
-// Lands the boundaries/element-types rule at `warn`. Override or extend
+// Lands the boundaries/dependencies rule at `warn`. Override or extend
 // by appending a later flat-config block in your eslint.config.js.
 
 import boundaries from 'eslint-plugin-boundaries';
@@ -23,17 +27,20 @@ export default {
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
+    'import/resolver': {
+      typescript: { alwaysTryTypes: true },
+    },
   },
   rules: {
-    'boundaries/element-types': [
+    'boundaries/dependencies': [
       'warn',
       {
         default: 'disallow',
         rules: [
-          { from: ['core'], allow: ['core'] },
-          { from: ['db'], allow: ['db', 'core'] },
-          { from: ['services'], allow: ['services', 'db', 'core'] },
-          { from: ['routes'], allow: ['routes', 'services', 'core'] },
+          { from: { type: 'core' }, allow: { to: { type: 'core' } } },
+          { from: { type: 'db' }, allow: { to: { type: ['db', 'core'] } } },
+          { from: { type: 'services' }, allow: { to: { type: ['services', 'db', 'core'] } } },
+          { from: { type: 'routes' }, allow: { to: { type: ['routes', 'services', 'core'] } } },
         ],
       },
     ],

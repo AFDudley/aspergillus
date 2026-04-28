@@ -41,7 +41,8 @@
     "typescript": ">=5.4"
   },
   "peerDependenciesMeta": {
-    "eslint-plugin-boundaries": { "optional": true }
+    "eslint-plugin-boundaries": { "optional": true },
+    "eslint-import-resolver-typescript": { "optional": true }
   },
   "engines": {
     "node": ">=18"

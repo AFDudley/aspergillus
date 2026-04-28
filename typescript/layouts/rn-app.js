@@ -1,6 +1,10 @@
 // ASP205/206 boundary layout for React Native apps. Modeled on the
 // mtm code-quality.md pattern.
 //
+// Requires (installed automatically by `aspergillus-ts init --layout=rn-app`):
+//   eslint-plugin-boundaries     — architectural enforcement
+//   eslint-import-resolver-typescript — maps .js-extension imports to .ts source files
+//
 // Elements:
 //   core/       — pure functions. No imports from native modules / API.
 //   services/   — I/O boundary. API calls, native module wrappers.
@@ -23,18 +27,21 @@ export default {
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
+    'import/resolver': {
+      typescript: { alwaysTryTypes: true },
+    },
   },
   rules: {
-    'boundaries/element-types': [
+    'boundaries/dependencies': [
       'warn',
       {
         default: 'disallow',
         rules: [
-          { from: ['core'], allow: ['core'] },
-          { from: ['services'], allow: ['services', 'core'] },
-          { from: ['hooks'], allow: ['hooks', 'services', 'core'] },
-          { from: ['components'], allow: ['components', 'core'] },
-          { from: ['screens'], allow: ['screens', 'hooks', 'components', 'core'] },
+          { from: { type: 'core' }, allow: { to: { type: 'core' } } },
+          { from: { type: 'services' }, allow: { to: { type: ['services', 'core'] } } },
+          { from: { type: 'hooks' }, allow: { to: { type: ['hooks', 'services', 'core'] } } },
+          { from: { type: 'components' }, allow: { to: { type: ['components', 'core'] } } },
+          { from: { type: 'screens' }, allow: { to: { type: ['screens', 'hooks', 'components', 'core'] } } },
         ],
       },
     ],

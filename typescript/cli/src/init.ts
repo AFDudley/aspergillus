@@ -31,7 +31,7 @@ const BASE_DEV_DEPS = [
   'typescript',
 ] as const;
 
-const LAYOUT_DEV_DEPS = ['eslint-plugin-boundaries'] as const;
+const LAYOUT_DEV_DEPS = ['eslint-plugin-boundaries', 'eslint-import-resolver-typescript'] as const;
 
 type InitOpts = { target: string; layout?: LayoutName };
 

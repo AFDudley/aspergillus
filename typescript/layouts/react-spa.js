@@ -1,5 +1,9 @@
 // ASP205/206 boundary layout for React/Vite single-page apps.
 //
+// Requires (installed automatically by `aspergillus-ts init --layout=react-spa`):
+//   eslint-plugin-boundaries     — architectural enforcement
+//   eslint-import-resolver-typescript — maps .js-extension imports to .ts source files
+//
 // Elements:
 //   shared/     — pure utilities, types, hooks-without-IO.
 //   services/   — API clients, storage adapters, I/O boundary.
@@ -20,17 +24,20 @@ export default {
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
+    'import/resolver': {
+      typescript: { alwaysTryTypes: true },
+    },
   },
   rules: {
-    'boundaries/element-types': [
+    'boundaries/dependencies': [
       'warn',
       {
         default: 'disallow',
         rules: [
-          { from: ['shared'], allow: ['shared'] },
-          { from: ['services'], allow: ['services', 'shared'] },
-          { from: ['components'], allow: ['components', 'shared'] },
-          { from: ['pages'], allow: ['pages', 'components', 'services', 'shared'] },
+          { from: { type: 'shared' }, allow: { to: { type: 'shared' } } },
+          { from: { type: 'services' }, allow: { to: { type: ['services', 'shared'] } } },
+          { from: { type: 'components' }, allow: { to: { type: ['components', 'shared'] } } },
+          { from: { type: 'pages' }, allow: { to: { type: ['pages', 'components', 'services', 'shared'] } } },
         ],
       },
     ],

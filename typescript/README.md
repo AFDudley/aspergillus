@@ -132,11 +132,13 @@ export default [
       ],
     },
     rules: {
-      'boundaries/element-types': [
+      'boundaries/dependencies': [
         'warn',
         {
           default: 'disallow',
-          rules: [{ from: ['rpc'], allow: ['rpc', 'core'] }],
+          rules: [
+            { from: { type: 'rpc' }, allow: { to: { type: ['rpc', 'core'] } } },
+          ],
         },
       ],
     },
@@ -146,10 +148,23 @@ export default [
 
 ### Peer dep
 
-`eslint-plugin-boundaries` is required only when a layout is used. `init`
-prints the install command including it; for `--layout=none`, the command
-omits it. It's declared as an *optional* peer dep in aspergillus's
-`package.json` so npm doesn't warn consumers using `--layout=none`.
+When a layout is chosen, `init` prints an install command that includes both
+`eslint-plugin-boundaries` (the enforcement engine) and
+`eslint-import-resolver-typescript` (maps `.js`-extension imports — the
+TypeScript `moduleResolution: bundler` / `node16` convention — back to the
+actual `.ts` source file so the boundaries rule resolves them correctly).
+For `--layout=none` both packages are omitted from the command.
+
+Both are declared as *optional* peer deps in aspergillus's `package.json` so
+npm does not warn consumers using `--layout=none`.
+
+### Known issues
+
+- **ESLint 10 + `eslint-plugin-import` v2 incompatibility.** ESLint 10 removed
+  an internal API that `eslint-plugin-import` v2 uses. Until v3 of that plugin
+  lands (or v2 patches the issue), pin ESLint to `^9` in your consumer
+  `package.json`. The install command printed by `aspergillus-ts init` does not
+  pin the ESLint version explicitly — verify your lockfile resolves to ESLint 9.
 
 ## Severity-flip workflow
 

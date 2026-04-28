@@ -1,6 +1,10 @@
 // ASP205/206 boundary layout for full-stack TypeScript monorepos with
 // server/ and client/ subtrees plus a top-level shared/.
 //
+// Requires (installed automatically by `aspergillus-ts init --layout=fullstack-monorepo`):
+//   eslint-plugin-boundaries     — architectural enforcement
+//   eslint-import-resolver-typescript — maps .js-extension imports to .ts source files
+//
 // Server elements:
 //   server/core/     — pure logic
 //   server/db/       — data access
@@ -35,22 +39,25 @@ export default {
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
+    'import/resolver': {
+      typescript: { alwaysTryTypes: true },
+    },
   },
   rules: {
-    'boundaries/element-types': [
+    'boundaries/dependencies': [
       'warn',
       {
         default: 'disallow',
         rules: [
-          { from: ['shared'], allow: ['shared'] },
-          { from: ['server-core'], allow: ['server-core', 'shared'] },
-          { from: ['server-db'], allow: ['server-db', 'shared'] },
-          { from: ['server-services'], allow: ['server-services', 'server-db', 'server-core', 'shared'] },
-          { from: ['server-routes'], allow: ['server-routes', 'server-services', 'server-core', 'shared'] },
-          { from: ['client-shared'], allow: ['client-shared', 'shared'] },
-          { from: ['client-services'], allow: ['client-services', 'client-shared', 'shared'] },
-          { from: ['client-components'], allow: ['client-components', 'client-shared', 'shared'] },
-          { from: ['client-pages'], allow: ['client-pages', 'client-components', 'client-services', 'client-shared', 'shared'] },
+          { from: { type: 'shared' }, allow: { to: { type: 'shared' } } },
+          { from: { type: 'server-core' }, allow: { to: { type: ['server-core', 'shared'] } } },
+          { from: { type: 'server-db' }, allow: { to: { type: ['server-db', 'shared'] } } },
+          { from: { type: 'server-services' }, allow: { to: { type: ['server-services', 'server-db', 'server-core', 'shared'] } } },
+          { from: { type: 'server-routes' }, allow: { to: { type: ['server-routes', 'server-services', 'server-core', 'shared'] } } },
+          { from: { type: 'client-shared' }, allow: { to: { type: ['client-shared', 'shared'] } } },
+          { from: { type: 'client-services' }, allow: { to: { type: ['client-services', 'client-shared', 'shared'] } } },
+          { from: { type: 'client-components' }, allow: { to: { type: ['client-components', 'client-shared', 'shared'] } } },
+          { from: { type: 'client-pages' }, allow: { to: { type: ['client-pages', 'client-components', 'client-services', 'client-shared', 'shared'] } } },
         ],
       },
     ],
