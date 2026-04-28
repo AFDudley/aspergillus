@@ -4,11 +4,15 @@
 //   eslint-plugin-boundaries     — architectural enforcement
 //   eslint-import-resolver-typescript — maps .js-extension imports to .ts source files
 //
-// Elements (matched via path pattern):
-//   core/     — pure logic. No I/O imports.
-//   db/       — data access. Imports core.
-//   services/ — I/O wrappers. Imports db + core.
-//   routes/   — HTTP shell. Imports services + core (NOT db directly).
+// Elements (matched via path pattern; common synonyms accepted):
+//   core      — pure logic. Matches `core/**` or `lib/**` (any nesting).
+//   db        — data access. Matches `db/**` or `repositories/**`.
+//   services  — I/O wrappers. Matches `services/**`.
+//   routes    — HTTP shell. Matches `routes/**`, `controllers/**`, or `handlers/**`.
+//
+// Patterns use `**/<dir>/**` so they match whether the project nests under
+// `src/` or not. Type-only imports are allowed across any boundary because
+// they are erased at compile time and don't constitute runtime coupling.
 //
 // Lands the boundaries/dependencies rule at `warn`. Override or extend
 // by appending a later flat-config block in your eslint.config.js.
@@ -20,10 +24,10 @@ export default {
   plugins: { boundaries },
   settings: {
     'boundaries/elements': [
-      { type: 'core', pattern: '**/core/**' },
-      { type: 'db', pattern: '**/db/**' },
+      { type: 'core', pattern: ['**/core/**', '**/lib/**'] },
+      { type: 'db', pattern: ['**/db/**', '**/repositories/**'] },
       { type: 'services', pattern: '**/services/**' },
-      { type: 'routes', pattern: '**/routes/**' },
+      { type: 'routes', pattern: ['**/routes/**', '**/controllers/**', '**/handlers/**'] },
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
     'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
@@ -37,6 +41,12 @@ export default {
       {
         default: 'disallow',
         rules: [
+          // Type-only imports are allowed everywhere — they're stripped at
+          // compile time and don't create runtime coupling.
+          {
+            from: { type: '*' },
+            allow: { to: { type: '*' }, dependency: { kind: 'type' } },
+          },
           { from: { type: 'core' }, allow: { to: { type: 'core' } } },
           { from: { type: 'db' }, allow: { to: { type: ['db', 'core'] } } },
           { from: { type: 'services' }, allow: { to: { type: ['services', 'db', 'core'] } } },

@@ -6,10 +6,13 @@
 //   eslint-plugin-boundaries     — architectural enforcement
 //   eslint-import-resolver-typescript — maps .js-extension imports to .ts source files
 //
-// Elements:
-//   core/  — pure logic
-//   infra/ — I/O boundary (DB, HTTP, fs, etc.)
-//   app/   — imperative shell composing core + infra
+// Elements (common synonyms accepted):
+//   core   — pure logic. Matches `core/**` or `lib/**`.
+//   infra  — I/O boundary (DB, HTTP, fs, etc.). Matches `infra/**` or
+//            `services/**`.
+//   app    — imperative shell composing core + infra. Matches `app/**`.
+//
+// Type-only imports are allowed across any boundary.
 
 import boundaries from 'eslint-plugin-boundaries';
 
@@ -18,8 +21,8 @@ export default {
   plugins: { boundaries },
   settings: {
     'boundaries/elements': [
-      { type: 'core', pattern: '**/core/**' },
-      { type: 'infra', pattern: '**/infra/**' },
+      { type: 'core', pattern: ['**/core/**', '**/lib/**'] },
+      { type: 'infra', pattern: ['**/infra/**', '**/services/**'] },
       { type: 'app', pattern: '**/app/**' },
     ],
     'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
@@ -34,6 +37,11 @@ export default {
       {
         default: 'disallow',
         rules: [
+          // Type-only imports are allowed everywhere.
+          {
+            from: { type: '*' },
+            allow: { to: { type: '*' }, dependency: { kind: 'type' } },
+          },
           { from: { type: 'core' }, allow: { to: { type: 'core' } } },
           { from: { type: 'infra' }, allow: { to: { type: ['infra', 'core'] } } },
           { from: { type: 'app' }, allow: { to: { type: ['app', 'infra', 'core'] } } },
