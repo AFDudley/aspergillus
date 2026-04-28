@@ -1079,14 +1079,30 @@ Per the user's standing instruction (memory: "Never push. Only commit."), the br
 
 ---
 
-## Out-of-scope follow-ups (track as separate plans)
+## Roadmap / TODO
 
-1. **ASP205/206 — `eslint-plugin-boundaries` integration.** Needs a per-consumer architectural-element design conversation. Requires consumers to declare what counts as `core/` vs `infra/` vs `app/`. Aspergillus can ship a template config plus documented elements convention.
+Items deferred from this PR. Each becomes its own plan + PR. Checkbox-tracked so a future agent can claim work without re-deriving the list.
 
-2. **ASP301 — no-throw + neverthrow.** Adds peer deps `eslint-plugin-functional` already in place, plus `@okee-tech/neverthrow/must-consume-result` (or `eslint-plugin-neverthrow`). Lands at warn.
+### Aspergillus internals
 
-3. **ASP302 — no Optional/None return.** No off-the-shelf rule exists. Custom rule like `aspergillus/asp302-no-optional-return` that flags function return types containing `| undefined` or `| null` (excluding type guards / explicit nullable APIs). Lands at warn.
+- [ ] **ASP205/206 — boundary layouts.** Ship `eslint-plugin-boundaries` integration with preset layouts (`node-service`, `rn-app`, `react-spa`, `fullstack-monorepo`, `generic-3-layer`) consumers select via `aspergillus-ts init --layout=<name>` (interactive prompt fallback). Layouts live as `./layouts/*` package exports; consumer's eslint.config.js imports and can override. **Plan:** `docs/superpowers/plans/2026-04-28-typescript-asp205-asp206-purity.md`. Target version: `0.1.0-rc.3`.
+- [ ] **Custom `aspergillus/asp204-bounded-loops` rule.** Replaces the strict `functional/no-loop-statements`. Detects `while(true)`, `for(;;)`, and (best-effort) loops whose condition isn't statically bounded. Allows bounded `for(let i=0; i<N; i++)` patterns.
+- [ ] **ASP301 — no-throw + neverthrow.** Lands `functional/no-throw-statements` and a neverthrow `must-consume-result`-style rule (either `@okee-tech/neverthrow` or `eslint-plugin-neverthrow`, whichever is current). Lands at `warn`.
+- [ ] **ASP302 — no Optional/None return.** Custom rule (`aspergillus/asp302-no-optional-return`) flagging function return types containing `| undefined` or `| null`, with exclusions for type guards, explicit nullable APIs, and React component prop types. Lands at `warn`.
+- [ ] **Decide and apply `peerDependencies`.** Aspergillus currently ships no `peerDependencies` declaration; consumers install peers manually per README. Either declare all 9 (`@eslint/js`, `typescript-eslint`, `eslint-plugin-import`, `eslint-plugin-unused-imports`, `eslint-plugin-functional`, `eslint-config-prettier`, `eslint`, `prettier`, `typescript`) consistently, or document the deliberate non-declaration. Single dedicated PR, not slipped into other work.
+- [ ] **Migrate `typescript/rules/` to TypeScript.** The CLI is TS; the rules are JS. For internal consistency, add `typescript/rules/tsconfig.json`, parallel `tsc` build into `lib/`, and update the `./eslint-rules` export to point at the compiled output. ~130 LOC migration. Optional but matches the project's "use our own discipline on our own code" stance.
+- [ ] **Severity-flip aspergillus's own rules from `warn` to `error`.** For each L2 rule landed in this PR, flip to `error` once aspergillus's own codebase plus 2+ consumer codebases (TrashScan-Explorer + mtm) have zero violations. One rule per PR.
 
-4. **Custom `aspergillus/asp204-bounded-loops` rule.** Replaces `functional/no-loop-statements`. Detects `while(true)`, `for(;;)`, and (best-effort) loops whose condition isn't statically bounded.
+### Consumer adoption
 
-5. **Consumer severity-flip PRs in TrashScan-Explorer** for each rule landed in this PR, in priority order (already documented in the previous review pass): `no-floating-promises` first, then `import/order`, then `no-param-reassign`, then ASP201–204 cleanup as their counts reach zero.
+- [ ] **TrashScan-Explorer: bump aspergillus to `0.1.0-rc.2`.** Surfaces new ASP201–204 warnings; expected, no merge blocker.
+- [ ] **TrashScan-Explorer severity-flips (in priority order, one PR each):**
+  - [ ] `@typescript-eslint/no-floating-promises` (~68 sites; correctness/crash implications, prioritize first)
+  - [ ] `import/order` (~23 sites)
+  - [ ] `no-param-reassign` (~1 site)
+  - [ ] ASP201 `max-lines-per-function` (count TBD after first run)
+  - [ ] ASP202 `aspergillus/asp202-min-assertions` (count TBD)
+  - [ ] ASP203 `no-restricted-syntax` (count TBD)
+  - [ ] ASP204 `functional/no-loop-statements` — wait until `asp204-bounded-loops` ships, then flip the replacement rule.
+- [ ] **TrashScan-Explorer: pick a layout and adopt ASP205/206.** Likely `fullstack-monorepo` given the server/client/shared shape.
+- [ ] **mtm: bump aspergillus to `0.1.0-rc.2` and align with new rules.** mtm's current `code-quality.md` already documents the layout — verify it matches one of aspergillus's preset layouts (`rn-app` is modeled on it) and switch to importing the preset.
