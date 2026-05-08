@@ -31,57 +31,98 @@
 
 import boundaries from 'eslint-plugin-boundaries';
 
-export default {
-  files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
-  plugins: { boundaries },
-  settings: {
-    // Order matters: eslint-plugin-boundaries v6 uses first-match-wins for
-    // overlapping patterns. The project-root `shared/` element is anchored
-    // (no leading `**/`) and uses `mode: 'full'` so it only matches the
-    // top-level shared/ directory and never collides with a `client/shared/`
-    // or similar nested directory.
-    'boundaries/elements': [
-      { type: 'server-core', pattern: ['**/server/**/core/**', '**/server/**/lib/**'] },
-      { type: 'server-db', pattern: ['**/server/**/db/**', '**/server/**/repositories/**'] },
-      { type: 'server-services', pattern: '**/server/**/services/**' },
-      { type: 'server-routes', pattern: ['**/server/**/routes/**', '**/server/**/controllers/**', '**/server/**/handlers/**'] },
-      { type: 'client-shared', pattern: ['**/client/**/lib/**', '**/client/**/shared/**'] },
-      { type: 'client-services', pattern: ['**/client/**/services/**', '**/client/**/api/**'] },
-      { type: 'client-hooks', pattern: '**/client/**/hooks/**' },
-      { type: 'client-components', pattern: '**/client/**/components/**' },
-      { type: 'client-pages', pattern: ['**/client/**/pages/**', '**/client/**/app/**'] },
-      { type: 'shared', pattern: 'shared/**', mode: 'full' },
-    ],
-    'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
-    'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
-    'import/resolver': {
-      typescript: { alwaysTryTypes: true },
+// Order matters: eslint-plugin-boundaries v6 uses first-match-wins for
+// overlapping patterns. The project-root `shared/` element is anchored
+// (no leading `**/`) and uses `mode: 'full'` so it only matches the
+// top-level shared/ directory and never collides with a `client/shared/`
+// or similar nested directory.
+const elements = [
+  { type: 'server-core', pattern: ['**/server/**/core/**', '**/server/**/lib/**'] },
+  { type: 'server-db', pattern: ['**/server/**/db/**', '**/server/**/repositories/**'] },
+  { type: 'server-services', pattern: '**/server/**/services/**' },
+  { type: 'server-routes', pattern: ['**/server/**/routes/**', '**/server/**/controllers/**', '**/server/**/handlers/**'] },
+  { type: 'client-shared', pattern: ['**/client/**/lib/**', '**/client/**/shared/**'] },
+  { type: 'client-services', pattern: ['**/client/**/services/**', '**/client/**/api/**'] },
+  { type: 'client-hooks', pattern: '**/client/**/hooks/**' },
+  { type: 'client-components', pattern: '**/client/**/components/**' },
+  { type: 'client-pages', pattern: ['**/client/**/pages/**', '**/client/**/app/**'] },
+  { type: 'shared', pattern: 'shared/**', mode: 'full' },
+];
+
+export default [
+  // Block 1: boundaries enforcement (ASP205/206) — applies to all files.
+  {
+    files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    plugins: { boundaries },
+    settings: {
+      'boundaries/elements': elements,
+      'boundaries/include': ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+      'boundaries/ignore': ['**/*.test.*', '**/*.spec.*', '**/__tests__/**'],
+      'import/resolver': {
+        typescript: { alwaysTryTypes: true },
+      },
+    },
+    rules: {
+      'boundaries/dependencies': [
+        'warn',
+        {
+          default: 'disallow',
+          rules: [
+            // Type-only imports are allowed everywhere.
+            {
+              from: { type: '*' },
+              allow: { to: { type: '*' }, dependency: { kind: 'type' } },
+            },
+            { from: { type: 'shared' }, allow: { to: { type: 'shared' } } },
+            { from: { type: 'server-core' }, allow: { to: { type: ['server-core', 'shared'] } } },
+            { from: { type: 'server-db' }, allow: { to: { type: ['server-db', 'server-core', 'shared'] } } },
+            { from: { type: 'server-services' }, allow: { to: { type: ['server-services', 'server-db', 'server-core', 'shared'] } } },
+            { from: { type: 'server-routes' }, allow: { to: { type: ['server-routes', 'server-services', 'server-core', 'shared'] } } },
+            { from: { type: 'client-shared' }, allow: { to: { type: ['client-shared', 'shared'] } } },
+            { from: { type: 'client-services' }, allow: { to: { type: ['client-services', 'client-shared', 'shared'] } } },
+            { from: { type: 'client-hooks' }, allow: { to: { type: ['client-hooks', 'client-services', 'client-shared', 'shared'] } } },
+            // Components may use hooks for state — idiomatic React.
+            { from: { type: 'client-components' }, allow: { to: { type: ['client-components', 'client-hooks', 'client-shared', 'shared'] } } },
+            { from: { type: 'client-pages' }, allow: { to: { type: ['client-pages', 'client-components', 'client-hooks', 'client-services', 'client-shared', 'shared'] } } },
+          ],
+        },
+      ],
     },
   },
-  rules: {
-    'boundaries/dependencies': [
-      'warn',
-      {
-        default: 'disallow',
-        rules: [
-          // Type-only imports are allowed everywhere.
-          {
-            from: { type: '*' },
-            allow: { to: { type: '*' }, dependency: { kind: 'type' } },
-          },
-          { from: { type: 'shared' }, allow: { to: { type: 'shared' } } },
-          { from: { type: 'server-core' }, allow: { to: { type: ['server-core', 'shared'] } } },
-          { from: { type: 'server-db' }, allow: { to: { type: ['server-db', 'server-core', 'shared'] } } },
-          { from: { type: 'server-services' }, allow: { to: { type: ['server-services', 'server-db', 'server-core', 'shared'] } } },
-          { from: { type: 'server-routes' }, allow: { to: { type: ['server-routes', 'server-services', 'server-core', 'shared'] } } },
-          { from: { type: 'client-shared' }, allow: { to: { type: ['client-shared', 'shared'] } } },
-          { from: { type: 'client-services' }, allow: { to: { type: ['client-services', 'client-shared', 'shared'] } } },
-          { from: { type: 'client-hooks' }, allow: { to: { type: ['client-hooks', 'client-services', 'client-shared', 'shared'] } } },
-          // Components may use hooks for state — idiomatic React.
-          { from: { type: 'client-components' }, allow: { to: { type: ['client-components', 'client-hooks', 'client-shared', 'shared'] } } },
-          { from: { type: 'client-pages' }, allow: { to: { type: ['client-pages', 'client-components', 'client-hooks', 'client-services', 'client-shared', 'shared'] } } },
-        ],
-      },
+
+  // Block 2: L3 functional-core — server core/db/services + client
+  // shared/services + top-level shared.
+  {
+    files: [
+      '**/server/**/core/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/server/**/lib/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/server/**/db/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/server/**/repositories/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/server/**/services/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/lib/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/shared/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/services/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/api/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      'shared/**/*.{ts,tsx,js,jsx,mjs,cjs}',
     ],
+    rules: {
+      'functional/no-throw-statements': 'warn',
+    },
   },
-};
+
+  // Block 3: L3 imperative-shell — server routes + client UI layers.
+  {
+    files: [
+      '**/server/**/routes/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/server/**/controllers/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/server/**/handlers/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/hooks/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/components/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/pages/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+      '**/client/**/app/**/*.{ts,tsx,js,jsx,mjs,cjs}',
+    ],
+    rules: {
+      'functional/no-throw-statements': 'off',
+    },
+  },
+];
