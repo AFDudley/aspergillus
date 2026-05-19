@@ -18,6 +18,62 @@ aspergillus/
 Each language subtree stands alone. Consumers pull aspergillus as a git
 subtree and use only the language subtree(s) they need.
 
+## Multi-engine architecture
+
+Aspergillus is the unified rule catalog. Consumers see one tool with one
+rule set; engines underneath are an internal implementation detail. The
+catalog uses three engines, chosen per-rule by what the rule's trigger
+and rewrite shapes require:
+
+| Engine | Languages | What it's good at |
+|---|---|---|
+| Custom ESLint rules + boundary plugins | TypeScript | Constraint-shaped checks that need type info, data-flow, or multi-file context; architectural import boundaries via `eslint-plugin-boundaries`. Lives under [`typescript/rules/`](../typescript/rules/) (custom rules) and [`typescript/configs/`](../typescript/configs/) (composed stock baselines). |
+| fixit / LibCST | Python | Constraint-shaped checks on the CST surface — function length, assertion density, I/O purity, raise-vs-Result. Lives under [`python/src/aspergillus/`](../python/src/aspergillus/). |
+| [ast-grep](https://ast-grep.github.io/) | TypeScript, Python (cross-language) | Declarative shape rewrites — a YAML rule names a tree pattern and a replacement template, ast-grep applies the rewrite. Best fit for catalog moves whose trigger and fix are both expressible as tree shape (e.g. `.map().map()` → `.map()` over composed function). Lives under [`typescript/ast-grep-rules/`](../typescript/ast-grep-rules/) and [`python/ast-grep-rules/`](../python/ast-grep-rules/). Rust ast-grep coverage is planned but not yet scaffolded — the rust tree remains placeholder-tier (configs only). |
+
+### How an engine gets chosen
+
+A rule lands in `ast-grep-rules/` when **both** of these hold:
+
+1. The violation's trigger is expressible as a tree-shape pattern (no
+   type info, no data-flow analysis, no inter-module reasoning needed).
+2. There is a *single mechanical rewrite* that resolves it.
+
+If only (1) holds, the rule belongs in ESLint or fixit (constraint
+check, no autofix). If neither holds, the rule isn't expressible
+mechanically and isn't a candidate for aspergillus at all — it's
+review-time concern.
+
+This split aligns with the severity-graduation ADR
+([`docs/decisions/2026-05-19-severity-graduation.md`](decisions/2026-05-19-severity-graduation.md)):
+ast-grep rules ship at `error` with `fix:` populated, because ast-grep's
+value is *applying* the rewrite. Constraint-without-autofix rules
+(ASP201 function length, ASP204 unbounded loops) live in the ESLint /
+fixit surface where "error without autofix, agent applies the catalog
+move" is the contract.
+
+### Consumer's view
+
+A consumer adds aspergillus once (npm install for TS, `uv tool install`
+for Python — see [Distribution](#distribution) below) and gets one
+rule corpus. Whether a given rule is enforced by ESLint, fixit, or
+ast-grep is an implementation detail the consumer doesn't manage. The
+catalog of canonical moves (function-too-long → Extract Function;
+double-`map` → fused `map`; impure function → boundary lift; etc.) is
+the user-facing surface; the engine routing is internal.
+
+### Catalog corpus
+
+The authoritative list of catalog moves — both constraint-driven
+(reject-on-violation) and clarity/perf (rewrite-on-detection) — is
+maintained downstream in consumer repos that have adopted aspergillus
+and accumulated their own move citations. The canonical reference home
+for a consumer that wants to centralize their catalog in aspergillus
+is `docs/refactoring-catalog.md` in this repo (not yet seeded; see the
+slop-to-production doctrine in
+[`docs/slop_to_production.md`](slop_to_production.md) for how the L2/L3
+layer consumes the corpus).
+
 ## Rule set
 
 ### Level 1 — External tooling baseline (not aspergillus code)
