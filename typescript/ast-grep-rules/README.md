@@ -55,6 +55,52 @@ New rules MAY transit `warn` per the graduation workflow in that ADR,
 but reach mature state only when they ship at `error` with the
 mechanical rewrite encoded.
 
+## Catalog moves deliberately NOT in this directory
+
+Two HIGH-LEVERAGE FP catalog moves from
+[`../../docs/refactoring-catalog.md`](../../docs/refactoring-catalog.md)
+are absent here for reasons that aren't "we forgot" — they need
+pattern logic ast-grep doesn't express:
+
+- **Tupling** (Bird *Pearls* 2010 Pearl 9 / Pearl 11). Trigger is
+  "two aggregation calls over the same iterable in the same scope"
+  — a CROSS-STATEMENT pattern that requires identifying the iterable
+  by name across separate statements and verifying the calls are
+  consecutive. ast-grep matches a single tree pattern, not a
+  multi-statement sequence with a named-binding identity test. The
+  ESLint engine (the project's first engine choice for cross-statement
+  analysis) is the better fit. A Tupling rule belongs in
+  [`../rules/`](../rules/) if it's added on the TS side at all; the
+  Python side ships ASP406 (detection-only) in
+  [`../../python/src/aspergillus/rules/catalog/tupling.py`](../../python/src/aspergillus/rules/catalog/tupling.py).
+
+- **Worker/Wrapper** (Gill + Hutton 2009). Trigger is "function whose
+  body is a single pass-through call where args structurally match
+  the function's params." That's expressible as an ast-grep pattern
+  IF the args-match-params check could be encoded as a meta-variable
+  constraint — but ast-grep's meta-variables identify subtrees by
+  pattern, not by cross-position structural equality (i.e., "$ARGS in
+  the call match $PARAMS in the def"). Without the structural-equality
+  test, the rule overflags every single-statement return wrapper,
+  which is too noisy to ship. The Python side ships ASP407 with the
+  structural check encoded in LibCST in
+  [`../../python/src/aspergillus/rules/catalog/worker_wrapper.py`](../../python/src/aspergillus/rules/catalog/worker_wrapper.py);
+  the equivalent TS encoding needs ESLint (visiting both the
+  function-def's params and the return-call's args under the same
+  rule instance).
+
+These two moves' value justifies the ESLint-or-LibCST encoding effort
+in their respective consumer languages, but they're out of scope for
+ast-grep specifically.
+
+A third move (**ASP405 redundant-await-return** / `return await x`)
+exists as an ast-grep rule on the TS side
+([`redundant-await-return.yml`](redundant-await-return.yml)) but does
+NOT have a Python analogue, because Python's async semantics differ
+from JS in a way that makes the rewrite incorrect — see
+[`../../python/src/aspergillus/rules/catalog/__init__.py`](../../python/src/aspergillus/rules/catalog/__init__.py)
+§ "Why no ASP405 redundant-await-return" for the demonstration.
+
 ## Cross-references
 
 - [`../../docs/design.md`](../../docs/design.md) §"Multi-engine
