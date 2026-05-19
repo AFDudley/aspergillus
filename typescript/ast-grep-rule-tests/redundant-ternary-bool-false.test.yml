@@ -1,0 +1,14 @@
+id: redundant-ternary-bool-false
+valid:
+  # No-match: ternary returning a non-boolean literal in the
+  # false branch — not a candidate for `&&` collapse.
+  - "const r = cond ? y : 0;"
+  # No-match: `false` in the true branch — would collapse to
+  # `!cond && y` which is a different rewrite this rule
+  # deliberately does not perform.
+  - "const r = cond ? false : y;"
+invalid:
+  # Positive: trivial collapse to `&&`.
+  - "const r = cond ? y : false;"
+  # Edge case (positive): function call result as `$Y`.
+  - "const r = ready ? compute() : false;"

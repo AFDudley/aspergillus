@@ -1,0 +1,13 @@
+id: redundant-ternary-bool-true
+valid:
+  # No-match: ternary returning a non-boolean literal in the
+  # true branch — not a candidate for `||` collapse.
+  - "const r = cond ? 1 : y;"
+  # No-match: `true` is in the false branch — that's the dual
+  # rule's territory, not this one's.
+  - "const r = cond ? y : true;"
+invalid:
+  # Positive: trivial collapse to `||`.
+  - "const r = cond ? true : y;"
+  # Edge case (positive): nested call expression for `$X`.
+  - "const r = isReady() ? true : fallback;"

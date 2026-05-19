@@ -1,0 +1,14 @@
+id: eta-reduce-arrow
+valid:
+  # No-match: method call — eta-reducing would lose the `this`
+  # binding on `obj`. The conservativeness filter
+  # (constraints.F.kind: identifier) excludes this.
+  - "const g = (x) => obj.foo(x);"
+  # No-match: arrow body uses the parameter twice — not an
+  # eta-redex.
+  - "const g = (x) => f(x, x);"
+invalid:
+  # Positive: plain identifier callee.
+  - "const g = (x) => foo(x);"
+  # Edge case (positive): nested in a higher-order use site.
+  - "const ys = xs.map((x) => bar(x));"

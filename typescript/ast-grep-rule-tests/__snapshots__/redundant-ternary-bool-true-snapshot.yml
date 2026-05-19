@@ -1,0 +1,16 @@
+id: redundant-ternary-bool-true
+snapshots:
+  'const r = cond ? true : y;':
+    fixed: const r = cond || y;
+    labels:
+    - source: 'cond ? true : y'
+      style: primary
+      start: 10
+      end: 25
+  'const r = isReady() ? true : fallback;':
+    fixed: const r = isReady() || fallback;
+    labels:
+    - source: 'isReady() ? true : fallback'
+      style: primary
+      start: 10
+      end: 37

@@ -1,0 +1,16 @@
+id: map-fusion
+snapshots:
+  const ys = arr.map(x => x + 1).map(x => x * 2);:
+    fixed: const ys = arr.map(_x => x => x * 2(x => x + 1(_x)));
+    labels:
+    - source: arr.map(x => x + 1).map(x => x * 2)
+      style: primary
+      start: 11
+      end: 46
+  const ys = xs.map(f).map(g);:
+    fixed: const ys = xs.map(_x => g(f(_x)));
+    labels:
+    - source: xs.map(f).map(g)
+      style: primary
+      start: 11
+      end: 27

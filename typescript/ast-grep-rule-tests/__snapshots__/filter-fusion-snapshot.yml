@@ -1,0 +1,16 @@
+id: filter-fusion
+snapshots:
+  const ys = arr.filter(x => x > 0).filter(x => x < 100);:
+    fixed: const ys = arr.filter(_x => x => x > 0(_x) && x => x < 100(_x));
+    labels:
+    - source: arr.filter(x => x > 0).filter(x => x < 100)
+      style: primary
+      start: 11
+      end: 54
+  const ys = xs.filter(p).filter(q);:
+    fixed: const ys = xs.filter(_x => p(_x) && q(_x));
+    labels:
+    - source: xs.filter(p).filter(q)
+      style: primary
+      start: 11
+      end: 33

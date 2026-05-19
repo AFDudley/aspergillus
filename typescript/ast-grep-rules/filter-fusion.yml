@@ -1,0 +1,18 @@
+id: filter-fusion
+language: TypeScript
+severity: error
+message: |
+  Two adjacent `.filter(...)` calls allocate an intermediate array.
+  Fusing them into a single `.filter(...)` whose body conjoins the
+  two predicates with `&&` avoids the intermediate. Order matters
+  for side-effect-bearing predicates: the rewrite preserves the
+  original left-to-right evaluation order (`$P` first, then `$Q`).
+  See `aspergillus/docs/refactoring-catalog.md § filter-fusion`.
+
+  Caveat: the inserted parameter binding (`_x`) is a fixed name;
+  if your callsite already binds `_x` in the same scope, rename
+  the conflict before accepting the autofix.
+rule:
+  pattern: $XS.filter($P).filter($Q)
+fix: |-
+  $XS.filter(_x => $P(_x) && $Q(_x))

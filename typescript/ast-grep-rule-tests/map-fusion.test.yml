@@ -1,0 +1,13 @@
+id: map-fusion
+valid:
+  # No-match: single map (nothing to fuse).
+  - "const ys = xs.map(f);"
+  # No-match: lookalike with filter between maps — different shape,
+  # cannot be fused into one map.
+  - "const ys = xs.map(f).filter(p).map(g);"
+invalid:
+  # Positive: two adjacent maps with named callees.
+  - "const ys = xs.map(f).map(g);"
+  # Positive: two adjacent maps with arrow bodies (edge case —
+  # callee is an arrow expression, not an identifier).
+  - "const ys = arr.map(x => x + 1).map(x => x * 2);"

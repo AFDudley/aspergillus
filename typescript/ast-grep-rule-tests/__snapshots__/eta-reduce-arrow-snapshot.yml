@@ -1,0 +1,16 @@
+id: eta-reduce-arrow
+snapshots:
+  const g = (x) => foo(x);:
+    fixed: const g = foo;
+    labels:
+    - source: (x) => foo(x)
+      style: primary
+      start: 10
+      end: 23
+  const ys = xs.map((x) => bar(x));:
+    fixed: const ys = xs.map(bar);
+    labels:
+    - source: (x) => bar(x)
+      style: primary
+      start: 18
+      end: 31

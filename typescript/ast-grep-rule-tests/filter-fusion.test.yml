@@ -1,0 +1,13 @@
+id: filter-fusion
+valid:
+  # No-match: single filter (nothing to fuse).
+  - "const ys = xs.filter(p);"
+  # No-match: lookalike with map between filters — different shape,
+  # not a filter/filter pair.
+  - "const ys = xs.filter(p).map(f).filter(q);"
+invalid:
+  # Positive: two adjacent filters with named predicates.
+  - "const ys = xs.filter(p).filter(q);"
+  # Positive: two adjacent filters with inline arrow predicates
+  # (edge case — predicates are arrow expressions).
+  - "const ys = arr.filter(x => x > 0).filter(x => x < 100);"

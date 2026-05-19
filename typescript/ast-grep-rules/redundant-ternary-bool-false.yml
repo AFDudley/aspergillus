@@ -1,0 +1,16 @@
+id: redundant-ternary-bool-false
+language: TypeScript
+severity: error
+message: |
+  `$X ? $Y : false` collapses to `$X && $Y` when the result is
+  consumed in a boolean context. Note the type change:
+  `cond ? y : false` has type `typeof y | false`, while
+  `cond && y` has type `typeof y | falsy(cond)`. Inspect the
+  surrounding type to confirm the falsy-coercion change is
+  acceptable. See `aspergillus/docs/refactoring-catalog.md §
+  boolean-conditional-collapse`.
+
+  Paired dual: see `redundant-ternary-bool-true.yml`.
+rule:
+  pattern: "$X ? $Y : false"
+fix: "$X && $Y"

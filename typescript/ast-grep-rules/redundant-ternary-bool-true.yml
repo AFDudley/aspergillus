@@ -1,0 +1,20 @@
+id: redundant-ternary-bool-true
+language: TypeScript
+severity: error
+message: |
+  `$X ? true : $Y` collapses to `$X || $Y` when the result is
+  consumed in a boolean context. Note the type change:
+  `cond ? true : y` has type `true | typeof y`, while
+  `cond || y` has type `truthy(cond) | typeof y`. Inspect the
+  surrounding type to confirm the truthy-coercion change is
+  acceptable. See `aspergillus/docs/refactoring-catalog.md §
+  boolean-conditional-collapse`.
+
+  Paired dual: see `redundant-ternary-bool-false.yml`. The two
+  ship as separate files (one rule per file) because ast-grep's
+  YAML-stream multi-document format is not supported by the
+  current rule loader (0.39.x); pair the files in review by
+  filename prefix.
+rule:
+  pattern: "$X ? true : $Y"
+fix: "$X || $Y"

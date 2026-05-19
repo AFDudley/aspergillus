@@ -1,0 +1,34 @@
+id: redundant-await-return
+language: TypeScript
+severity: error
+message: |
+  `return await $X` inside an async function is equivalent to
+  `return $X`: an async function automatically awaits the promise
+  it returns before resolving its own. Stack-trace shape is
+  preserved because that automatic await preserves the original
+  promise's rejection frame.
+
+  HLint analogue: "Use return" (`return $ await x` → `return x`).
+  See `aspergillus/docs/refactoring-catalog.md § redundant-await`.
+
+  Conservativeness encoded in the pattern (not just the message):
+  inside a `try` block, `return await` DOES catch promise
+  rejections in the enclosing `try/catch`, whereas `return`
+  (no await) does not — the unawaited promise resolves/rejects
+  in the caller's frame, bypassing the local catch. The rule
+  therefore uses a `not.inside: try_statement` ancestor filter
+  so the autofix only triggers outside try-blocks where the
+  rewrite is provably safe. Per the MTM-past-warn-promotion-phase
+  ADR (2026-05-19), a rewrite-shaped rule shipping at error+autofix
+  must encode its conservativeness in the pattern, not in a prose
+  caveat; the prior `severity: info` shape relied on reviewer
+  judgment, which is exactly the warn-then-promote workflow MTM
+  consumes aspergillus past.
+rule:
+  all:
+    - pattern: return await $X
+    - not:
+        inside:
+          kind: try_statement
+          stopBy: end
+fix: return $X

@@ -1,0 +1,28 @@
+# ast-grep configuration for the aspergillus TypeScript ast-grep rule
+# corpus.
+#
+# Rules live at `ast-grep-rules/<rule-id>.yml`. Test fixtures live at
+# `ast-grep-rule-tests/<rule-id>.test.yml` (sibling, NOT nested under
+# `ast-grep-rules/`). ast-grep walks `ruleDirs` recursively and tries
+# to parse every `.yml` file there as a rule; a nested `__tests__/`
+# subdirectory inside the rule dir triggers "missing field `language`"
+# parse errors for the test files. The sibling layout matches
+# ast-grep's documented convention
+# (https://ast-grep.github.io/guide/test-rule.html).
+#
+# Per the severity-graduation ADR
+# (../docs/decisions/2026-05-19-severity-graduation.md), rules in this
+# corpus ship at `error` with `fix:` populated. The MTM consumer (the
+# repo carrying this subtree) consumes at error+autofix; see the
+# MTM-side ADR `docs/decisions/2026-05-19-mtm-past-warn-promotion-phase.md`
+# for the consumer policy.
+#
+# See:
+#   - ast-grep-rules/README.md
+#   - https://ast-grep.github.io/reference/yaml.html
+
+ruleDirs:
+  - ast-grep-rules
+
+testConfigs:
+  - testDir: ast-grep-rule-tests

@@ -1,0 +1,19 @@
+id: map-fusion
+language: TypeScript
+severity: error
+message: |
+  Two adjacent `.map(...)` calls allocate an intermediate array.
+  Fusing them into a single `.map(...)` whose body composes the
+  two functions avoids the intermediate. Direction choice: this
+  rule rewrites toward fusion (one combined map) rather than the
+  inverse split — fusion is preferred for performance and reads
+  closer to a single pipeline stage. See
+  `aspergillus/docs/refactoring-catalog.md § map-fusion`.
+
+  Caveat: the inserted parameter binding (`_x`) is a fixed name;
+  if your callsite already binds `_x` in the same scope, rename
+  the conflict before accepting the autofix.
+rule:
+  pattern: $XS.map($F).map($G)
+fix: |-
+  $XS.map(_x => $G($F(_x)))

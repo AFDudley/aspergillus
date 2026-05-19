@@ -1,0 +1,38 @@
+id: redundant-await-return
+valid:
+  # No-match: plain return (no await) — nothing to strip.
+  - |
+    async function f() {
+      return x;
+    }
+  # No-match: bare await as statement (no return) — different
+  # shape; stripping the await would change behavior (the
+  # expression's promise no longer flushed before next stmt).
+  - |
+    async function f() {
+      await x;
+    }
+  # No-match: `return await` inside a try block. The await is
+  # load-bearing (it forces the promise to reject inside the
+  # try/catch frame); the autofix would silently drop catch-
+  # block coverage. Encoded via the rule's `not.inside:
+  # try_statement` ancestor filter.
+  - |
+    async function f() {
+      try {
+        return await fetchUser(id);
+      } catch (e) {
+        return null;
+      }
+    }
+invalid:
+  # Positive: trivial `return await` inside an async function.
+  - |
+    async function f() {
+      return await x;
+    }
+  # Edge case (positive): `return await` with a call expression.
+  - |
+    async function g() {
+      return await fetchUser(id);
+    }

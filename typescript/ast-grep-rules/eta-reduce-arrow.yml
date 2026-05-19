@@ -1,0 +1,21 @@
+id: eta-reduce-arrow
+language: TypeScript
+severity: error
+message: |
+  Eta-reduce: `(x) => f(x)` is equivalent to `f` when `f` is a
+  plain function reference. Method calls (`obj.method(x)`) are
+  NOT safe to eta-reduce — the `this` binding of `obj.method`
+  depends on the receiver `obj`, and `obj.method` extracted into
+  a free reference loses that binding. This rule is conservative:
+  only matches when the callee is a plain identifier (the
+  `constraints.F.kind: identifier` filter excludes
+  `member_expression` and other callee shapes). Method-call forms
+  are deliberately left untouched (false negative preferred to
+  false positive). See
+  `aspergillus/docs/refactoring-catalog.md § eta-reduction`.
+rule:
+  pattern: ($X) => $F($X)
+constraints:
+  F:
+    kind: identifier
+fix: $F

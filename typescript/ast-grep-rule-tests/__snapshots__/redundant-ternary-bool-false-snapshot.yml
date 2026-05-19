@@ -1,0 +1,16 @@
+id: redundant-ternary-bool-false
+snapshots:
+  'const r = cond ? y : false;':
+    fixed: const r = cond && y;
+    labels:
+    - source: 'cond ? y : false'
+      style: primary
+      start: 10
+      end: 26
+  'const r = ready ? compute() : false;':
+    fixed: const r = ready && compute();
+    labels:
+    - source: 'ready ? compute() : false'
+      style: primary
+      start: 10
+      end: 35

@@ -1,0 +1,28 @@
+id: redundant-await-return
+snapshots:
+  ? |
+    async function f() {
+      return await x;
+    }
+  : fixed: |
+      async function f() {
+        return x
+      }
+    labels:
+    - source: return await x;
+      style: primary
+      start: 23
+      end: 38
+  ? |
+    async function g() {
+      return await fetchUser(id);
+    }
+  : fixed: |
+      async function g() {
+        return fetchUser(id)
+      }
+    labels:
+    - source: return await fetchUser(id);
+      style: primary
+      start: 23
+      end: 50
