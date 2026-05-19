@@ -1,223 +1,233 @@
-# aspergillus — NASA-Grade Python Linter
+# aspergillus — NASA-grade multi-language linter
 
-A Python linter that enforces NASA-grade software engineering practices,
-built on Fixit/LibCST. Named after Aspergillus nidulans, the first fungus
-NASA intentionally grew on the ISS.
+A rule set inspired by NASA's Power of 10, implemented as a Fixit/LibCST
+rule-pack for Python and as reference configs composing stock linters for
+TypeScript and Rust. Named after *Aspergillus nidulans*, the first fungus
+NASA intentionally grew on the International Space Station.
 
-## What It Is
-
-A standalone Python project (`aspergillus`) that provides Fixit lint rules
-organized by NASA quality level (from `02-nasa-grade-software-engineering-guide.md`).
-Rules live in the package, consumed by any repo as a git subtree. Each level
-builds on the previous one.
-
-**Goal**: Level 3 (type safety + explicit error handling), reached incrementally
-through Level 2 (pure functions + immutability). Level 1 (static analysis +
-code hygiene) is already handled by ruff, mypy, and ansible-lint.
-
-## Rule Set
-
-### Level 2 Rules (Blocking)
-
-| Rule     | Description                                | Detection                                 | Difficulty |
-|----------|--------------------------------------------|-------------------------------------------|------------|
-| `ASP201` | Function too long (>60 lines)              | Line count                                | Easy       |
-| `ASP202` | Missing assertions (<2 per function)       | Assert count per FunctionDef              | Easy       |
-| `ASP203` | Global mutable state (`CACHE = {}`)        | Module-level assignment to mutable type   | Easy       |
-| `ASP204` | Unbounded loop (`while` without bound)     | Loop AST analysis                         | Medium     |
-| `ASP205` | Impure function (calls I/O from blocklist) | Call name matching against blocklist       | Medium     |
-| `ASP206` | Mixed I/O and logic (FC/IS violation)      | I/O call + statement count heuristic      | Medium     |
-
-### Level 3 Rules (Warning)
-
-| Rule     | Description                                | Detection                                 | Difficulty |
-|----------|--------------------------------------------|-------------------------------------------|------------|
-| `ASP301` | Raise where Result type could be used      | Raise + return path analysis              | Medium     |
-| `ASP302` | Optional/None return type                  | Return annotation check                   | Easy       |
-
-Bare except, missing annotations, and broad exception catches are already
-covered by ruff and mypy. No duplication.
-
-### Level 1 (External Tools — Not Aspergillus)
-
-Level 1 is static analysis and code hygiene, handled entirely by existing
-tools in the pre-commit pipeline:
-
-| Tool | What it covers |
-|------|----------------|
-| ruff | General linting, import sorting, pyflakes, pycodestyle |
-| black / ruff-format | Code formatting |
-| mypy / pyright | Type checking |
-| bandit | Security linting |
-| pre-commit hooks | Trailing whitespace, YAML/JSON validation, merge conflicts |
-
-Aspergillus does not duplicate these. Level 1 is a prerequisite — repos
-must have these tools configured before aspergillus rules are meaningful.
-
-Reference configs for Level 1 are provided in `src/aspergillus/configs/`:
-- `level1-pyproject.toml` — ruff, mypy, bandit, pytest settings
-- `level1-pre-commit-config.yaml` — pre-commit hooks for all Level 1 tools
-
-Copy the relevant sections into your project to establish Level 1 baseline.
-
-### Level 4 Rules (Planned — Not Implemented)
-
-Design by contract, property-based testing, and mutation testing.
-
-| Rule     | Description                                | Detection                                 | Difficulty |
-|----------|--------------------------------------------|-------------------------------------------|------------|
-| `ASP401` | Missing precondition assertions            | Function params not validated via assert  | Medium     |
-| `ASP402` | Missing postcondition assertions           | Return value not validated before return  | Medium     |
-| `ASP403` | Missing class invariant check              | Class with mutable state, no invariant method called after mutation | Hard |
-| `ASP404` | No property-based tests for pure function  | Pure function (no ASP205) without corresponding hypothesis test | Hard |
-
-Level 4 enforcement requires cross-file analysis (matching functions to
-their tests), which is beyond single-file Fixit rules. Implementation
-options:
-- Custom Fixit rules that scan test files for hypothesis decorators
-- Separate CLI pass that correlates source and test modules
-- Integration with pytest plugin for mutation score reporting
-
-Reference: NASA guide section "Level 4: Contracts + Targeted Unit Tests"
-(`exophial/docs/REFERENCE/02-nasa-grade-software-engineering-guide.md`)
-
-### Level 5 Rules (Planned — Not Implemented)
-
-Formal verification via bounded model checking. Apply selectively to
-safety-critical or financial logic only.
-
-| Rule     | Description                                | Detection                                 | Difficulty |
-|----------|--------------------------------------------|-------------------------------------------|------------|
-| `ASP501` | Unverified financial calculation           | Arithmetic on monetary types without Z3 proof | Very Hard |
-| `ASP502` | Unverified state machine transition        | State enum transitions without model check | Very Hard |
-| `ASP503` | Unverified invariant preservation          | Class invariant not formally proven across all methods | Very Hard |
-
-Level 5 is not a linter in the traditional sense. It requires:
-- Z3 or similar SMT solver integration
-- Manual annotation of proof obligations
-- Selective application (5-15x cost, only for critical paths)
-
-Candidates for Level 5 in our codebase:
-- Bonding curve calculations (sniper)
-- Staking/delegation arithmetic
-- Firewall rule generation (correctness proof that rules don't conflict)
-
-Reference: NASA guide section "Level 5: Formal Verification"
-(`exophial/docs/REFERENCE/02-nasa-grade-software-engineering-guide.md`)
-
-## Enforcement Model
-
-- **Level 2 rules block** — pre-commit fails on violations
-- **Level 3 rules warn** — reported but don't block commits
-- Controlled via `--level` flag: `--level 2` blocks on Level 2 only,
-  `--level 3` blocks on both
-- Per-rule suppression via `# noqa: ASP2XX` comments
-
-## I/O Blocklist
-
-The purity (ASP205) and FC/IS (ASP206) rules need to know which functions
-do I/O. This is a curated set, not a complete analysis:
-
-```python
-IO_FUNCTIONS = {
-    # builtins
-    "print", "input", "open",
-    # subprocess
-    "subprocess.run", "subprocess.call", "subprocess.Popen",
-    # urllib
-    "urllib.request.urlopen", "urllib.request.build_opener",
-    # os
-    "os.system", "os.popen", "os.remove", "os.mkdir", "os.makedirs",
-    # logging
-    "logging.info", "logging.warning", "logging.error", "logging.debug",
-    "log.info", "log.warning", "log.error", "log.debug",
-    # socket/network
-    "socket.socket", "socket.connect",
-    # file system
-    "shutil.copy", "shutil.move", "shutil.rmtree",
-    "pathlib.Path.write_text", "pathlib.Path.read_text",
-    "pathlib.Path.unlink", "pathlib.Path.mkdir",
-}
-```
-
-Extensible per-repo via `pyproject.toml`:
-
-```toml
-[tool.aspergillus]
-extra_io_functions = ["requests.get", "httpx.post"]
-```
-
-## Package Structure
+## Repository layout
 
 ```
 aspergillus/
-├── pyproject.toml              # fixit, libcst deps, CLI entry point
-├── src/
-│   └── aspergillus/
-│       ├── __init__.py
-│       ├── rules/
-│       │   ├── __init__.py
-│       │   ├── level2.py       # ASP201-206
-│       │   └── level3.py       # ASP301-302
-│       └── io_blocklist.py     # Known impure functions
-├── tests/
-│   ├── test_level2.py
-│   └── test_level3.py
-├── .pre-commit-config.yaml     # Self-linting (ruff, mypy, ruff-format)
-└── .pre-commit-hooks.yaml      # Hook definition (unused — subtree model)
+├── docs/                       # design, this file, implementation notes
+├── python/                     # Python: actual code (Fixit rules)
+├── typescript/                 # TS: reference configs + stub CLI
+└── rust/                       # Rust: reference configs (placeholder)
 ```
 
-## Integration (Subtree)
+Each language subtree stands alone. Consumers pull aspergillus as a git
+subtree and use only the language subtree(s) they need.
 
-Consumers pull aspergillus as a git subtree and use a `repo: local`
-pre-commit hook:
+## Multi-engine architecture
 
-```yaml
-- repo: local
-  hooks:
-    - id: aspergillus
-      name: aspergillus
-      entry: uv run python -m aspergillus --level 2
-      language: system
-      types: [python]
+Aspergillus is the unified rule catalog. Consumers see one tool with one
+rule set; engines underneath are an internal implementation detail. The
+catalog uses three engines, chosen per-rule by what the rule's trigger
+and rewrite shapes require:
+
+| Engine | Languages | What it's good at |
+|---|---|---|
+| Custom ESLint rules + boundary plugins | TypeScript | Constraint-shaped checks that need type info, data-flow, or multi-file context; architectural import boundaries via `eslint-plugin-boundaries`. Lives under [`typescript/rules/`](../typescript/rules/) (custom rules) and [`typescript/configs/`](../typescript/configs/) (composed stock baselines). |
+| fixit / LibCST | Python | Constraint-shaped checks on the CST surface — function length, assertion density, I/O purity, raise-vs-Result. Lives under [`python/src/aspergillus/`](../python/src/aspergillus/). |
+| [ast-grep](https://ast-grep.github.io/) | TypeScript, Python (cross-language) | Declarative shape rewrites — a YAML rule names a tree pattern and a replacement template, ast-grep applies the rewrite. Best fit for catalog moves whose trigger and fix are both expressible as tree shape (e.g. `.map().map()` → `.map()` over composed function). Lives under [`typescript/ast-grep-rules/`](../typescript/ast-grep-rules/) and [`python/ast-grep-rules/`](../python/ast-grep-rules/). Rust ast-grep coverage is planned but not yet scaffolded — the rust tree remains placeholder-tier (configs only). |
+
+### How an engine gets chosen
+
+A rule lands in `ast-grep-rules/` when **both** of these hold:
+
+1. The violation's trigger is expressible as a tree-shape pattern (no
+   type info, no data-flow analysis, no inter-module reasoning needed).
+2. There is a *single mechanical rewrite* that resolves it.
+
+If only (1) holds, the rule belongs in ESLint or fixit (constraint
+check, no autofix). If neither holds, the rule isn't expressible
+mechanically and isn't a candidate for aspergillus at all — it's
+review-time concern.
+
+This split aligns with the severity-graduation ADR
+([`docs/decisions/2026-05-19-severity-graduation.md`](decisions/2026-05-19-severity-graduation.md)):
+ast-grep rules ship at `error` with `fix:` populated, because ast-grep's
+value is *applying* the rewrite. Constraint-without-autofix rules
+(ASP201 function length, ASP204 unbounded loops) live in the ESLint /
+fixit surface where "error without autofix, agent applies the catalog
+move" is the contract.
+
+### Consumer's view
+
+A consumer adds aspergillus once (npm install for TS, `uv tool install`
+for Python — see [Distribution](#distribution) below) and gets one
+rule corpus. Whether a given rule is enforced by ESLint, fixit, or
+ast-grep is an implementation detail the consumer doesn't manage. The
+catalog of canonical moves (function-too-long → Extract Function;
+double-`map` → fused `map`; impure function → boundary lift; etc.) is
+the user-facing surface; the engine routing is internal.
+
+### Catalog corpus
+
+The authoritative list of catalog moves — both constraint-driven
+(reject-on-violation) and clarity/perf (rewrite-on-detection) — is
+maintained downstream in consumer repos that have adopted aspergillus
+and accumulated their own move citations. The canonical reference home
+for a consumer that wants to centralize their catalog in aspergillus
+is `docs/refactoring-catalog.md` in this repo (not yet seeded; see the
+slop-to-production doctrine in
+[`docs/slop_to_production.md`](slop_to_production.md) for how the L2/L3
+layer consumes the corpus).
+
+## Rule set
+
+### Level 1 — External tooling baseline (not aspergillus code)
+
+Handled by existing tools, configured via aspergillus's reference configs:
+
+| Language   | Tools |
+|------------|-------|
+| Python     | ruff, ruff-format, mypy, bandit, pre-commit |
+| TypeScript | ESLint, typescript-eslint, Prettier, tsc strict, pre-commit |
+| Rust       | clippy, rustfmt |
+
+Reference configs live in `python/src/aspergillus/configs/`,
+`typescript/configs/`, and `rust/configs/` respectively.
+
+### Level 2 — Blocking
+
+| Rule   | Description                              | Python (Fixit)                   | TypeScript                                                | Rust |
+|--------|------------------------------------------|----------------------------------|-----------------------------------------------------------|------|
+| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`                | `max-lines-per-function`                                  | `clippy::too_many_lines` |
+| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity`            | `aspergillus/asp202-min-assertions` (custom)              | Manual (planned dylint rule) |
+| ASP203 | No global mutable state                  | `GlobalMutableState`             | `no-restricted-syntax` (module-level `let`/`var`/`export let`) | Language (no safe `static mut`) |
+| ASP204 | No unbounded loops                       | `UnboundedLoop`                  | `functional/no-loop-statements` (strict; revisit)         | Manual (prefer iterators) |
+| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`                 | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core) |
+| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`                | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure |
+
+#### TypeScript Level 2 — design notes
+
+- **ASP202 (assertion density):** No off-the-shelf TS rule exists for assertion density. Aspergillus ships its own `asp202-min-assertions` rule via the `./eslint-rules` plugin export. Default behavior: skip functions under 10 lines; require ≥2 assertion-like calls (`assert`, `invariant`, `console.assert`, `assert.X`); configurable via rule options. Two extension points cover common precondition-enforcement patterns that aren't named `assert`: `methodNames` matches a method name regardless of receiver (e.g. `methodNames: ['parse']` counts every Zod `schema.parse(input)`), and `countThrowStatements` counts `throw` statements as assertions (NASA's `assert(cond)` is logically `if (!cond) throw`).
+
+- **ASP203 (no global mutable state):** Implemented via `no-restricted-syntax` patterns banning module-level `let`/`var` and `export let`/`export var`. Local `let` inside functions remains allowed — NASA's intent is "global" mutable state, not a blanket ban on `let`.
+
+- **ASP204 (no unbounded loops):** NASA's rule requires loops to have a statically-determinable iteration bound (no `while(true)`). There is no off-the-shelf ESLint rule for that predicate, so the current implementation uses `functional/no-loop-statements` — which bans **all** loops, including bounded `for(let i=0; i<N; i++)`. This is a strict over-approximation chosen because it lands at `warn` and surfaces something useful. **To revisit:** replace with a custom `aspergillus/asp204-bounded-loops` rule that detects only unbounded loop patterns (`while(true)`, `for(;;)`, `while(condition)` where condition isn't statically bounded). Tracked under the next aspergillus TS milestone.
+
+- **ASP205/206 (purity boundary, FC/IS):** TypeScript's I/O surface is overwhelmingly import-shaped (`import { writeFile } from 'fs'`, `import http from 'node:http'`, the global `fetch`, ORM/RPC clients) rather than named-call-shaped, so `eslint-plugin-boundaries` enforces the FC/IS pattern more precisely than a Python-style I/O name blocklist would. Aspergillus ships several `./layouts/*` config exports (`node-service`, `rn-app`, `react-spa`, `fullstack-monorepo`, `generic-3-layer`) covering common project shapes. `aspergillus-ts init` prompts for a layout (or `--layout=<name>` non-interactively); the chosen layout is imported into the consumer's `eslint.config.js`, where its element/rule definitions can be overridden by appending a later flat-config block. `--layout=none` skips the import (consumer declares elements themselves). Plan: `docs/superpowers/plans/2026-04-28-typescript-asp205-asp206-purity.md`.
+
+### Level 3 — Warning
+
+| Rule   | Description                        | Python (Fixit)            | TypeScript                                       | Rust |
+|--------|------------------------------------|---------------------------|--------------------------------------------------|------|
+| ASP301 | Result types, no exceptions        | `RaiseInsteadOfResult`    | `functional/no-throw-statements`, neverthrow     | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
+| ASP302 | No Optional/None returns           | `OptionalReturnType`      | `strictNullChecks` + neverthrow                  | No null in language |
+
+### Levels 4–5 — Planned, not implemented
+
+Contracts, property-based tests (L4), and formal verification (L5). See
+`python/src/aspergillus/` for the fullest current implementation, and
+this document's history for research pointers.
+
+## Purity / FC/IS enforcement (ASP205/206)
+
+The two languages take different approaches because their I/O surfaces are
+shaped differently:
+
+- **Python** uses a curated I/O blocklist (see
+  `python/src/aspergillus/io_blocklist.py`). Calls to known I/O functions
+  (`subprocess.run`, `urllib.urlopen`, etc.) are pattern-matched inside
+  function bodies. Consumers extend the list per-project via
+  `[tool.aspergillus] extra_io_functions`. The blocklist works because
+  Python's stdlib is the dominant I/O surface and is stable.
+
+- **TypeScript** uses architectural boundaries via `eslint-plugin-boundaries`.
+  TS I/O is overwhelmingly import-shaped (`import { writeFile } from 'fs'`,
+  global `fetch`, third-party clients), and the npm I/O surface turns over
+  too rapidly for a name blocklist to stay current. `eslint-plugin-boundaries`
+  enforces what `core/` may import from, which is more precise. Aspergillus
+  ships preset layouts (`node-service`, `rn-app`, `react-spa`,
+  `fullstack-monorepo`, `generic-3-layer`) consumers select at
+  `aspergillus-ts init` time; the layout is imported as a flat-config block
+  and can be overridden by the consumer.
+
+## Distribution
+
+Each language subtree has its own distribution path. TypeScript uses
+npm; Python uses uv; Rust uses a file copy.
+
+### TypeScript
+
+- **Phase 1 (current): git-URL npm install.** Consumers add
+  `github:AFDudley/aspergillus#main` as a devDependency. npm clones the
+  repo, runs the root `prepare` script (builds `typescript/cli/dist/`
+  via `tsc`), and exposes the package via the `exports` map:
+
+  ```bash
+  npm install -D github:AFDudley/aspergillus#main @eslint/js typescript-eslint \
+    eslint-plugin-import eslint-plugin-unused-imports eslint-config-prettier \
+    eslint prettier typescript
+  npx aspergillus-ts init
+  ```
+
+  Wrappers reference the package directly:
+
+  ```js
+  // eslint.config.js
+  import base from '@afdudley/aspergillus/eslint-config';
+  export default [...base];
+  ```
+  ```json
+  // tsconfig.json
+  { "extends": "@afdudley/aspergillus/tsconfig" }
+  ```
+  ```cjs
+  // prettier.config.cjs
+  module.exports = { ...require('@afdudley/aspergillus/prettier-config') };
+  ```
+
+  No `vendor/` directory in consumers; aspergillus lives under
+  `node_modules/@afdudley/aspergillus/` like any other dependency.
+
+- **Phase 2 (planned): registry publish.** Once the package stabilizes
+  across 3+ consumer repos, publish `@afdudley/aspergillus` to
+  GitHub Packages. Consumer migration is one line:
+
+  ```diff
+  - "@afdudley/aspergillus": "github:AFDudley/aspergillus#main"
+  + "@afdudley/aspergillus": "^0.1.0"
+  ```
+
+  Package name, `exports` paths, and import specifiers stay identical.
+
+### Python
+
+```bash
+uv tool install git+https://github.com/AFDudley/aspergillus.git#subdirectory=python
 ```
 
-The consumer's `pyproject.toml` adds `fixit` and `libcst` to dependencies,
-or invokes aspergillus from its own venv.
+Then in the consumer's `pyproject.toml`:
 
-## What It Does NOT Do
+```toml
+[tool.fixit]
+enable = ["aspergillus.rules"]
+```
 
-- No type checking (mypy handles that)
-- No formatting (ruff-format handles that)
-- No general linting (ruff handles that)
-- No auto-fix in v0.1 — report only. Auto-fix is a future goal enabled
-  by LibCST's concrete syntax tree preservation.
+### Rust
 
-## Project Setup
+```bash
+curl -fsSL https://raw.githubusercontent.com/AFDudley/aspergillus/main/rust/configs/clippy.toml -o clippy.toml
+```
 
-- **Location**: `~/code/git_puller/repos/aspergillus`
-- **No upstream** — local git repo for now
-- **Own pebbles DB** — standalone issue tracking
-- **Own pyproject.toml** — deps: `fixit`, `libcst`, `ruff`, `mypy`, `pre-commit`
-- **Python 3.10+**
-- **Pre-commit on itself** — ruff, mypy, ruff-format
+Paste `rust/configs/cargo-lints.toml` contents into the consumer's
+`Cargo.toml` under `[lints.clippy]`.
 
-## Implementation Order
+## Enforcement model
 
-1. Scaffold repo, pyproject.toml, pebbles init
-2. `ASP201` (function length) + `ASP202` (assertions) — easy wins, prove
-   the Fixit integration works
-3. `ASP203` (global mutable state) + `ASP204` (unbounded loops)
-4. I/O blocklist + `ASP205` (impurity) + `ASP206` (FC/IS violation)
-5. `ASP301` (raise vs Result) + `ASP302` (Optional return)
-6. Add as subtree to biscayne-agave-runbook, wire into pre-commit, run
-   against `snapshot_download.py`
+- **Level 2 blocks** — pre-commit fails on any violation.
+- **Level 3 also blocks** in strict adopters (recommended); warn elsewhere.
+- **Severity-flip workflow**: every new rule lands at `warn`, stays there
+  until violations reach 0, then flips to `error` in a dedicated PR.
+- **Per-rule suppression**: `# noqa: ASP2XX` (Python), ESLint disable comments
+  (TS), `#[allow(clippy::…)]` (Rust).
 
-## Research Source
+## What this is NOT
 
-Based on research by Michelangelo (maniple worker, 2026-03-10):
-- Ruff has no custom rule support and no timeline
-- Fixit (Meta/Instagram) is the best fit: local rules, auto-fix capable,
-  LibCST-based, built-in test framework, pre-commit integration
-- No existing NASA Power of 10 Python linter — greenfield
-- NASA guide: `exophial/docs/REFERENCE/02-nasa-grade-software-engineering-guide.md`
+- Not a type checker (mypy/tsc/rustc handle that).
+- Not a formatter (ruff-format/Prettier/rustfmt handle that).
+- Not a general-purpose linter (ruff/ESLint recommended/clippy defaults).
+- Not auto-fix (report-only in v0.1 for all three languages).

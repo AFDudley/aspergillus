@@ -1,0 +1,50 @@
+{
+  "name": "@afdudley/aspergillus",
+  "version": "0.1.0-rc.3",
+  "description": "NASA-grade code quality rules for TypeScript (ESLint/Prettier/tsconfig configs + aspergillus-ts CLI)",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AFDudley/aspergillus.git"
+  },
+  "exports": {
+    "./eslint-config": "./typescript/configs/eslint.config.js",
+    "./eslint-rules": "./typescript/rules/index.js",
+    "./layouts/*": "./typescript/layouts/*.js",
+    "./tsconfig": "./typescript/configs/tsconfig.base.json",
+    "./prettier-config": "./typescript/configs/prettier.config.cjs",
+    "./pre-commit": "./typescript/configs/pre-commit-config.yaml"
+  },
+  "bin": {
+    "aspergillus-ts": "./typescript/cli/lib/index.js"
+  },
+  "files": [
+    "typescript/configs/**",
+    "typescript/cli/lib/**",
+    "typescript/cli/package.json",
+    "typescript/rules/**",
+    "!typescript/rules/**/*.test.js",
+    "!typescript/rules/package.json",
+    "typescript/layouts/**",
+    "!typescript/layouts/index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prepare": "tsc -p typescript/cli/tsconfig.json && node -e \"require('fs').chmodSync('typescript/cli/lib/index.js', 0o755)\"",
+    "test": "bun test typescript/rules"
+  },
+  "devDependencies": {
+    "@types/node": ">=18",
+    "eslint": "^9.0.0",
+    "typescript": ">=5.4"
+  },
+  "peerDependenciesMeta": {
+    "eslint-plugin-boundaries": { "optional": true },
+    "eslint-import-resolver-typescript": { "optional": true }
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

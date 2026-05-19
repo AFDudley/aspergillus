@@ -1,0 +1,33 @@
+# Aspergillus reference pre-commit config for TypeScript consumers.
+# Copied into consumer repos by `aspergillus-ts init`.
+#
+# Expects husky + lint-staged to be installed and wired in the consumer.
+# The lint-staged config below drives ESLint and Prettier on staged files.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (aspergillus reference config)
+        entry: bunx eslint --max-warnings=0
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs)$
+        pass_filenames: true
+        require_serial: false
+
+      - id: prettier
+        name: prettier (aspergillus reference config)
+        entry: bunx prettier --check
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs|json|md|ya?ml)$
+        pass_filenames: true

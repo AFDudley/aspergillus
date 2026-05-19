@@ -1,137 +1,88 @@
 # aspergillus
 
-NASA-grade Python linter built on [Fixit](https://fixit.readthedocs.io/)/[LibCST](https://libcst.readthedocs.io/).
+NASA-grade code quality rules, applied across multiple languages.
 
 Named after *Aspergillus nidulans*, the first fungus NASA intentionally
 grew on the International Space Station.
 
-## What it does
+## What it is
 
-Enforces structural code quality rules derived from NASA's Power of 10,
-adapted for Python. Complements ruff (general linting), mypy (type
-checking), and ruff-format (formatting) — no overlap.
+A rule set derived from NASA's Power of 10, ported to:
 
-## Rules
+- **Python** — Fixit/LibCST rule-pack. Implements ASP201–206 (Level 2)
+  and ASP301–302 (Level 3) as custom lint rules.
+- **TypeScript** — reference ESLint/tsconfig/Prettier configs plus a
+  stub `aspergillus-ts` CLI. Composes stock plugins; no custom rules.
+- **Rust** — reference clippy/Cargo-lints configs. Placeholder tier.
 
-### Level 2 — Blocking
+See [`docs/design.md`](docs/design.md) for the full per-language
+rule-mapping table.
 
-| Rule | Description |
-|------|-------------|
-| `ASP201` | Function too long (>60 lines) |
-| `ASP202` | Low assertion density (<2 per function) |
-| `ASP203` | Global mutable state |
-| `ASP204` | Unbounded loop (while without provable bound) |
-| `ASP205` | Impure function (calls I/O from blocklist) |
-| `ASP206` | Mixed I/O and logic (functional core / imperative shell violation) |
+## The rules at a glance
 
-### Level 3 — Warning
+### Level 2 — structural (blocking)
 
-| Rule | Description |
-|------|-------------|
-| `ASP301` | Raise where Result type could be used |
-| `ASP302` | Optional/None return type |
+- **ASP201 — Functions stay under 60 lines.** Long functions hide bugs
+  and resist change; the 60-line ceiling forces decomposition into
+  units a reader can hold in their head at once.
+- **ASP202 — At least 2 assertions per function.** Assertions catch
+  contract violations at the point of failure, before bad state
+  propagates into downstream data corruption or silent wrong answers.
+- **ASP203 — No global mutable state.** Modules stay testable in
+  isolation — no more "this test passed until I changed an unrelated
+  module." Eliminates whole classes of non-deterministic bugs.
+- **ASP204 — No unbounded loops.** Every loop must have a provable
+  termination bound. You cannot accidentally ship an infinite loop
+  into production or a runaway retry loop into an outage.
+- **ASP205 — No impure functions in core code.** Business logic is
+  testable without mocks, stubs, or fixtures; I/O is concentrated at
+  the edges of the system where it belongs.
+- **ASP206 — Functional core, imperative shell.** Side effects live at
+  the boundary. The core is pure and deterministic — same input always
+  produces the same output, so it behaves identically in tests and
+  production.
 
-### Level 1 — External Tools (not aspergillus)
+### Level 3 — error handling (blocking for strict adopters)
 
-Handled by ruff, black, mypy, bandit. Aspergillus assumes these are
-already configured. See [docs/design.md](docs/design.md) for details.
+- **ASP301 — Results, not exceptions.** Error paths appear in function
+  signatures via `Result<T, E>` / `neverthrow` / similar. No hidden
+  control-flow jumps; callers cannot forget to handle a failure.
+- **ASP302 — No `Optional` / `None` / `null` returns.** Force callers
+  to handle "not there" explicitly — no silent `NoneType has no
+  attribute …` crashes three layers down the call stack.
 
-### Level 4 — Planned
+### Level 4/5 — planned, not implemented
 
-| Rule | Description |
-|------|-------------|
-| `ASP401` | Missing precondition assertions |
-| `ASP402` | Missing postcondition assertions |
-| `ASP403` | Missing class invariant check |
-| `ASP404` | No property-based tests for pure function |
+Contracts and property-based tests (L4), formal verification via SMT
+solvers (L5). Applied selectively to safety-critical or financial
+logic.
 
-### Level 5 — Planned
+## Repository layout
 
-| Rule | Description |
-|------|-------------|
-| `ASP501` | Unverified financial calculation |
-| `ASP502` | Unverified state machine transition |
-| `ASP503` | Unverified invariant preservation |
+| Path | Contents |
+|------|----------|
+| `docs/` | Design, implementation notes, spec/plan history |
+| `python/` | Python package, tests, pre-commit config |
+| `typescript/` | Reference configs + stub CLI |
+| `rust/` | Reference clippy/Cargo lint configs (placeholder) |
 
-## Installation
+## Adoption
 
-```bash
-uv pip install .
-```
+Consumers pull aspergillus as a git subtree and use the language
+subtree(s) they need:
 
-Or as a development dependency in another project:
+- **Python** — see `python/` (install via `uv tool install ./python`).
+- **TypeScript** — see [`typescript/README.md`](typescript/README.md).
+- **Rust** — see [`rust/README.md`](rust/README.md).
 
-```bash
-uv add --dev aspergillus@{path/to/aspergillus}
-```
+## Levels
 
-## Usage
+- **Level 1** — external tooling baseline (ruff, ESLint, clippy, …).
+  Not aspergillus code; aspergillus ships reference configs only.
+- **Level 2** — structural rules (ASP201–206). Blocking.
+- **Level 3** — error-handling rules (ASP301–302). Blocking in strict
+  adopters.
+- **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
-### With fixit directly
-
-```bash
-# Run all aspergillus rules
-fixit lint src/
-
-# Fixit discovers rules via [tool.fixit] in pyproject.toml
-```
-
-### As a pre-commit hook (recommended)
-
-Add aspergillus as a git subtree in the consuming repo, then add a
-local hook:
-
-```yaml
-# .pre-commit-config.yaml
-- repo: local
-  hooks:
-    - id: aspergillus
-      name: aspergillus
-      entry: uv run python -m fixit lint
-      language: system
-      types: [python]
-```
-
-The consuming repo's `pyproject.toml` needs:
-
-```toml
-[tool.fixit]
-enable = ["aspergillus.rules"]
-```
-
-## I/O Blocklist
-
-ASP205 and ASP206 use a curated blocklist of ~40 known I/O functions
-(builtins, subprocess, os, logging, socket, shutil, pathlib). Extend
-per-repo:
-
-```toml
-[tool.aspergillus]
-extra_io_functions = ["requests.get", "httpx.post"]
-```
-
-## Suppression
-
-Suppress individual violations inline:
-
-```python
-CACHE: dict[str, str] = {}  # noqa: ASP203
-```
-
-## Development
-
-```bash
-# Install dependencies
-uv sync
-
-# Run tests
-uv run pytest
-
-# Run pre-commit (ruff + mypy + formatting)
-uv run pre-commit run --all-files
-```
-
-## Design
-
-See [docs/design.md](docs/design.md) for architecture decisions,
-enforcement model, and rule rationale.
+See [`docs/design.md`](docs/design.md) for the authoritative
+per-language rule-mapping table.

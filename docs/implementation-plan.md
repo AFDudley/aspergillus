@@ -1,3 +1,11 @@
+> **Superseded by the multi-language restructure.** This document describes
+> the original single-language Python implementation plan. The authoritative
+> layout and per-language plan now live in
+> `docs/superpowers/plans/2026-04-24-aspergillus-multilang-restructure.md`
+> and the updated design in `docs/design.md`. Kept for history.
+
+---
+
 # aspergillus Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
