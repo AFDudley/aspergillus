@@ -11,6 +11,7 @@
   "exports": {
     "./eslint-config": "./typescript/configs/eslint.config.js",
     "./eslint-rules": "./typescript/rules/index.js",
+    "./errors": "./typescript/errors/index.js",
     "./layouts/*": "./typescript/layouts/*.js",
     "./tsconfig": "./typescript/configs/tsconfig.base.json",
     "./prettier-config": "./typescript/configs/prettier.config.cjs",
@@ -26,6 +27,8 @@
     "typescript/rules/**",
     "!typescript/rules/**/*.test.js",
     "!typescript/rules/package.json",
+    "typescript/errors/**",
+    "!typescript/errors/**/*.test.js",
     "typescript/layouts/**",
     "!typescript/layouts/index.js",
     "README.md",
@@ -38,6 +41,7 @@
   "devDependencies": {
     "@types/node": ">=18",
     "eslint": "^9.0.0",
+    "eslint-plugin-boundaries": "^6.0.2",
     "typescript": ">=5.4"
   },
   "peerDependenciesMeta": {
