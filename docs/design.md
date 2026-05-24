@@ -114,8 +114,50 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 | Rule   | Description                        | Python (Fixit)            | TypeScript                                       | Rust |
 |--------|------------------------------------|---------------------------|--------------------------------------------------|------|
-| ASP301 | Result types, no exceptions        | `RaiseInsteadOfResult`    | `functional/no-throw-statements`, neverthrow     | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
-| ASP302 | No Optional/None returns           | `OptionalReturnType`      | `strictNullChecks` + neverthrow                  | No null in language |
+| ASP301 | Result types, no exceptions        | `RaiseInsteadOfResult`    | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
+| ASP302 | No Optional/None returns           | `OptionalReturnType`      | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions` | No null in language |
+
+#### TypeScript Level 3 — design notes
+
+Level 3 enforces NASA Power of 10 Rule 7: errors must be visible in
+types and impossible to silently drop. In TypeScript this is
+implemented via three rules, two of which are universal and one of
+which is layer-stratified:
+
+- **`functional/no-throw-statements`** — bans `throw` in functional-core
+  layers (`core`, `services`, `shared`, `db`, etc., per the layout).
+  Imperative-shell layers (`routes`, `hooks`, `components`, `pages`,
+  etc.) keep `throw` available — they are allowed to throw at framework
+  boundaries (HTTP, IPC) and catch from third-party libraries that
+  throw. Layer-stratification ships in the `./layouts/*` exports, not
+  in the base config.
+- **`@okee-tech/neverthrow/must-consume-result`** — type-aware; flags
+  any `Result<T, E>` that's created and discarded. Universal (FC and
+  shell). This is the rule that makes `neverthrow` load-bearing rather
+  than optional.
+- **`@typescript-eslint/strict-boolean-expressions`** — catches
+  `if (result)` ambiguity (truthy on a `Result` object, since
+  neverthrow's `Result` is a non-empty object) and similar
+  truthy-on-objects patterns. Universal.
+
+Plus `tsconfig.strictNullChecks: true` (covers the ASP302 bullet — no
+`null`/`undefined` as error signal). The aspergillus reference
+`tsconfig.base.json` already enables `strict: true`, which implies
+`strictNullChecks`.
+
+Result types come from the `neverthrow` library (`Result<T, E>` and
+`ResultAsync<T, E>`). A reference discriminated-union error helper
+ships at `@afdudley/aspergillus/errors` (`AspError<TTag, TData>` +
+`aspError(tag, message, data?, cause?)`); consumers may use it, build
+their own `AspError`-shaped union, or bring an existing convention.
+Aspergillus rules enforce shape, not import.
+
+Severity-flip workflow applies: rules land at `warn` and flip to
+`error` once consumers reach zero violations on the relevant layer.
+The shell `off` for `no-throw-statements` is permanent.
+
+See `docs/design-decisions/2026-05-08-l3-error-handling-mechanism.md`
+for the full rationale, options considered, and risks accepted.
 
 ### Levels 4–5 — Planned, not implemented
 
