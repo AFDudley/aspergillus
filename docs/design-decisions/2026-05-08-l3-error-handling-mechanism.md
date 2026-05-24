@@ -26,14 +26,22 @@ only consumers of aspergillus today.
 
 L3 in TypeScript uses **`neverthrow`** as the Result-type library, with:
 
-- `functional/no-throw-statements: error` in functional-core layers, `off`
+- `functional/no-throw-statements` in functional-core layers, `off`
   in imperative-shell layers
-- `@okee-tech/neverthrow/must-consume-result: error` everywhere it's wired
+- `@okee-tech/neverthrow/must-consume-result` everywhere it's wired
   (type-aware; lints on the type, not the import path)
-- `@typescript-eslint/strict-boolean-expressions: error` (type soundness
+- `@typescript-eslint/strict-boolean-expressions` (type soundness
   for `if (result)` patterns)
 - `tsconfig.strictNullChecks: true` (covers ASP302 — no null/undefined as
   error signal)
+
+> **Severity note:** the rule severities specified in this ADR's option
+> survey (`error`) predate the severity-graduation ADR
+> ([`docs/decisions/2026-05-19-severity-graduation.md`](../decisions/2026-05-19-severity-graduation.md)).
+> All three new L3 rules land at **`warn`** per that workflow and are
+> promoted to `error` per layer once violations reach zero. The
+> implementation reflects the post-graduation severities; this section's
+> historical wording is preserved for context.
 
 Severities are stratified per `boundaries/elements` layer via the layout
 itself, not by consumer-side `files:` overrides.
