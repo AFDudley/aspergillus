@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "prepare": "tsc -p typescript/cli/tsconfig.json && node -e \"require('fs').chmodSync('typescript/cli/lib/index.js', 0o755)\"",
-    "test": "bun test typescript/rules"
+    "test": "bun test typescript/rules typescript/layouts typescript/errors"
   },
   "devDependencies": {
     "@types/node": ">=18",
