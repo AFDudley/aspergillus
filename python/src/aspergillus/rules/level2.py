@@ -356,12 +356,12 @@ def _resolve_call_name(node: cst.BaseExpression) -> str | None:
 
 def _find_io_calls(body: cst.BaseSuite) -> set[str]:
     """Find calls to known I/O functions in a function body."""
-    from aspergillus.io_blocklist import IO_FUNCTIONS
+    from aspergillus.io_blocklist import IO_FUNCTIONS, IO_METHOD_NAMES
 
     found: set[str] = set()
     if not isinstance(body, cst.IndentedBlock):
         return found
-    _walk_for_io_calls(body, found, IO_FUNCTIONS)
+    _walk_for_io_calls(body, found, IO_FUNCTIONS, IO_METHOD_NAMES)
     return found
 
 
@@ -369,15 +369,22 @@ def _walk_for_io_calls(
     node: cst.CSTNode,
     found: set[str],
     io_functions: frozenset[str],
+    io_method_names: frozenset[str],
 ) -> None:
     """Recursively walk CST looking for Call nodes to I/O functions."""
     if isinstance(node, cst.Call):
         name = _resolve_call_name(node.func)
         if name and name in io_functions:
             found.add(name)
+        # Match bare method names on untyped receivers:
+        # `path_obj.read_text()` → Attribute(attr=Name("read_text"))
+        elif isinstance(node.func, cst.Attribute):
+            method_name = node.func.attr.value
+            if method_name in io_method_names:
+                found.add(method_name)
     for child in node.children:
         if isinstance(child, cst.CSTNode):
-            _walk_for_io_calls(child, found, io_functions)
+            _walk_for_io_calls(child, found, io_functions, io_method_names)
 
 
 class ImpureFunction(LintRule):
@@ -407,6 +414,12 @@ class ImpureFunction(LintRule):
             "    assert data\n"
             "    assert isinstance(data, str)\n"
             "    print(data)\n"
+        ),
+        Invalid(
+            "def load(path: object) -> str:\n"
+            "    assert path is not None\n"
+            "    assert hasattr(path, 'read_text')\n"
+            "    return path.read_text()\n",
         ),
     ]
 

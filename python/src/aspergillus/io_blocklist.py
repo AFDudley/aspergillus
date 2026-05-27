@@ -66,3 +66,23 @@ IO_FUNCTIONS: frozenset[str] = frozenset(
         "Path.touch",
     }
 )
+
+# Bare method names that are I/O regardless of receiver type.
+# Without type resolution, `path_obj.read_text()` resolves to
+# `path_obj.read_text` — never matching `Path.read_text` in
+# IO_FUNCTIONS. These names are unambiguously I/O on any object.
+IO_METHOD_NAMES: frozenset[str] = frozenset(
+    {
+        "read_text",
+        "write_text",
+        "read_bytes",
+        "write_bytes",
+        "urlopen",
+        "build_opener",
+        "unlink",
+        "mkdir",
+        "rmdir",
+        "rename",
+        "touch",
+    }
+)
