@@ -168,3 +168,203 @@ class OptionalReturnType(LintRule):
             if isinstance(node.value, cst.Name) and node.value.value == "Optional":
                 return True
         return False
+
+
+class ErrorSwallowedIntoSentinel(LintRule):
+    """ASP303: empty/falsy literal returned from `except` — error swallowed.
+
+    A ``return []`` / ``return {}`` / ``return ""`` / ``return 0`` (any
+    empty or falsy literal) lexically inside an ``except`` handler, in a
+    function whose return type is a bare success-shaped value (a list, a
+    dict, a str — NOT ``Result[...]``/``Optional[...]``/``X | None``),
+    conflates "the operation failed" with "the operation succeeded and
+    produced nothing." The caller cannot tell a read error from a
+    genuinely-empty result. Make the failure explicit: return a
+    ``Result[T, E]`` (or re-raise) instead of a success sentinel.
+
+    Live instance that motivated the rule: gateway
+    ``laconic_registry._fetch_records_raw`` does
+    ``except httpx.HTTPError: ... return []`` with a
+    ``-> list[dict[str, Any]]`` annotation — a chain read failure is
+    indistinguishable from "zero records on chain."
+
+    Sibling to ASP301 (raise+return) and ASP302 (Optional return): all
+    three target a return shape that hides the error in the type. ASP303
+    is the one ASP301/302 miss — the error is swallowed into a
+    *success-typed* falsy sentinel, so neither the None-sentinel (ASP302)
+    nor the raise-path (ASP301) heuristic fires.
+
+    Exempt: test functions, dunders; functions with no return annotation
+    (cannot establish the success shape); and functions already returning
+    ``Result[...]``/``Optional[...]``/``X | None``/``None`` (the error is
+    already explicit, or the function returns nothing meaningful).
+    """
+
+    MESSAGE = (
+        "ASP303: empty/falsy literal returned from `except` — error swallowed "
+        "into a success sentinel; return Result"
+    )
+
+    VALID = [
+        # Empty literal, but NOT inside an except handler.
+        Valid("def f() -> list:\n    assert True\n    return []\n"),
+        # Already returns Result — error is explicit in the type.
+        Valid(
+            "def f() -> Result[list, str]:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError:\n"
+            "        return Err('boom')\n"
+        ),
+        # except re-raises rather than swallowing into a sentinel.
+        Valid(
+            "def f() -> list:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError:\n"
+            "        raise\n"
+        ),
+        # except returns a non-empty value (not a falsy sentinel).
+        Valid(
+            "def f() -> list:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError:\n"
+            "        return [fallback]\n"
+        ),
+        # `-> None` procedure: returning None from except is normal.
+        Valid(
+            "def f() -> None:\n    try:\n        do()\n    except OSError:\n        return None\n"
+        ),
+        # No return annotation — success shape cannot be established.
+        Valid(
+            "def f():\n    try:\n        return fetch()\n    except OSError:\n        return []\n"
+        ),
+    ]
+    INVALID = [
+        # `-> list` with `return []` in except.
+        Invalid(
+            "def f() -> list:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError:\n"
+            "        return []\n"
+        ),
+        # `-> dict` with `return {}` in except.
+        Invalid(
+            "def f() -> dict:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError:\n"
+            "        return {}\n"
+        ),
+        # `-> str` with `return ""` in except.
+        Invalid(
+            "def f() -> str:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError:\n"
+            "        return ''\n"
+        ),
+        # The _fetch_records_raw shape: subscripted `-> list[...]`,
+        # `except httpx.HTTPError: return []`.
+        Invalid(
+            "def _fetch_records_raw(q: str) -> list[dict[str, Any]]:\n"
+            "    try:\n"
+            "        return query(q)\n"
+            "    except httpx.HTTPError:\n"
+            "        return []\n"
+        ),
+    ]
+
+    EXEMPT_PREFIXES = ("test_", "__")
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+        name = node.name.value
+        if any(name.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return
+
+        # No annotation → cannot establish a success shape; don't fire.
+        if node.returns is None:
+            return
+
+        if _is_explicit_error_annotation(node.returns.annotation):
+            return
+
+        if _has_falsy_return_in_except(node.body, in_except=False):
+            self.report(node, self.MESSAGE)
+
+
+def _is_explicit_error_annotation(node: cst.BaseExpression) -> bool:
+    """True if the return type already makes failure explicit.
+
+    Exempt shapes: ``Result[...]``, ``Optional[...]``, ``X | None``, and
+    bare ``None`` (a procedure that returns nothing meaningful).
+    """
+    # X | None
+    if isinstance(node, cst.BinaryOperation) and isinstance(node.operator, cst.BitOr):
+        if (isinstance(node.right, cst.Name) and node.right.value == "None") or (
+            isinstance(node.left, cst.Name) and node.left.value == "None"
+        ):
+            return True
+    # Optional[X] / Result[...]
+    if isinstance(node, cst.Subscript) and isinstance(node.value, cst.Name):
+        if node.value.value in ("Optional", "Result"):
+            return True
+    # bare None
+    if isinstance(node, cst.Name) and node.value == "None":
+        return True
+    return False
+
+
+def _has_falsy_return_in_except(node: cst.CSTNode, in_except: bool) -> bool:
+    """Search for `return <falsy-literal>` lexically inside an except handler.
+
+    Does not descend into nested function definitions (their returns
+    belong to their own signature). ``in_except`` becomes True once we
+    cross an ``ExceptHandler`` boundary.
+    """
+    if isinstance(node, cst.Return) and in_except and node.value is not None:
+        if _is_falsy_literal(node.value):
+            return True
+    for child in node.children:
+        if not isinstance(child, cst.CSTNode):
+            continue
+        # Don't descend into nested functions.
+        if isinstance(child, cst.FunctionDef):
+            continue
+        next_in_except = in_except or isinstance(child, cst.ExceptHandler)
+        if _has_falsy_return_in_except(child, next_in_except):
+            return True
+    return False
+
+
+_EMPTY_CONSTRUCTORS = frozenset({"list", "dict", "set", "tuple", "frozenset"})
+
+
+def _is_falsy_literal(node: cst.BaseExpression) -> bool:
+    """True for an empty/falsy literal: [] {} () "" 0 0.0 None False set()."""
+    # None / False
+    if isinstance(node, cst.Name) and node.value in ("None", "False"):
+        return True
+    # 0
+    if isinstance(node, cst.Integer) and node.value.strip() in ("0", "0x0", "0o0", "0b0"):
+        return True
+    # 0.0
+    if isinstance(node, cst.Float):
+        stripped = node.value.replace("_", "")
+        if stripped in ("0.0", "0.", ".0", "0"):
+            return True
+    # "" (empty string literal)
+    if isinstance(node, cst.SimpleString) and node.raw_value == "":
+        return True
+    # [] {} ()
+    if isinstance(node, (cst.List, cst.Tuple)) and len(node.elements) == 0:
+        return True
+    if isinstance(node, cst.Dict) and len(node.elements) == 0:
+        return True
+    # set()/dict()/list()/tuple()/frozenset() with no args
+    if isinstance(node, cst.Call) and isinstance(node.func, cst.Name):
+        if node.func.value in _EMPTY_CONSTRUCTORS and len(node.args) == 0:
+            return True
+    return False
