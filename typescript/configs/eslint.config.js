@@ -1,17 +1,23 @@
-// Aspergillus reference ESLint flat config — Level 1 + Level 2.
+// Aspergillus reference ESLint flat config — Level 1 + Level 2 + Level 3
+// (universal rules).
 //
 // Consumers import and spread this from their repo's eslint.config.js:
 //
 //   import base from '../vendor/aspergillus/typescript/configs/eslint.config.js';
 //   export default [...base, /* repo-specific overrides */];
 //
-// Level 2 rules (ASP201–204) land at warn per the severity-flip workflow; Level 3 rules are still pending.
+// Level 2 rules (ASP201–204) and Level 3 rules (ASP301–302) land at
+// warn per the severity-flip workflow. The layer-stratified L3 rule
+// (`functional/no-throw-statements`) is shipped via the layouts in
+// `typescript/layouts/` — see docs/design-decisions/2026-05-08-l3-
+// error-handling-mechanism.md.
 //
 // Required peer devDependencies (install in the consumer repo). These are
 // the same list `aspergillus-ts init` prints after it runs:
 //   eslint prettier typescript
 //   @eslint/js typescript-eslint eslint-plugin-import
 //   eslint-plugin-unused-imports eslint-plugin-functional
+//   @okee-tech/eslint-plugin-neverthrow
 //   eslint-config-prettier
 //
 // Adoption workflow: every new rule lands at "warn", flips to "error"
@@ -21,6 +27,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 import functional from 'eslint-plugin-functional';
+import neverthrow from '@okee-tech/eslint-plugin-neverthrow';
 import unusedImports from 'eslint-plugin-unused-imports';
 import prettierConfig from 'eslint-config-prettier';
 import aspergillus from '../rules/index.js';
@@ -144,6 +151,31 @@ export default [
       // ASP202 — assertion density. Custom rule shipped by aspergillus;
       // see typescript/rules/asp202-min-assertions.js.
       'aspergillus/asp202-min-assertions': 'warn',
+    },
+  },
+
+  // Level 3 — universal rules. Lands at warn pending severity-flip.
+  // The layer-stratified L3 rule (`functional/no-throw-statements`) lives
+  // in the layout files so that imperative-shell layers can switch it
+  // off. See docs/design-decisions/2026-05-08-l3-error-handling-mechanism.md.
+  {
+    files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    plugins: {
+      '@okee-tech/neverthrow': neverthrow,
+    },
+    rules: {
+      // ASP301 — must consume Result. Type-aware; checks the resolved
+      // type, not the import path. A Result that's created and
+      // discarded is a silently-dropped error. Universal — applies in
+      // shell as well as core, since "we have a Result, do something
+      // with it" is a layer-agnostic principle.
+      '@okee-tech/neverthrow/must-consume-result': 'warn',
+
+      // ASP302 — type-soundness for boolean expressions. Catches
+      // `if (result)` ambiguity (truthy on a Result object always,
+      // since neverthrow's Result is a non-empty object). Forces
+      // explicit `result.isOk()` etc.
+      '@typescript-eslint/strict-boolean-expressions': 'warn',
     },
   },
 
