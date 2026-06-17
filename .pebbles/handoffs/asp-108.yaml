@@ -1,0 +1,56 @@
+status: completed
+pebble_id: asp-108
+branch: pebble/asp-r2
+commits:
+  - 15f3220529294d4a7ef3a8b42c78b4f21fe90a3a
+files_changed:
+  - aspergillus/python/src/aspergillus/rules/level2.py
+  - aspergillus/python/src/aspergillus/io_blocklist.py
+tests_added: []
+docs_updated: []
+summary: >
+  io_blocklist pandas-rename false-positive fixed, on the SAME branch/commit
+  as asp-594 (one round-trip). The bare method name `rename` in
+  IO_METHOD_NAMES collides with pandas DataFrame.rename / Series.rename
+  (pure in-memory transforms), mis-flagging them ASP205/206 and (post
+  asp-da5) mis-classifying them imperative-shell for ASP202.
+
+
+  Approach (PRECISE, not wholesale-delete): added _is_pandas_rename() in
+  rules/level2.py and gated the bare-`rename` match in _walk_for_io_calls
+  on `not (method == "rename" and _is_pandas_rename(node))`. A `.rename`
+  call is a pure pandas transform (NOT I/O) when EITHER it carries a
+  pandas-rename keyword (columns/index/mapper/axis/inplace/level/errors/
+  copy) OR its receiver is a COMPUTED expression (not a Name / attribute
+  chain — you cannot filesystem-rename an arithmetic / chained result).
+
+
+  Tradeoff: this PRESERVES instance-form pathlib `Path.rename(target)`
+  detection (simple-name receiver, single positional, no pandas kwarg)
+  rather than dropping `rename` from IO_METHOD_NAMES wholesale. Documented
+  residual ambiguity: `s.rename("x")` on a simple Series NAME with a single
+  positional is shape-identical to `p.rename(target)` and is left matching
+  (conservative — a real rename is never silently dropped). No backtest
+  reproducer site hits that residual.
+
+
+  VERIFIED against the live backtest reproducer (`cd backtest &&
+  .venv/bin/python -m fixit lint src`, editable aspergillus resolving to
+  this worktree): ZERO `rename` I/O findings — _normalize_dune_df
+  (df.rename@68), _compute_pair_z (.rename@269/272), _scan_one_pair
+  (.rename@355) all cleared. The 2 GENUINE pathlib sites remain:
+  fixture_loader read_text@16 and data_fetcher mkdir@99 (each ASP205 +
+  ASP206). Added Valid fixtures (df.rename(columns=…) pure; computed-
+  receiver Series.rename pure) and an Invalid fixture (Path.rename(target)
+  stays I/O) to ASP205. Full detail in handoffs/asp-594.yaml.
+  TDD-Exempt: refactor; git-subtree-dir: aspergillus/.
+verify_transcript:
+  python_pytest: |
+    cd aspergillus/python && uv run pytest -> 116 passed, 1 skipped
+    (+3 ASP205 fixtures over the 113 baseline).
+  backtest_fixit_lint: |
+    cd backtest && .venv/bin/python -m fixit lint src
+    grep -i rename -> (no matches); 3 pandas sites cleared.
+    ASP205/206 findings = 4 (read_text@16, mkdir@99 — genuine pathlib).
+  pre_commit: |
+    Commit 15f32205 — all MTM pre-commit hooks Passed.
