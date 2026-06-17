@@ -2,6 +2,7 @@
 
 import { RuleTester } from 'eslint';
 import { describe, it } from 'bun:test';
+import tsParser from '@typescript-eslint/parser';
 
 import rule from './asp202-min-assertions.js';
 
@@ -16,6 +17,11 @@ const tester = new RuleTester({
   languageOptions: { ecmaVersion: 2022, sourceType: 'module' },
 });
 
+// Type-aware cases set this per-case parser so the rule can observe
+// explicit `any` / `unknown` parameter annotations (the untrusted-data
+// boundary). Consumers run the rule under exactly this parser.
+const TS = { parser: tsParser };
+
 const longBody = `
   // line 1
   // line 2
@@ -29,14 +35,20 @@ const longBody = `
   return x;
 `;
 
+// The assertion-COUNTING fixtures below all carry a leading `fetch(x)` so
+// the FC/IS gate classifies them as imperative shell (in scope). They
+// exercise the assertion-counting / recognition logic (asp-070), which is
+// only reached for shell functions. `fetch` is not an assertion name, so
+// it does not contribute to the count.
 tester.run('asp202-min-assertions', rule, {
   valid: [
     // Trivial function: under default minFunctionLength (10 lines) — exempt.
     { code: 'function add(a, b) { return a + b; }' },
 
-    // Two bare assert() calls.
+    // Two bare assert() calls (shell function: enough assertions => ok).
     {
       code: `function f(x) {
+        fetch(x);
         assert(x > 0);
         assert(x < 100);
         const a = 1;
@@ -51,6 +63,7 @@ tester.run('asp202-min-assertions', rule, {
     // Namespace methods on a configured assertionName count: assert.ok, assert.equal.
     {
       code: `function f(x) {
+        fetch(x);
         assert.ok(x);
         assert.equal(x, 1);
         const a = 1;
@@ -65,6 +78,7 @@ tester.run('asp202-min-assertions', rule, {
     // console.assert counts (from default memberPatterns).
     {
       code: `function f(x) {
+        fetch(x);
         console.assert(x !== null);
         console.assert(x !== undefined);
         const a = 1;
@@ -79,6 +93,7 @@ tester.run('asp202-min-assertions', rule, {
     // Custom assertionNames option recognizes 'check'.
     {
       code: `function f(x) {
+        fetch(x);
         check(x > 0);
         check(x < 100);
         const a = 1;
@@ -95,6 +110,7 @@ tester.run('asp202-min-assertions', rule, {
     // distinct receivers, both count.
     {
       code: `function f(input) {
+        fetch(input);
         const a = schemaA.parse(input);
         const b = schemaB.parse(input);
         const c = 1;
@@ -111,6 +127,7 @@ tester.run('asp202-min-assertions', rule, {
     // (`z.string().parse(...)`), since we only check the property name.
     {
       code: `function f(input) {
+        fetch(input);
         const a = z.string().parse(input);
         const b = z.number().parse(input);
         const c = 1;
@@ -127,6 +144,7 @@ tester.run('asp202-min-assertions', rule, {
     // enabled. Two `if (!x) throw` patterns satisfy min=2.
     {
       code: `function f(x, y) {
+        fetch(x);
         if (!x) throw new Error('x required');
         if (!y) throw new Error('y required');
         const a = 1;
@@ -141,18 +159,54 @@ tester.run('asp202-min-assertions', rule, {
 
     // Arrow functions with non-block body are skipped (no body to count).
     { code: 'const f = (x) => x + 1;' },
+
+    // ── FC/IS predicate (asp-da5): functional core is EXEMPT ──────────
+    // Pure (no I/O), no dynamically-typed parameter -> functional core.
+    // Correctness is type/purity enforced; exempt despite 0 assertions.
+    // (>= minFunctionLength, so the exemption is the FC/IS gate, not the
+    // short-function shortcut.)
+    {
+      code: `function pureTransform(x) {
+        const a = x + 1;
+        const b = a * 2;
+        const c = b - 3;
+        const d = c / 4;
+        const e = d + 5;
+        const g = e - 6;
+        const h = g + 7;
+        const i = h - 8;
+        return i;
+      }`,
+    },
+    // Pure transform whose params are CONCRETELY typed (number) -> still
+    // functional core under the type-aware parser: exempt.
+    {
+      code: `function scale(x: number, k: number): number {
+        const a = x * k;
+        const b = a + 1;
+        const c = b - 2;
+        const d = c * 3;
+        const e = d + 4;
+        const f = e - 5;
+        const g = f * 6;
+        const h = g + 7;
+        return h;
+      }`,
+      languageOptions: TS,
+    },
   ],
 
   invalid: [
-    // Long function with zero assertions.
+    // Long shell function (calls fetch) with zero assertions.
     {
-      code: `function f(x) {${longBody}}`,
+      code: `function f(x) { fetch(x);${longBody}}`,
       errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
     },
 
     // One assertion, default min is 2.
     {
       code: `function f(x) {
+        fetch(x);
         assert(x > 0);
         const a = 1;
         const b = 2;
@@ -169,6 +223,7 @@ tester.run('asp202-min-assertions', rule, {
     // assertion total — each function is checked independently.
     {
       code: `function outer(x) {
+        fetch(x);
         function inner(y) {
           assert(y > 0);
           assert(y < 100);
@@ -190,6 +245,7 @@ tester.run('asp202-min-assertions', rule, {
     // Custom min option.
     {
       code: `function f(x) {
+        fetch(x);
         assert(x > 0);
         assert(x < 100);
         const a = 1;
@@ -206,6 +262,7 @@ tester.run('asp202-min-assertions', rule, {
     // Custom assertionNames REPLACES the default — `assert` no longer counts.
     {
       code: `function f(x) {
+        fetch(x);
         assert(x > 0);
         assert(x < 100);
         const a = 1;
@@ -222,6 +279,7 @@ tester.run('asp202-min-assertions', rule, {
     // methodNames is opt-in: without it, `.parse(...)` doesn't count.
     {
       code: `function f(input) {
+        fetch(input);
         const a = schemaA.parse(input);
         const b = schemaB.parse(input);
         const c = 1;
@@ -237,6 +295,7 @@ tester.run('asp202-min-assertions', rule, {
     // countThrowStatements is opt-in: without it, `throw` doesn't count.
     {
       code: `function f(x, y) {
+        fetch(x);
         if (!x) throw new Error('x required');
         if (!y) throw new Error('y required');
         const a = 1;
@@ -246,6 +305,71 @@ tester.run('asp202-min-assertions', rule, {
         const e = 5;
         return x + y + a + b + c + d + e;
       }`,
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+
+    // ── FC/IS predicate (asp-da5): imperative shell IS in scope ───────
+    // Performs I/O (a method on a known I/O object) with 0 assertions ->
+    // imperative shell, flagged.
+    {
+      code: `function persist(key, value) {
+        const payload = String(value);
+        const stamped = payload + ':' + key;
+        const sized = stamped.length;
+        const upper = stamped.toUpperCase();
+        const tag = upper.slice(0, 4);
+        const ok = sized > 0;
+        const marker = tag + ':' + sized;
+        localStorage.setItem(key, marker);
+        return ok;
+      }`,
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+    // `await` marks the body as imperative shell (async I/O), 0 assertions.
+    {
+      code: `async function load(client, id) {
+        const url = '/items/' + id;
+        const res = await client.get(url);
+        const body = res.data;
+        const name = body.name;
+        const size = body.size;
+        const label = name + ':' + size;
+        const trimmed = label.trim();
+        return { name, size, trimmed };
+      }`,
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+    // Pure, but a parameter is explicitly typed `any` -> untrusted-data
+    // boundary -> imperative shell, flagged (type-aware parser).
+    {
+      code: `function normalize(payload: any): string {
+        const raw = payload;
+        const keys = Object.keys(raw);
+        const first = keys[0];
+        const rest = keys.slice(1);
+        const joined = rest.join(',');
+        const upper = joined.toUpperCase();
+        const sized = upper.length;
+        const tag = sized > 0 ? upper : first;
+        return first + tag;
+      }`,
+      languageOptions: TS,
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+    // `unknown` parameter is likewise an untrusted boundary -> flagged.
+    {
+      code: `function decode(input: unknown): number {
+        const v = input;
+        const s = String(v);
+        const n = s.length;
+        const m = n * 2;
+        const r = m - 1;
+        const t = r + n;
+        const u = t - m;
+        const w = u * 3;
+        return w;
+      }`,
+      languageOptions: TS,
       errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
     },
   ],

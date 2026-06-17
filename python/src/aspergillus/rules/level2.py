@@ -45,11 +45,42 @@ class FunctionTooLong(LintRule):
 
 
 class LowAssertionDensity(LintRule):
-    """ASP202: Functions should have >=2 assertions.
+    """ASP202: Imperative-shell functions should have >=2 assertions.
 
-    NASA Power of 10 Rule #5: High assertion density. Minimum of 2
-    assertions per function to verify assumptions. Assertions are
-    executable documentation of invariants.
+    NASA Power of 10 Rule #5: High assertion density. Assertions are
+    executable documentation of invariants — and the correct correctness
+    mechanism for the **imperative shell**, where a runtime precondition
+    guards data the type system cannot. They are NOT the mechanism for
+    the **functional core**: a pure, fully-typed transform earns its
+    correctness statically from the OTHER L3 rules (``mypy --strict``
+    types, ``Result``-not-throw, purity ASP205/206), so demanding two
+    runtime ``assert``\\ s there mis-prescribes the shell mechanism onto
+    the core. This rule therefore applies its >=2-assertion requirement
+    **only to functions in the imperative shell** (see
+    ``_is_imperative_shell``) and exempts the pure, statically-constrained
+    functional core.
+
+    Functional-core / imperative-shell predicate (asp-da5). A function is
+    in the imperative shell — and thus in scope for ASP202 — iff EITHER:
+
+    - **it performs I/O** — its body calls a known I/O function (the SAME
+      ``io_blocklist`` signal ASP205 / ASP206 use; ``_find_io_calls``).
+      Side-effecting functions are the shell; preconditions on their
+      inputs/environment are exactly NASA Rule #5's domain. OR
+    - **it ingests dynamically-typed / untrusted data** — it has a
+      parameter that is unannotated or annotated with a dynamic,
+      unconstrained type (``DYNAMIC_PARAM_ANNOTATIONS`` — ``Any`` /
+      ``object``). The type system cannot constrain such a value, so a
+      pure function that takes it is still shell-ish: a runtime
+      precondition IS the right guard (``_has_untrusted_param``).
+
+    A PURE function whose every parameter is concretely typed is the
+    functional core and is EXEMPT — this composes the existing FC/IS
+    boundary (the ASP205/206 I/O signal) with the type system, rather
+    than inventing a new heuristic. (Evidence, asp-da5: of the gateway's
+    261-finding asp-070 residual, 255 were pure + fully-typed functional
+    core — the rule mis-prescribing the shell mechanism — collapsing to
+    6 genuine imperative-shell low-assertion functions; backtest 109 -> 8.)
 
     What counts as an assertion (NASA equivalence ``assert(cond)`` ≡
     ``if not cond: raise``):
@@ -95,7 +126,9 @@ class LowAssertionDensity(LintRule):
 
     Exemptions: functions <=5 lines (trivial), test functions,
     ``__init__``, ``__repr__``, ``__str__``, ``__eq__``, ``__hash__``,
-    and pydantic-validator methods.
+    pydantic-validator methods, and pure functional-core functions (no
+    I/O and no dynamically-typed parameter — see the FC/IS predicate
+    above).
     """
 
     MESSAGE = "ASP202: Function has {actual} assertions (min {min_asserts})"
@@ -137,6 +170,10 @@ class LowAssertionDensity(LintRule):
             "strict",
         }
     )
+    # Parameter annotations the type system cannot constrain. A function
+    # taking such a value ingests untrusted data and is imperative-shell
+    # even when otherwise pure (see the FC/IS predicate in the docstring).
+    DYNAMIC_PARAM_ANNOTATIONS = frozenset({"Any", "object"})
 
     VALID = [
         Valid(
@@ -191,9 +228,11 @@ class LowAssertionDensity(LintRule):
             "        result = joined.upper()\n"
             "        return result\n"
         ),
-    ]
-    INVALID = [
-        Invalid(
+        # --- FC/IS predicate (asp-da5): functional core is EXEMPT ---
+        # A pure, fully-typed transform earns correctness from the type
+        # system, not runtime asserts. No I/O, every param concretely
+        # typed -> functional core -> exempt despite 0 assertions.
+        Valid(
             "def process(data: list) -> int:\n"
             "    total = 0\n"
             "    for item in data:\n"
@@ -202,8 +241,7 @@ class LowAssertionDensity(LintRule):
             "    result = sum(x.value for x in filtered)\n"
             "    return result\n"
         ),
-        # genuinely assertion-free non-trivial function still fails.
-        Invalid(
+        Valid(
             "def compute(data: list) -> int:\n"
             "    a = data[0]\n"
             "    b = data[1]\n"
@@ -212,9 +250,8 @@ class LowAssertionDensity(LintRule):
             "    e = d - a\n"
             "    return e\n"
         ),
-        # a model with NO constraint/validator gives no credit — precise,
-        # not a blanket pass for every method on a BaseModel.
-        Invalid(
+        # A plain model's pure, typed method is functional core -> exempt.
+        Valid(
             "class Plain(BaseModel):\n"
             "    name: str\n"
             "    value: int\n"
@@ -224,6 +261,47 @@ class LowAssertionDensity(LintRule):
             "        c = a + b\n"
             "        d = c.strip()\n"
             "        return d\n"
+        ),
+        # A pure, fully-typed helper with 0 assertions: functional core.
+        Valid(
+            "def summarize(values: tuple[int, ...]) -> int:\n"
+            "    total = sum(values)\n"
+            "    count = len(values)\n"
+            "    scaled = total * 2\n"
+            "    shifted = scaled - count\n"
+            "    return shifted\n"
+        ),
+    ]
+    INVALID = [
+        # --- FC/IS predicate (asp-da5): imperative shell IS in scope ---
+        # Performs I/O (io_blocklist) with <2 assertions -> shell, flagged.
+        Invalid(
+            "def write_log(path: str, message: str) -> None:\n"
+            "    prefix = '[log] '\n"
+            "    body = prefix + message\n"
+            "    full = body.upper()\n"
+            "    trimmed = full.strip()\n"
+            "    print(trimmed)\n"
+        ),
+        # Pure but ingests a dynamically-typed value (`Any`) -> untrusted
+        # boundary -> imperative shell, flagged at <2 assertions.
+        Invalid(
+            "def normalize(payload: Any) -> dict:\n"
+            "    raw = payload\n"
+            "    keys = list(raw)\n"
+            "    first = keys[0]\n"
+            "    rest = keys[1:]\n"
+            "    return {first: rest}\n"
+        ),
+        # Unannotated parameters -> the type system cannot constrain them
+        # -> untrusted boundary -> imperative shell, flagged.
+        Invalid(
+            "def merge(left, right) -> dict:\n"
+            "    combined = {}\n"
+            "    combined.update(left)\n"
+            "    combined.update(right)\n"
+            "    sized = len(combined)\n"
+            "    return combined if sized else left\n"
         ),
     ]
 
@@ -256,6 +334,12 @@ class LowAssertionDensity(LintRule):
         pos = self.get_metadata(cst.metadata.PositionProvider, node)
         line_count = pos.end.line - pos.start.line + 1
         if line_count <= self.MIN_LINES_FOR_RULE:
+            return
+
+        # FC/IS predicate: ASP202 is the imperative-shell mechanism. A
+        # pure, fully-typed functional-core function is exempt — its
+        # correctness is enforced statically by the other L3 rules.
+        if not _is_imperative_shell(node, self.DYNAMIC_PARAM_ANNOTATIONS):
             return
 
         assert_count = _count_assertions(
@@ -385,6 +469,72 @@ def _class_assertion_credit(
         elif isinstance(stmt, cst.FunctionDef) and _has_decorator_in(stmt, validator_decorators):
             credit += 1
     return credit
+
+
+# Sentinel returned by `_param_annotation_basename` for a parameter with
+# no annotation. Empty string is unrepresentable as a real annotation
+# name, so this keeps the function total (no Optional) while letting the
+# caller treat "absent" as one of the untrusted cases.
+_NO_ANNOTATION = ""
+
+
+def _param_annotation_basename(annotation: cst.Annotation | None) -> str:
+    """Resolve a parameter annotation to a base name.
+
+    Returns ``_NO_ANNOTATION`` (``""``) when absent; ``Any`` -> ``"Any"``;
+    ``object`` -> ``"object"``; ``dict[str, int]`` -> ``"dict"``;
+    ``mod.Thing`` -> ``"Thing"``. The base name is all the FC/IS predicate
+    needs — it only distinguishes dynamic/unconstrained annotations from
+    concrete ones.
+    """
+    if annotation is None:
+        return _NO_ANNOTATION
+    expr = annotation.annotation
+    if isinstance(expr, cst.Name):
+        return expr.value
+    if isinstance(expr, cst.Attribute):
+        return expr.attr.value
+    if isinstance(expr, cst.Subscript):
+        base = expr.value
+        if isinstance(base, cst.Name):
+            return base.value
+        if isinstance(base, cst.Attribute):
+            return base.attr.value
+    return "<other>"
+
+
+def _has_untrusted_param(node: cst.FunctionDef, dynamic_annotations: frozenset[str]) -> bool:
+    """True if a parameter is unannotated or dynamically typed.
+
+    Such a parameter carries no static guarantee, so a function taking
+    it ingests untrusted data and is imperative-shell. The leading
+    ``self`` / ``cls`` of a method is skipped (it is never the untrusted
+    input). ``*args`` / ``**kwargs`` collectors are not considered.
+    """
+    params = node.params
+    ordered = list(params.posonly_params) + list(params.params) + list(params.kwonly_params)
+    for index, param in enumerate(ordered):
+        if index == 0 and param.name.value in ("self", "cls"):
+            continue
+        basename = _param_annotation_basename(param.annotation)
+        if basename == _NO_ANNOTATION or basename in dynamic_annotations:
+            return True
+    return False
+
+
+def _is_imperative_shell(node: cst.FunctionDef, dynamic_annotations: frozenset[str]) -> bool:
+    """True if the function is in the imperative shell (ASP202 applies).
+
+    Shell iff it performs I/O (``_find_io_calls`` — the ASP205/206
+    signal) OR ingests dynamically-typed / untrusted data
+    (``_has_untrusted_param``). A pure, fully-typed function is the
+    functional core and returns ``False`` (exempt). This composes the
+    existing FC/IS boundary with the type system rather than inventing a
+    new heuristic.
+    """
+    if _find_io_calls(node.body):
+        return True
+    return _has_untrusted_param(node, dynamic_annotations)
 
 
 class GlobalMutableState(LintRule):

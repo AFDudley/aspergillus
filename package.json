@@ -40,13 +40,18 @@
   },
   "devDependencies": {
     "@types/node": ">=18",
+    "@typescript-eslint/parser": "^8.61.0",
     "eslint": "^9.0.0",
     "eslint-plugin-boundaries": "^6.0.2",
     "typescript": ">=5.4"
   },
   "peerDependenciesMeta": {
-    "eslint-plugin-boundaries": { "optional": true },
-    "eslint-import-resolver-typescript": { "optional": true }
+    "eslint-plugin-boundaries": {
+      "optional": true
+    },
+    "eslint-import-resolver-typescript": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18"
