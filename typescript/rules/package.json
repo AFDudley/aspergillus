@@ -1,5 +1,9 @@
 {
   "name": "aspergillus-rules-internal",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.61.1",
+    "eslint": "^9"
+  }
 }

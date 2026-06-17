@@ -71,6 +71,12 @@ IO_FUNCTIONS: frozenset[str] = frozenset(
 # Without type resolution, `path_obj.read_text()` resolves to
 # `path_obj.read_text` — never matching `Path.read_text` in
 # IO_FUNCTIONS. These names are unambiguously I/O on any object.
+#
+# `rename` is the one collision-prone name: pandas `DataFrame.rename` /
+# `Series.rename` are pure in-memory transforms. The bare-name match is
+# kept (so instance-form `Path.rename(target)` still counts) but the
+# pandas shapes are excluded by `_is_pandas_rename` in `rules/level2.py`
+# (`columns=`/`index=`/… kwargs, or a computed receiver). See asp-108.
 IO_METHOD_NAMES: frozenset[str] = frozenset(
     {
         "read_text",

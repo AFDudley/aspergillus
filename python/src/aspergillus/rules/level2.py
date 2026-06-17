@@ -787,6 +787,44 @@ def _find_io_calls(body: cst.BaseSuite) -> set[str]:
     return found
 
 
+# pandas `DataFrame.rename` / `Series.rename` keyword arguments. A bare
+# `.rename(...)` carrying any of these is a pure in-memory pandas transform,
+# NOT a filesystem rename (asp-108). `pathlib.Path.rename(target)` takes a
+# single positional `target` and none of these.
+_PANDAS_RENAME_KWARGS: frozenset[str] = frozenset(
+    {"columns", "index", "mapper", "axis", "inplace", "level", "errors", "copy"}
+)
+
+
+def _is_pandas_rename(node: cst.Call) -> bool:
+    """True for a pandas `DataFrame`/`Series.rename(...)` (pure), not a
+    filesystem `Path.rename(target)` (I/O).
+
+    Two by-shape signals distinguish the pure pandas transform from a
+    filesystem rename without type resolution (asp-108):
+
+    - a pandas-`rename` keyword argument (``columns=`` / ``index=`` /
+      ``mapper=`` / ``axis=`` …); ``Path.rename`` takes only a positional
+      ``target``; OR
+    - a COMPUTED receiver — ``(np.log(a) - b).rename("spread")``,
+      ``(s / sd).rename("z")`` — you cannot filesystem-rename the result of
+      an arithmetic / chained expression; ``Path.rename`` is called on a
+      name or attribute (``p.rename(...)`` / ``self.path.rename(...)``).
+
+    The residual ambiguous case — ``s.rename("x")`` on a simple Series name
+    with a single positional — is indistinguishable from ``p.rename(target)``
+    by shape alone and is left matching (conservative: a real rename is not
+    silently dropped).
+    """
+    if not isinstance(node.func, cst.Attribute):
+        return False
+    for arg in node.args:
+        if arg.keyword is not None and arg.keyword.value in _PANDAS_RENAME_KWARGS:
+            return True
+    receiver = node.func.value
+    return not isinstance(receiver, cst.Name | cst.Attribute)
+
+
 def _walk_for_io_calls(
     node: cst.CSTNode,
     found: set[str],
@@ -802,7 +840,11 @@ def _walk_for_io_calls(
         # `path_obj.read_text()` → Attribute(attr=Name("read_text"))
         elif isinstance(node.func, cst.Attribute):
             method_name = node.func.attr.value
-            if method_name in io_method_names:
+            # `rename` collides with pandas DataFrame/Series.rename, a pure
+            # in-memory transform — exclude those shapes (asp-108).
+            if method_name in io_method_names and not (
+                method_name == "rename" and _is_pandas_rename(node)
+            ):
                 found.add(method_name)
     for child in node.children:
         if isinstance(child, cst.CSTNode):
@@ -829,6 +871,21 @@ class ImpureFunction(LintRule):
             "    assert b >= 0\n"
             "    return a + b\n"
         ),
+        # asp-108: pandas DataFrame.rename(columns=...) is a pure in-memory
+        # transform, NOT filesystem I/O — the `columns=` kwarg distinguishes
+        # it from `Path.rename(target)`.
+        Valid(
+            "def normalize_df(df: object) -> object:\n"
+            "    renamed = df.rename(columns={'old': 'new'})\n"
+            "    return renamed\n"
+        ),
+        # asp-108: Series.rename on a COMPUTED receiver (arithmetic result)
+        # is pure — you cannot filesystem-rename an expression result.
+        Valid(
+            "def label_spread(a: object, b: object) -> object:\n"
+            "    spread = (a - b).rename('spread')\n"
+            "    return spread\n"
+        ),
     ]
     INVALID = [
         Invalid(
@@ -842,6 +899,14 @@ class ImpureFunction(LintRule):
             "    assert path is not None\n"
             "    assert hasattr(path, 'read_text')\n"
             "    return path.read_text()\n",
+        ),
+        # asp-108: a filesystem `Path.rename(target)` — simple-name receiver,
+        # single positional, no pandas kwarg — STILL counts as I/O.
+        Invalid(
+            "def move(p: object, q: object) -> None:\n"
+            "    assert p is not None\n"
+            "    assert q is not None\n"
+            "    p.rename(q)\n"
         ),
     ]
 

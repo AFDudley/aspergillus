@@ -194,6 +194,92 @@ tester.run('asp202-min-assertions', rule, {
       }`,
       languageOptions: TS,
     },
+
+    // ── asp-594: constructor / coercion-hook exemption (Python parity) ─
+    // A constructor initialises fields (parity with Python __init__);
+    // exempt regardless of an untrusted `cause` param and 0 assertions.
+    {
+      code: `class FooError extends Error {
+        readonly cause: unknown;
+        constructor(phase: string, cause: unknown) {
+          const causeMsg = cause instanceof Error ? cause.message : String(cause);
+          super('failed ' + phase + ': ' + causeMsg);
+          this.cause = cause;
+          this.name = 'FooError';
+        }
+      }`,
+      languageOptions: TS,
+    },
+    // `toString` is a coercion hook -> exempt (parity, EXEMPT_PREFIXES).
+    {
+      code: `class Money {
+        readonly cents: number = 0;
+        toString(): string {
+          const dollars = this.cents / 100;
+          const fixed = dollars.toFixed(2);
+          const sign = this.cents < 0 ? '-' : '';
+          const body = sign + '$' + fixed;
+          const padded = body.padStart(8);
+          const trimmed = padded.trim();
+          return trimmed;
+        }
+      }`,
+      languageOptions: TS,
+    },
+
+    // ── asp-594: untrusted-discharge (functional core BY CONSTRUCTION) ─
+    // (a) Result-returning adapter: ingests `unknown`, validates, returns
+    // a neverthrow Result (return ok / return err). The untrusted input is
+    // discharged into a typed Result -> functional core -> exempt despite
+    // 0 conventional assertions (mirrors mobile decode()).
+    {
+      code: `function decode(validate: (d: unknown) => boolean, data: unknown) {
+        const checked = validate(data);
+        const labelA = 'a';
+        const labelB = 'b';
+        const labelC = 'c';
+        if (checked) {
+          return ok(data);
+        }
+        return err({ kind: 'invalid', labelA, labelB, labelC });
+      }`,
+      languageOptions: TS,
+    },
+    // (b) instanceof-narrowing normalizer: ingests `unknown`, narrows via
+    // `instanceof`, total case-analysis + fallback. tsc(strict) proves
+    // safe use in every branch -> functional core -> exempt (mirrors
+    // mobile toAppError()).
+    {
+      code: `function toAppError(e: unknown): string {
+        if (e instanceof Error) {
+          const msg = e.message;
+          const name = e.name;
+          const tag = name + ':' + msg;
+          return tag.toUpperCase();
+        }
+        const fallback = String(e);
+        const sized = fallback.length;
+        return fallback + ':' + sized;
+      }`,
+      languageOptions: TS,
+    },
+
+    // ── asp-594: neverthrow err-return counts as a guard (default on) ──
+    // A genuine SHELL function (does I/O) with two `return err(...)`
+    // guards meets min=2 — err-return ≡ throw ≡ Python raise.
+    {
+      code: `function f(x) {
+        fetch(x);
+        if (!x) return err('x required');
+        if (x < 0) return err('x negative');
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        const d = 4;
+        const e = 5;
+        return ok(x);
+      }`,
+    },
   ],
 
   invalid: [
@@ -370,6 +456,80 @@ tester.run('asp202-min-assertions', rule, {
         return w;
       }`,
       languageOptions: TS,
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+
+    // ── asp-594: the min=2 floor is NEVER lowered ─────────────────────
+    // ONE err-return guard is ONE assertion. A shell function with a
+    // single `return err(...)` is still flagged at count=1 — the
+    // recognition makes genuine guards count, it does not relax min.
+    {
+      code: `function f(x) {
+        fetch(x);
+        if (!x) return err('x required');
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        const d = 4;
+        const e = 5;
+        const g = 6;
+        return ok(x);
+      }`,
+      errors: [{ messageId: 'tooFew', data: { count: '1', min: '2' } }],
+    },
+    // countErrReturns:false -> err-returns opt-out, back to 0.
+    {
+      code: `function f(x) {
+        fetch(x);
+        if (!x) return err('x required');
+        if (x < 0) return err('x negative');
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        const d = 4;
+        const e = 5;
+        return ok(x);
+      }`,
+      options: [{ countErrReturns: false }],
+      errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
+    },
+    // recognizeUntrustedDischarge:false -> the discharge exemption is off,
+    // so a pure unknown-ingesting Result adapter is back in scope (and its
+    // single err-return counts as 1, still < 2).
+    {
+      code: `function decode(validate: (d: unknown) => boolean, data: unknown) {
+        const checked = validate(data);
+        const labelA = 'a';
+        const labelB = 'b';
+        const labelC = 'c';
+        if (checked) {
+          return ok(data);
+        }
+        return err({ kind: 'invalid', labelA, labelB, labelC });
+      }`,
+      languageOptions: TS,
+      options: [{ recognizeUntrustedDischarge: false }],
+      errors: [{ messageId: 'tooFew', data: { count: '1', min: '2' } }],
+    },
+    // exemptMethods:[] -> a constructor is no longer exempt; an
+    // I/O-performing constructor with 0 assertions is flagged.
+    {
+      code: `class Loader {
+        data: string = '';
+        constructor(x) {
+          fetch(x);
+          const a = 1;
+          const b = 2;
+          const c = 3;
+          const d = 4;
+          const e = 5;
+          const g = 6;
+          const h = 7;
+          this.data = String(a + b + c + d + e + g + h);
+        }
+      }`,
+      languageOptions: TS,
+      options: [{ exemptMethods: [] }],
       errors: [{ messageId: 'tooFew', data: { count: '0', min: '2' } }],
     },
   ],
