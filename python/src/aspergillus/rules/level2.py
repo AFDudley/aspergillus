@@ -47,12 +47,55 @@ class FunctionTooLong(LintRule):
 class LowAssertionDensity(LintRule):
     """ASP202: Functions should have >=2 assertions.
 
-    NASA Power of 10 Rule #5: High assertion density. Minimum of
-    2 assertions per function to verify assumptions. Assertions are
+    NASA Power of 10 Rule #5: High assertion density. Minimum of 2
+    assertions per function to verify assumptions. Assertions are
     executable documentation of invariants.
 
+    What counts as an assertion (NASA equivalence ``assert(cond)`` ≡
+    ``if not cond: raise``):
+
+    - ``assert`` statements (anywhere in the body, including inside
+      ``if`` / ``for`` / ``with`` blocks).
+    - ``raise`` statements, when ``COUNT_RAISE_STATEMENTS`` is true. A
+      precondition guard (``if bad: raise ...``) enforces an invariant
+      exactly as an ``assert`` does — and survives ``python -O``, which
+      strips ``assert``. Parity with the TS sibling's
+      ``countThrowStatements``.
+    - calls to validation methods named in ``ASSERTION_METHOD_NAMES``
+      regardless of receiver — ``payload.model_validate(...)``,
+      ``Schema.parse(...)``, etc. These re-validate a value against a
+      declared shape. Parity with the TS sibling's ``methodNames``.
+    - a method decorated with a pydantic validator
+      (``VALIDATION_DECORATORS`` — ``@field_validator`` /
+      ``@model_validator`` / legacy ``@validator`` / ``@root_validator``)
+      IS itself a precondition check, so the method is exempt; it also
+      contributes one assertion to its enclosing model (below).
+    - a model field declared with a *constraining* ``Field(...)`` call
+      (``FIELD_CONSTRAINT_CALLEES`` whose call carries at least one
+      keyword in ``FIELD_CONSTRAINT_KWARGS`` — ``Field(gt=0)``,
+      ``Field(min_length=1)``, …) is a declarative precondition. Each
+      such field, and each validator method, credits the model's
+      methods: a method of a constrained model inherits the model's
+      declared invariants and need not restate them as ``assert``.
+
+    These were blanket-disabled in gateway/backtest because the
+    original implementation counted only literal ``assert`` statements,
+    false-positiving on idiomatic pydantic + ``raise``-guard Python
+    (gateway: ``docs/labbook/2026-04-19-asp202-disabled-gateway.md``).
+
+    Configurability (parity with the TS sibling
+    ``aspergillus/typescript/rules/asp202-min-assertions.js`` options):
+    every recognized set is an overridable class attribute, the
+    idiomatic fixit tuning mechanism (cf. ``MAX_LINES`` on
+    ``FunctionTooLong``). A consumer tunes by subclassing and enabling
+    the subclass rather than disabling the rule wholesale::
+
+        class ProjectASP202(LowAssertionDensity):
+            ASSERTION_METHOD_NAMES = frozenset({"parse", "check_schema"})
+
     Exemptions: functions <=5 lines (trivial), test functions,
-    __init__, __repr__, __str__.
+    ``__init__``, ``__repr__``, ``__str__``, ``__eq__``, ``__hash__``,
+    and pydantic-validator methods.
     """
 
     MESSAGE = "ASP202: Function has {actual} assertions (min {min_asserts})"
@@ -60,6 +103,40 @@ class LowAssertionDensity(LintRule):
     EXEMPT_PREFIXES = ("test_", "__init__", "__repr__", "__str__", "__eq__", "__hash__")
     MIN_LINES_FOR_RULE = 5
     METADATA_DEPENDENCIES = (cst.metadata.PositionProvider,)
+
+    # --- recognized-assertion configuration (parity with the TS rule) ---
+    # ≡ TS countThrowStatements: NASA `assert(cond)` is `if (!cond) throw`.
+    COUNT_RAISE_STATEMENTS = True
+    # ≡ TS methodNames: validation methods that count regardless of receiver.
+    ASSERTION_METHOD_NAMES = frozenset(
+        {"model_validate", "model_validate_json", "parse", "parse_obj", "validate"}
+    )
+    # Decorators that mark a method as a pydantic validator (precondition).
+    VALIDATION_DECORATORS = frozenset(
+        {"field_validator", "model_validator", "validator", "root_validator"}
+    )
+    # Callees whose constraining keyword args declare a field precondition.
+    FIELD_CONSTRAINT_CALLEES = frozenset({"Field"})
+    # Keyword args that make a `Field(...)` a constraint (not a bare default).
+    FIELD_CONSTRAINT_KWARGS = frozenset(
+        {
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "multiple_of",
+            "min_length",
+            "max_length",
+            "min_items",
+            "max_items",
+            "pattern",
+            "regex",
+            "max_digits",
+            "decimal_places",
+            "allow_inf_nan",
+            "strict",
+        }
+    )
 
     VALID = [
         Valid(
@@ -73,6 +150,47 @@ class LowAssertionDensity(LintRule):
             "def test_something():\n    result = compute()\n    assert result == 42\n"
         ),  # test function, exempt
         Valid("def __init__(self, x: int):\n    self.x = x\n"),  # dunder, exempt
+        # `raise` guards count: precondition enforcement ≡ assert.
+        Valid(
+            "def validate_range(lo: int, hi: int) -> int:\n"
+            "    if lo < 0:\n"
+            "        raise ValueError('lo')\n"
+            "    if hi < lo:\n"
+            "        raise ValueError('hi')\n"
+            "    span = hi - lo\n"
+            "    return span\n"
+        ),
+        # validation method-name calls count regardless of receiver.
+        Valid(
+            "def decode(raw: bytes, schema: object) -> object:\n"
+            "    parsed = schema.model_validate(raw)\n"
+            "    checked = schema.model_validate(parsed)\n"
+            "    enriched = dict(checked)\n"
+            "    return enriched\n"
+        ),
+        # a pydantic-validator method is itself a precondition — exempt.
+        Valid(
+            "class Order(BaseModel):\n"
+            "    @field_validator('qty')\n"
+            "    @classmethod\n"
+            "    def check_qty(cls, v: int) -> int:\n"
+            "        normalized = int(v)\n"
+            "        doubled = normalized * 2\n"
+            "        adjusted = doubled - normalized\n"
+            "        return adjusted\n"
+        ),
+        # a constraining-Field model credits its methods' assertion count.
+        Valid(
+            "class Account(BaseModel):\n"
+            "    balance: float = Field(gt=0)\n"
+            "    limit: float = Field(ge=0)\n"
+            "    def describe(self) -> str:\n"
+            "        label = 'account'\n"
+            "        parts = [label, str(self.balance)]\n"
+            "        joined = ' '.join(parts)\n"
+            "        result = joined.upper()\n"
+            "        return result\n"
+        ),
     ]
     INVALID = [
         Invalid(
@@ -84,11 +202,55 @@ class LowAssertionDensity(LintRule):
             "    result = sum(x.value for x in filtered)\n"
             "    return result\n"
         ),
+        # genuinely assertion-free non-trivial function still fails.
+        Invalid(
+            "def compute(data: list) -> int:\n"
+            "    a = data[0]\n"
+            "    b = data[1]\n"
+            "    c = a + b\n"
+            "    d = c * 2\n"
+            "    e = d - a\n"
+            "    return e\n"
+        ),
+        # a model with NO constraint/validator gives no credit — precise,
+        # not a blanket pass for every method on a BaseModel.
+        Invalid(
+            "class Plain(BaseModel):\n"
+            "    name: str\n"
+            "    value: int\n"
+            "    def render(self) -> str:\n"
+            "        a = self.name\n"
+            "        b = str(self.value)\n"
+            "        c = a + b\n"
+            "        d = c.strip()\n"
+            "        return d\n"
+        ),
     ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Stack of per-enclosing-class declarative-assertion credit.
+        self._class_credit: list[int] = []
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        self._class_credit.append(
+            _class_assertion_credit(
+                node,
+                self.FIELD_CONSTRAINT_CALLEES,
+                self.FIELD_CONSTRAINT_KWARGS,
+                self.VALIDATION_DECORATORS,
+            )
+        )
+        return True
+
+    def leave_ClassDef(self, node: cst.ClassDef) -> None:
+        self._class_credit.pop()
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
         name = node.name.value
         if any(name.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return
+        if _has_decorator_in(node, self.VALIDATION_DECORATORS):
             return
 
         pos = self.get_metadata(cst.metadata.PositionProvider, node)
@@ -96,23 +258,133 @@ class LowAssertionDensity(LintRule):
         if line_count <= self.MIN_LINES_FOR_RULE:
             return
 
-        assert_count = self._count_asserts(node.body)
+        assert_count = _count_assertions(
+            node.body,
+            self.COUNT_RAISE_STATEMENTS,
+            self.ASSERTION_METHOD_NAMES,
+        )
+        if self._class_credit:
+            assert_count += self._class_credit[-1]
         if assert_count < self.MIN_ASSERTS:
             self.report(
                 node,
                 self.MESSAGE.format(actual=assert_count, min_asserts=self.MIN_ASSERTS),
             )
 
-    def _count_asserts(self, body: cst.BaseSuite) -> int:
-        """Count assert statements in a function body (non-recursive)."""
-        count = 0
-        if isinstance(body, cst.IndentedBlock):
-            for stmt in body.body:
-                if isinstance(stmt, cst.SimpleStatementLine):
-                    for item in stmt.body:
-                        if isinstance(item, cst.Assert):
-                            count += 1
-        return count
+
+def _iter_skip_nested(node: cst.CSTNode) -> list[cst.CSTNode]:
+    """All descendants of ``node`` (incl. ``node``), not descending into
+    nested function/lambda bodies — those are visited as their own units.
+    """
+    found: list[cst.CSTNode] = [node]
+    for child in node.children:
+        if isinstance(child, cst.FunctionDef | cst.Lambda):
+            continue
+        found.extend(_iter_skip_nested(child))
+    return found
+
+
+def _is_assertion_method_call(node: cst.CSTNode, method_names: frozenset[str]) -> bool:
+    """True for ``recv.<method>(...)`` where ``<method>`` is recognized."""
+    return (
+        isinstance(node, cst.Call)
+        and isinstance(node.func, cst.Attribute)
+        and node.func.attr.value in method_names
+    )
+
+
+def _count_assertions(
+    body: cst.BaseSuite,
+    count_raise: bool,
+    method_names: frozenset[str],
+) -> int:
+    """Count assertion-like constructs in a function body.
+
+    Recurses through nested ``if`` / ``for`` / ``with`` / ``try`` blocks
+    (a ``raise`` inside a guard counts) but not into nested function or
+    lambda bodies. Recognized: ``assert`` statements; ``raise``
+    statements when ``count_raise``; calls to ``method_names``.
+    """
+    if not isinstance(body, cst.IndentedBlock):
+        return 0
+    count = 0
+    for node in _iter_skip_nested(body):
+        if isinstance(node, cst.Assert):
+            count += 1
+        elif count_raise and isinstance(node, cst.Raise):
+            count += 1
+        elif _is_assertion_method_call(node, method_names):
+            count += 1
+    return count
+
+
+def _decorator_base_name(decorator: cst.Decorator) -> str:
+    """Resolve a decorator to its base callee name (``""`` if unresolved).
+
+    ``@field_validator('x')`` and ``@pydantic.field_validator`` both
+    resolve to ``field_validator``.
+    """
+    expr = decorator.decorator
+    if isinstance(expr, cst.Call):
+        expr = expr.func
+    name = _resolve_call_name(expr)
+    if name is None:
+        return ""
+    return name.rsplit(".", 1)[-1]
+
+
+def _has_decorator_in(node: cst.FunctionDef, names: frozenset[str]) -> bool:
+    """True if any of the function's decorators resolves into ``names``."""
+    return any(_decorator_base_name(dec) in names for dec in node.decorators)
+
+
+def _is_constraining_field(
+    value: cst.BaseExpression | None,
+    callees: frozenset[str],
+    kwargs: frozenset[str],
+) -> bool:
+    """True for ``Field(gt=0)``-style calls: a recognized callee carrying
+    at least one constraining keyword (not a bare ``Field(default=...)``).
+    """
+    if not isinstance(value, cst.Call):
+        return False
+    name = _resolve_call_name(value.func)
+    if name is None or name.rsplit(".", 1)[-1] not in callees:
+        return False
+    return any(arg.keyword is not None and arg.keyword.value in kwargs for arg in value.args)
+
+
+def _class_assertion_credit(
+    node: cst.ClassDef,
+    field_callees: frozenset[str],
+    field_kwargs: frozenset[str],
+    validator_decorators: frozenset[str],
+) -> int:
+    """Declarative-assertion credit a class confers on its methods.
+
+    Counts top-level constraining ``Field(...)`` declarations plus
+    validator-decorated methods in the class body. A method of a model
+    whose fields/validators already declare its invariants inherits
+    them and need not restate them as ``assert``.
+    """
+    body = node.body
+    if not isinstance(body, cst.IndentedBlock):
+        return 0
+    credit = 0
+    for stmt in body.body:
+        if isinstance(stmt, cst.SimpleStatementLine):
+            for item in stmt.body:
+                if isinstance(item, cst.AnnAssign) and _is_constraining_field(
+                    item.value, field_callees, field_kwargs
+                ):
+                    credit += 1
+                elif isinstance(item, cst.Assign) and _is_constraining_field(
+                    item.value, field_callees, field_kwargs
+                ):
+                    credit += 1
+        elif isinstance(stmt, cst.FunctionDef) and _has_decorator_in(stmt, validator_decorators):
+            credit += 1
+    return credit
 
 
 class GlobalMutableState(LintRule):
