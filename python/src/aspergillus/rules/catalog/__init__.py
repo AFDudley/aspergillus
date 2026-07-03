@@ -52,6 +52,7 @@ rule to the gateway baseline broke 10 unit tests with
 ``coroutine ... was never awaited`` warnings.)
 """
 
+from aspergillus.rules.catalog.anti_special_casing import AntiSpecialCasing
 from aspergillus.rules.catalog.eta_reduce import EtaReduce
 from aspergillus.rules.catalog.filter_fusion import FilterFusion
 from aspergillus.rules.catalog.map_fusion import MapFusion
@@ -63,6 +64,7 @@ from aspergillus.rules.catalog.tupling import Tupling
 from aspergillus.rules.catalog.worker_wrapper import WorkerWrapper
 
 __all__ = [
+    "AntiSpecialCasing",
     "EtaReduce",
     "FilterFusion",
     "MapFusion",
