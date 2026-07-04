@@ -68,8 +68,9 @@ no oracle at all.
 
 Refs: ``aspergillus/docs/design.md`` §"Multi-engine architecture";
 pebble ``exo-e2f.5`` / parent ``exo-e2f`` (2026-07-03 reframe: static/
-AST anti-special-casing is the routine-floor rung of the gaming-
-resistance ladder — NOT mutation testing, which is rejected doctrine).
+AST anti-special-casing is the baseline (negligible-severity) assurance
+level of the gaming-resistance spectrum — NOT mutation testing, which is
+rejected doctrine).
 """
 
 from __future__ import annotations
