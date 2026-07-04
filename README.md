@@ -47,6 +47,13 @@ rule-mapping table.
 - **ASP301 — Results, not exceptions.** Error paths appear in function
   signatures via `Result<T, E>` / `neverthrow` / similar. No hidden
   control-flow jumps; callers cannot forget to handle a failure.
+  *Retired for Python* (pebble asp-80c): Python has no ergonomic
+  `Result`, so an idiomatic guard-raise-then-return clause is correct
+  standard code, not an antipattern — the rule only manufactured
+  function-splitting ceremony. Still enforced in Rust (`clippy::panic`)
+  and TypeScript (`no-throw` + neverthrow), which have ergonomic
+  `Result` types. See `docs/design.md` § "Python Level 3 — ASP301
+  retired".
 - **ASP302 — No `Optional` / `None` / `null` returns.** Force callers
   to handle "not there" explicitly — no silent `NoneType has no
   attribute …` crashes three layers down the call stack.
@@ -80,8 +87,8 @@ subtree(s) they need:
 - **Level 1** — external tooling baseline (ruff, ESLint, clippy, …).
   Not aspergillus code; aspergillus ships reference configs only.
 - **Level 2** — structural rules (ASP201–206). Blocking.
-- **Level 3** — error-handling rules (ASP301–302). Blocking in strict
-  adopters.
+- **Level 3** — error-handling rules (ASP302–303; ASP301 retired for
+  Python, still active in Rust/TypeScript). Blocking in strict adopters.
 - **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
 See [`docs/design.md`](docs/design.md) for the authoritative
