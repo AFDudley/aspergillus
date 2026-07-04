@@ -5,105 +5,29 @@ from __future__ import annotations
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
 
-
-class RaiseInsteadOfResult(LintRule):
-    """ASP301: Function raises AND returns — consider Result type.
-
-    Functions that have both a normal return path and a raise path
-    are using exceptions for control flow. Consider returning a
-    Result/Either type instead, making the error explicit in the
-    type signature.
-
-    Exempt: __init__ (commonly raises ValueError/TypeError),
-    test functions, and functions that only raise (no return).
-    """
-
-    MESSAGE = "ASP301: Function has both `raise` and `return` — consider Result type"
-
-    VALID = [
-        Valid(
-            "def divide(a: float, b: float) -> float:\n"
-            "    assert b != 0\n"
-            "    assert isinstance(a, (int, float))\n"
-            "    return a / b\n"
-        ),
-        Valid("def fail_always() -> None:\n    raise NotImplementedError\n"),
-        Valid(
-            "def __init__(self, x: int) -> None:\n"
-            "    if x < 0:\n"
-            "        raise ValueError\n"
-            "    self.x = x\n"
-        ),
-    ]
-    INVALID = [
-        Invalid(
-            "def parse(s: str) -> int:\n"
-            "    assert isinstance(s, str)\n"
-            "    assert len(s) > 0\n"
-            "    if not s.isdigit():\n"
-            "        raise ValueError('not a number')\n"
-            "    return int(s)\n"
-        ),
-    ]
-
-    EXEMPT_PREFIXES = ("test_", "__init__")
-
-    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
-        name = node.name.value
-        if any(name.startswith(p) for p in self.EXEMPT_PREFIXES):
-            return
-
-        has_raise = _has_node_type(node.body, cst.Raise)
-        has_return = _has_return_value(node.body)
-
-        if has_raise and has_return:
-            self.report(node, self.MESSAGE)
-
-
-def _has_node_type(body: cst.BaseSuite, node_type: type[cst.CSTNode]) -> bool:
-    """Check if body contains a node of given type (not in nested functions)."""
-    if not isinstance(body, cst.IndentedBlock):
-        return False
-    return _search_for_type(body, node_type)
-
-
-def _search_for_type(node: cst.CSTNode, node_type: type[cst.CSTNode]) -> bool:
-    if isinstance(node, node_type):
-        return True
-    # Don't descend into nested functions
-    if isinstance(node, cst.FunctionDef) and not isinstance(node, cst.BaseSuite):
-        return False
-    for child in node.children:
-        if isinstance(child, cst.CSTNode):
-            # Skip nested function defs
-            if isinstance(child, cst.FunctionDef):
-                continue
-            if _search_for_type(child, node_type):
-                return True
-    return False
-
-
-def _has_return_value(body: cst.BaseSuite) -> bool:
-    """Check for `return <expr>` (not bare `return` or `return None`)."""
-    if not isinstance(body, cst.IndentedBlock):
-        return False
-    return _search_for_return(body)
-
-
-def _search_for_return(node: cst.CSTNode) -> bool:
-    if isinstance(node, cst.Return):
-        if node.value is not None:
-            # Exclude `return None`
-            if not (isinstance(node.value, cst.Name) and node.value.value == "None"):
-                return True
-        return False
-    for child in node.children:
-        if isinstance(child, cst.CSTNode):
-            if isinstance(child, cst.FunctionDef):
-                continue
-            if _search_for_return(child):
-                return True
-    return False
+# ASP301 (RaiseInsteadOfResult) — RETIRED for Python (pebble asp-80c).
+#
+# ASP301 flagged any function with both a `raise` path and a `return
+# <value>` path, prescribing a Result/Either type. That is a
+# TypeScript/neverthrow / Rust / Haskell convention (model failure as a
+# value, never throw). Python has NO ergonomic Result type and the MTM
+# Python corpus does not use one, so an idiomatic guard clause
+# (`if bad: raise ...; ...; return x`) is correct, standard Python — not
+# an antipattern. The only way to satisfy the rule was to split every
+# fallible function into a raise-only shell plus a pure-return half,
+# doubling function count for zero benefit (no Result value threads
+# through). The rule mis-prescribed on Python exactly as ASP202 did
+# before asp-070/asp-da5 refined it.
+#
+# The genuinely-dangerous error-shaping patterns remain covered by the
+# surviving L3 rules: ASP302 (OptionalReturnType) catches None-sentinel
+# returns, and ASP303 (ErrorSwallowedIntoSentinel) catches an error
+# swallowed into a success-typed falsy sentinel. Neither of those was
+# ASP301's job; ASP301 caught only FP style, so nothing safety-relevant
+# is uncovered by its removal. The Rust (`clippy::panic`/`unwrap_used`)
+# and TypeScript (`no-throw` / neverthrow `must-consume-result`)
+# analogues stay in force — those languages HAVE ergonomic Result types,
+# so forcing their use there is a real standard, not dogma.
 
 
 class OptionalReturnType(LintRule):
@@ -122,6 +46,19 @@ class OptionalReturnType(LintRule):
     VALID = [
         Valid("def get_value() -> int:\n    assert True\n    assert True\n    return 42\n"),
         Valid("def __init__(self) -> None:\n    self.x = 1\n"),
+        # asp-80c: an idiomatic guard-raise-then-return function (raise on a
+        # bad input, then return a concrete non-Optional value) is correct,
+        # standard Python — NOT flagged. This is the pattern the retired
+        # ASP301 wrongly flagged; ASP302 must not pick it up in ASP301's
+        # place (the return type is `int`, not Optional).
+        Valid(
+            "def parse(s: str) -> int:\n"
+            "    assert isinstance(s, str)\n"
+            "    assert len(s) > 0\n"
+            "    if not s.isdigit():\n"
+            "        raise ValueError('not a number')\n"
+            "    return int(s)\n"
+        ),
     ]
     INVALID = [
         Invalid(
@@ -188,11 +125,13 @@ class ErrorSwallowedIntoSentinel(LintRule):
     ``-> list[dict[str, Any]]`` annotation — a chain read failure is
     indistinguishable from "zero records on chain."
 
-    Sibling to ASP301 (raise+return) and ASP302 (Optional return): all
-    three target a return shape that hides the error in the type. ASP303
-    is the one ASP301/302 miss — the error is swallowed into a
-    *success-typed* falsy sentinel, so neither the None-sentinel (ASP302)
-    nor the raise-path (ASP301) heuristic fires.
+    Sibling to ASP302 (Optional return): both target a return shape that
+    hides the error in the type. ASP303 is the one ASP302 misses — the
+    error is swallowed into a *success-typed* falsy sentinel, so the
+    None-sentinel (ASP302) heuristic does not fire. (ASP301, the former
+    raise+return heuristic, is retired for Python — pebble asp-80c — as it
+    mis-flagged idiomatic guard clauses; it never covered this
+    swallowed-sentinel shape anyway.)
 
     Exempt: test functions, dunders; functions with no return annotation
     (cannot establish the success shape); and functions already returning
@@ -208,6 +147,19 @@ class ErrorSwallowedIntoSentinel(LintRule):
     VALID = [
         # Empty literal, but NOT inside an except handler.
         Valid("def f() -> list:\n    assert True\n    return []\n"),
+        # asp-80c: an idiomatic guard-raise-then-return function (raise on a
+        # bad input outside any `except`, then return a concrete value) is
+        # correct, standard Python — NOT flagged. The retired ASP301 wrongly
+        # flagged raise+return; ASP303 must not pick it up in its place (the
+        # raise is a guard, not an error swallowed into a success sentinel).
+        Valid(
+            "def parse(s: str) -> int:\n"
+            "    assert isinstance(s, str)\n"
+            "    assert len(s) > 0\n"
+            "    if not s.isdigit():\n"
+            "        raise ValueError('not a number')\n"
+            "    return int(s)\n"
+        ),
         # Already returns Result — error is explicit in the type.
         Valid(
             "def f() -> Result[list, str]:\n"

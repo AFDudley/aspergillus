@@ -114,8 +114,34 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 | Rule   | Description                        | Python (Fixit)            | TypeScript                                       | Rust |
 |--------|------------------------------------|---------------------------|--------------------------------------------------|------|
-| ASP301 | Result types, no exceptions        | `RaiseInsteadOfResult`    | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
+| ASP301 | Result types, no exceptions        | — (retired for Python; see below) | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
 | ASP302 | No Optional/None returns           | `OptionalReturnType`      | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions` | No null in language |
+
+#### Python Level 3 — ASP301 retired (pebble asp-80c)
+
+ASP301's Python implementation, `RaiseInsteadOfResult`, flagged any
+function with both a `raise` path and a `return <value>` path. That
+encodes a language convention Python does not have: there is no
+ergonomic `Result`/`Either` in the standard library, and idiomatic
+Python signals failure with exceptions. A guard clause — `if bad:
+raise …; …; return x` — is correct, standard Python, not an
+antipattern. The only way to satisfy the rule was to split every
+fallible function into a raise-only shell plus a pure-return half,
+doubling the function count with no Result value actually threading
+through. It mis-prescribed on Python the same way ASP202 did before
+asp-070/asp-da5 refined it, so the Python rule is retired.
+
+The safety-relevant error-shaping checks survive: **ASP302**
+(`OptionalReturnType`) still catches `None`-sentinel returns, and
+**ASP303** (`ErrorSwallowedIntoSentinel`) still catches an error
+swallowed into a success-typed falsy sentinel. ASP301 caught only FP
+style, so nothing safety-relevant is uncovered.
+
+The **Rust** (`clippy::panic`/`unwrap_used`/`expect_used`) and
+**TypeScript** (`no-throw` + neverthrow `must-consume-result`)
+analogues stay in force — those languages have ergonomic `Result`
+types, so requiring their use is a real standard, not dogma. Retiring
+ASP301 for Python does not retire the Level 3 *slot*.
 
 #### TypeScript Level 3 — design notes
 
