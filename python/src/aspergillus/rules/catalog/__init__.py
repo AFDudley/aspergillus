@@ -60,6 +60,7 @@ from aspergillus.rules.catalog.redundant_conditional_bool import (
     RedundantConditionalBoolAnd,
     RedundantConditionalBoolOr,
 )
+from aspergillus.rules.catalog.shell_to_self import ShellToSelf
 from aspergillus.rules.catalog.tupling import Tupling
 from aspergillus.rules.catalog.worker_wrapper import WorkerWrapper
 
@@ -70,6 +71,7 @@ __all__ = [
     "MapFusion",
     "RedundantConditionalBoolAnd",
     "RedundantConditionalBoolOr",
+    "ShellToSelf",
     "Tupling",
     "WorkerWrapper",
 ]
