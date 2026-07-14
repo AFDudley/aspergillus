@@ -345,6 +345,26 @@ Paste `rust/configs/cargo-lints.toml` contents into the consumer's
 - **Per-rule suppression**: `# noqa: ASP2XX` (Python), ESLint disable comments
   (TS), `#[allow(clippy::…)]` (Rust).
 
+## Whole-project CLI tools (cross-file, not LintRules)
+
+Some code-quality facts are inherently **cross-file** and a single-file
+`fixit.LintRule` structurally cannot see them (same limitation ASP408/409
+document). Those ship as whole-project subcommands of the `aspergillus` CLI
+(`python/src/aspergillus/__main__.py`), using LibCST purely as a parser and
+grouping facts across the whole corpus.
+
+- **`aspergillus check-duplicates <path>… [--min-lines N] [--allowlist FILE]
+  [--json]`** — type-2 duplicate-function detector. Parses every `.py` file,
+  normalizes each function/method (identifiers → one placeholder, literals →
+  type-only markers — standard type-2 clone normalization), hashes the
+  normalized node, and reports any hash bucket with >1 member whose span is at
+  least `--min-lines` (default 5) and whose hash is not in the `--allowlist`.
+  The allowlist is a config file of accepted `normalized_hash` values, one per
+  line with `#` citing comments (mirrors exophial's `vulture_whitelist.py`
+  pattern). Core logic is pure (`duplicates.py`); `__main__.py` is the
+  imperative shell. Proven against exophial's pre/post-exo-c3a test tree (the
+  22 duplicated `_git()` helpers). Pebble: asp-21d.
+
 ## What this is NOT
 
 - Not a type checker (mypy/tsc/rustc handle that).
