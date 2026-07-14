@@ -264,16 +264,68 @@ npm; Python uses uv; Rust uses a file copy.
 
 ### Python
 
-```bash
-uv tool install git+https://github.com/AFDudley/aspergillus.git#subdirectory=python
-```
+The Python rule-pack is a standalone, buildable hatchling distribution
+(`python/pyproject.toml`, `src/` layout). It is `pip`/`uv`-installable from
+the aspergillus git remote **without** the mtm monorepo — the fixit rule
+entry point (`enable = ["aspergillus.rules"]`) resolves against the installed
+package's own import structure, not a monorepo-relative editable path. The
+package is at `python/` **inside** the repo, so every git install passes
+`subdirectory=python`.
 
-Then in the consumer's `pyproject.toml`:
+#### Versioned pin (standalone consumers)
+
+Distribution channel: **pinned git URL against a release tag** (not a package
+index — the name is not published to PyPI; a git tag is zero-friction,
+reproducible, and, because `git subtree split` is deterministic, maps a
+monorepo release commit to a stable synthetic upstream commit the tag points
+at). Releases are tagged `vX.Y.Z` on the aspergillus upstream
+(`git@github.com:AFDudley/aspergillus.git`); the current release is `v0.2.0`.
+
+Add to the consumer's `pyproject.toml`:
 
 ```toml
+[project]
+dependencies = ["aspergillus==0.2.0"]
+
+[tool.uv.sources]
+aspergillus = { git = "ssh://git@github.com/AFDudley/aspergillus.git", tag = "v0.2.0", subdirectory = "python" }
+
 [tool.fixit]
 enable = ["aspergillus.rules"]
 ```
+
+The `aspergillus==0.2.0` pin is what a parity gate compares against the
+vendored subtree version (`aspergillus.__version__`, sourced from the
+distribution metadata). Bump the pin + the tag together on each release.
+
+Ad-hoc install (no project file):
+
+```bash
+uv pip install "git+ssh://git@github.com/AFDudley/aspergillus.git@v0.2.0#subdirectory=python"
+```
+
+#### In-monorepo consumers (editable override)
+
+Consumers **inside** the mtm monorepo (e.g. `backtest/`) keep the same
+`aspergillus==X.Y.Z` dependency but override the source to the local subtree,
+so a change to the vendored rules is picked up without a release round-trip:
+
+```toml
+[tool.uv.sources]
+aspergillus = { path = "../aspergillus/python", editable = true }
+```
+
+Same package, two resolution paths — the version pin is identical; only the
+`[tool.uv.sources]` entry differs (git tag standalone, editable path
+in-monorepo).
+
+#### Release / versioning policy
+
+`python/pyproject.toml` `[project].version` is the single source of truth.
+Cutting a release is: bump that version, round-trip the aspergillus subtree
+to upstream (`scripts/subtree-sync.sh push aspergillus`, never `--squash`),
+then `git tag vX.Y.Z` the resulting upstream commit and push the tag.
+Consumers then move their pin + `tag =` in lockstep.
 
 ### Rust
 
