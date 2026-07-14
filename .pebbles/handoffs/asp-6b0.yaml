@@ -1,0 +1,135 @@
+status: completed
+pebble_id: asp-6b0
+branch: pebble/asp-6b0
+commits:
+  - 89181066b   # aspergillus(asp-6b0): add ASP410 in-process-e2e lint rule
+  - bf1ddee2d   # pebbles(asp-321): file ASP409 shell-to-self non-discovery bug
+files_changed:
+  - aspergillus/python/src/aspergillus/rules/catalog/in_process_e2e.py
+  - aspergillus/python/src/aspergillus/rules/catalog/__init__.py
+  - aspergillus/python/src/aspergillus/rules/__init__.py
+  - aspergillus/python/tests/test_in_process_e2e.py
+  - aspergillus/.pebbles/events.jsonl
+files_deleted: []
+tests_added:
+  - aspergillus/python/tests/test_in_process_e2e.py
+docs_updated: []
+summary: >
+  Generalized exophial's scripts/check_no_inprocess_e2e.py invariant into a
+  new configurable fixit/LibCST LintRule, ASP410 InProcessE2E, in aspergillus's
+  verification-integrity family (sibling to ASP408 anti-special-casing and
+  ASP409 shell-to-self). This is net-new feature work (a new rule), landed
+  feature-shaped: the fixture tests ARE the outer-loop acceptance per
+  aspergillus's own testing.md ("a rule's e2e is the rule firing on real
+  fixture code").
+
+
+  THE INVARIANT. A test file that BOTH (1) constructs a configured
+  system-under-test class in-process AND (2) calls a configured loop-drive
+  method on it is the signature of an in-process e2e — the fake-gate shape a
+  genuine e2e (crossing a real subprocess / installed-CLI / network boundary)
+  is supposed to prevent. exophial's script hardcodes _CONSTRUCT_NAME =
+  "Dispatcher", _DRIVE_ATTRS = {tick, dispatch_ready}, and scans only
+  tests/e2e/. ASP410 lifts the same invariant into the corpus. Same
+  AST-not-text property (exo-8e0): detection is over real cst.Call nodes, so a
+  docstring/comment/string that merely NAMES Dispatcher().tick() is invisible.
+
+
+  CONFIG MECHANISM (the one real design decision). The rule is configurable
+  via three OVERRIDABLE CLASS ATTRIBUTES tuned by subclassing —
+  CONSTRUCT_CLASS_NAMES, DRIVE_METHOD_NAMES, E2E_PATH_PATTERN. This is the
+  idiomatic fixit mechanism aspergillus rules actually honor (cf. MAX_LINES on
+  FunctionTooLong, MIN_ASSERTS on ASP202, own_package on ASP409). I did NOT
+  model it on the [tool.aspergillus] extra_io_functions TOML option that the
+  task flagged: verified against source that pebble asp-b72's finding holds —
+  no rule reads that option, it is inert. The class-attribute-by-subclass
+  pattern is proven working (test_construct_and_drive_names_are_configurable
+  retargets to a "Server"/"serve" SUT and shows the default Dispatcher shape no
+  longer fires under that config). The DEFAULT config reproduces the motivating
+  exophial invariant (Dispatcher + {tick, dispatch_ready}, all paths) so the
+  rule is immediately testable and demonstrable; a consumer retargets for its
+  own SUT. E2E_PATH_PATTERN gates by the file's POSIX path via libcst
+  FilePathProvider metadata (fnmatch glob; default "" = all files — kept empty
+  so the standard VALID/INVALID harness, which runs under invalid.py, works;
+  path-scoping is opt-in and tested separately).
+
+
+  SHAPE. A standard single-file fixit LintRule (no cross-file analysis) as the
+  design discussion concluded. Module-level aggregation: visit_Call
+  accumulates construct nodes and a drive flag, leave_Module reports iff BOTH
+  are present AND the path matches. Detection-only, no autofix (the fix — which
+  real boundary call replaces the in-process construction — is human/agent
+  judgment, same as ASP409); lands at warn per the severity-graduation ADR.
+
+
+  REGISTRATION. Registered in BOTH catalog/__init__.py AND the parent
+  rules/__init__.py re-export. The parent re-export is the load-bearing seam
+  fixit's `enable=["aspergillus.rules"]` walk actually discovers (it does not
+  recurse into the catalog subpackage). A discovery test
+  (test_rule_is_discoverable_by_fixit) asserts collect_rules reaches ASP410.
+
+
+  FOUND BUG (filed, not fixed here) — asp-321. While wiring registration I
+  found ASP409 ShellToSelf is exported from catalog/__init__.py but MISSING
+  from the parent rules/__init__.py re-export, so fixit NEVER discovers it:
+  collect_rules(generate_config(...)) returns 16 rules and ShellToSelf is not
+  among them. ASP409 is defined and unit-tested but never enforced in any
+  consumer's pre-commit path — same inert class as asp-b72. NOT bundled into
+  this pebble: enabling ASP409 repo-wide is a behavior change to a different
+  rule with its own blast radius (may newly flag existing code) that deserves
+  its own verification. Filed as asp-321 (P2) with the one-line fix + the
+  discovery-test pattern to lock it.
+
+
+  ACCEPTANCE PROVEN (both gates):
+  (a) Regression gate GREEN — full aspergillus suite 163 passed, 1 skipped
+  (was 146 passed, 1 skipped as of asp-047; +17 new ASP410 tests). mypy
+  --strict clean (25 files), ruff check clean, ruff format clean on all four
+  changed files.
+  (b) The change's own assertion — the SHIPPED fixit CLI (not just LintRunner)
+  discovers ASP410 and FIRES it on a violating fixture
+  (`d = Dispatcher(spawn)\nd.tick()`) and stays CLEAN on a real-subprocess
+  fixture (`subprocess.run(["exophial","run"])`). Full commands + output in
+  verify_transcript.
+
+
+  NOTE (pre-existing, out of scope): `ruff format --check` flags two files I
+  did not touch (catalog/tupling.py, catalog/worker_wrapper.py) — a
+  pre-existing format drift from the installed ruff 0.15.5 vs whatever the repo
+  was last formatted with. git status confirms both are unmodified. pre-commit
+  only checks staged files so it does not block; left as-is (not this pebble).
+verify_transcript: |
+  # (b) genuine e2e — the shipped fixit CLI discovers + fires ASP410
+  $ printf 'd = Dispatcher(spawn)\nd.tick()\n' > .scratch_asp410/fake_e2e.py
+  $ uv run fixit lint .scratch_asp410/fake_e2e.py
+  .scratch_asp410/fake_e2e.py@1:4 InProcessE2E: ASP410: in-process construction
+  masquerading as an e2e — this file constructs the system-under-test in-process
+  (a configured class) and calls a loop-drive method on it. ...
+  🛠️  1 file checked, 1 file with errors 🛠️
+
+  $ printf 'subprocess.run(["exophial","run"])\n' > .scratch_asp410/real_e2e.py
+  $ uv run fixit lint .scratch_asp410/real_e2e.py
+  🧼 1 file clean 🧼
+
+  # discovery through fixit's real collect_rules (not just LintRunner)
+  $ uv run python -c "from fixit.config import collect_rules, generate_config; ..."
+  fixit-discovered: [... 'InProcessE2E' ...]   # present (ShellToSelf still absent -> asp-321)
+
+  # (a) regression gate + lint gates
+  $ uv run pytest -q
+  163 passed, 1 skipped in 3.59s
+
+  $ uv run pytest tests/test_in_process_e2e.py -q
+  17 passed in 0.31s
+
+  $ uv run mypy src tests
+  Success: no issues found in 25 source files
+
+  $ uv run ruff check src tests
+  All checks passed!
+
+  $ uv run ruff format --check src/aspergillus/rules/catalog/in_process_e2e.py \
+      tests/test_in_process_e2e.py src/aspergillus/rules/__init__.py \
+      src/aspergillus/rules/catalog/__init__.py
+  4 files already formatted
+cost: ~115k tokens (est. ~$1.35)
