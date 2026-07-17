@@ -6,11 +6,17 @@ from fixit.testing import add_lint_rule_tests_to_module
 
 from aspergillus.rules.level3 import (
     ErrorSwallowedIntoSentinel,
+    FailureDiscardsEvidence,
     OptionalReturnType,
     RaiseInsteadOfResult,
 )
 
 add_lint_rule_tests_to_module(
     globals(),
-    [RaiseInsteadOfResult(), OptionalReturnType(), ErrorSwallowedIntoSentinel()],
+    [
+        RaiseInsteadOfResult(),
+        OptionalReturnType(),
+        ErrorSwallowedIntoSentinel(),
+        FailureDiscardsEvidence(),
+    ],
 )

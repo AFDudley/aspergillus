@@ -116,6 +116,8 @@ Reference configs live in `python/src/aspergillus/configs/`,
 |--------|------------------------------------|---------------------------|--------------------------------------------------|------|
 | ASP301 | Result types, no exceptions        | `RaiseInsteadOfResult`    | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
 | ASP302 | No Optional/None returns           | `OptionalReturnType`      | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions` | No null in language |
+| ASP303 | No error swallowed into a success sentinel | `ErrorSwallowedIntoSentinel` | — (Python-specific) | — |
+| ASP304 | A surfaced failure must carry its captured evidence | `FailureDiscardsEvidence` | — (Python-specific) | — |
 
 #### TypeScript Level 3 — design notes
 
