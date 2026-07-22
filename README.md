@@ -68,6 +68,18 @@ attribute …` crashes three layers down the call stack.
   discarded gives the operator a one-bit summary of a cause that was
   captured and thrown away. Surface the evidence, not just the code.
 
+### ASP4xx — catalog & safety rules (Python only, implemented)
+
+Single-purpose Fixit/LibCST rules living in
+`python/src/aspergillus/rules/catalog/`: FP refactoring-catalog moves
+(ASP401–407), verification-integrity rules (ASP408–410), and FSM-safety
+rules including **ASP412 — `FsmEdgeDuration`** (an FSM transition body
+must not embed unbounded work — an LLM/subprocess call, another state
+machine's run/drive entrypoint, or an unbounded retry loop — instead of
+writing a durable marker and returning). See `docs/design.md` for the
+full list and `docs/refactoring-catalog.md` for the FP move citations.
+Not yet ported to TypeScript/Rust.
+
 ### Level 4/5 — planned, not implemented
 
 Contracts and property-based tests (L4), formal verification via SMT
@@ -99,6 +111,8 @@ subtree(s) they need:
 - **Level 2** — structural rules (ASP201–206). Blocking.
 - **Level 3** — error-handling rules (ASP302–304; ASP301 retired for
   Python, still active in Rust/TypeScript). Blocking in strict adopters.
+- **ASP4xx** — catalog & safety rules (Python only), e.g. `FsmEdgeDuration`
+  (ASP412). Blocking.
 - **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
 See [`docs/design.md`](docs/design.md) for the authoritative
