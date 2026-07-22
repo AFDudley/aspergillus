@@ -1,0 +1,240 @@
+{
+  "id": "derived-asp-fef",
+  "original_statement": "Request: Origin: exophial exo-2e2 incident analysis (2026-07-22). The fourth ASP-FSM rule, and the only one of the set that would have caught the incident: asp-26e/asp-5a8/asp-5be check the case ANALYSIS of a dispatch; none checks edge BODIES.\n\nTHE PRINCIPLE (classical FSM contract): time is spent in STATES; transitions are instantaneous. An edge whose body runs unbounded work (an LLM derivation, another state machine's full run) is a real, occupied state the machine failed to declare \u2014 unobservable (no bus mark, no log line; exists only in the call stack), it blocks the interpreter (exophial's single-threaded reducer froze all dispatch for ~5 min per occurrence), is invisible to liveness sweeps (which watch workers, not edges), and has accidental crash/resume semantics. This is the dual of exophial doctrine's 'an exit transition you left implicit is a state you failed to handle': an edge with duration is a state you failed to declare.\n\nMOTIVATING DEFECTS (exophial, 2026-07-22, observed in production): (1) exo-2e2's needs-spec bounce runs the full SPECIFY sub-machine (LLM spec authoring) synchronously inside the INTEGRATE edge ('merged in the SAME call \u2014 no retry, no waiting for a later tick' \u2014 that sentence is the defect); (2) exo-d1b.2's SPECIFY-at-dispatch runs derivation inside _try_dispatch. Both passed review because each was locally justified as 'no second path'.\n\nTHE RULE (reject, syntactic approximation mirroring ASP205's IO-in-pure-function detection): a function identified as a transition body \u2014 heuristics: dispatches on an Enum-typed subject via match/if-elif AND performs the transition's terminal action, or is named/annotated as an edge (marker comment '# asp-fsm: edge') \u2014 must not (a) call a Transport/.complete()/subprocess LLM invocation, (b) call another FSM's run/drive entrypoint, (c) enter an unbounded retry/convergence loop. Composition belongs in STATES: emit a durable marker (bus write) and yield; the outer interpreter re-enters via the declared state.\n\nHONEST LIMITS (state plainly, per exo-011's discipline): identifying 'transition function' is heuristic \u2014 expect opt-in annotation for precision; cannot detect semantic unboundedness (a bounded-looking call that blocks); cross-module indirection defeats it (helper wraps the Transport call) \u2014 flag direct calls only, doctrine + review covers laundering.\n\nACCEPTANCE: fixture with (1) an enum-dispatch edge body directly invoking a Transport.complete / subprocess claude call -> REJECTED; (2) the same edge emitting a marker write and returning -> PASSES; (3) the unbounded call in a non-edge function -> not flagged; (4) opt-in '# asp-fsm: edge' marker on a helper -> flagged when it embeds the call.\n\nEXOPHIAL COMPANION: the exophial-side conversion (bus-mediated SPECIFY re-entry replacing inline authoring) is filed on exophial's bus; this rule holds that shape in place once exo-125 wires canonical aspergillus.",
+  "restatement": "Add a fourth ASP-FSM static-analysis rule (ASP-FSM-EDGE-DURATION), sibling to asp-26e/asp-5a8/asp-5be, that inspects Python source for functions serving as FSM transition ('edge') bodies and rejects any such function that performs unbounded, blocking work instead of staying instantaneous. A function counts as an edge body if it either dispatches on an Enum-typed subject via a match statement or if/elif chain and performs the transition's terminal action, or if it carries an explicit '# asp-fsm: edge' marker comment. Inside an identified edge body, the checker must reject three kinds of unbounded work: (a) a direct LLM completion or subprocess call (e.g. Transport().complete(...) or a subprocess claude invocation), (b) a direct call into another FSM's run/drive entrypoint, and (c) an unbounded retry/convergence loop. The correct alternative \u2014 an edge that writes a durable marker to the bus and returns, letting the outer interpreter re-enter later via a declared state \u2014 must pass, not be flagged. The rule is explicitly heuristic and scoped: it only recognizes functions it can identify as edges by the two heuristics above, it does not attempt semantic analysis of whether some other call is unbounded, and it does not trace calls through an intermediate helper function \u2014 indirection (a helper wrapping the LLM/subprocess call) defeats detection, so only direct calls inside the identified edge body are flagged.",
+  "restatement_spans": [
+    {
+      "id": "s1",
+      "text": "an enum-dispatch edge body directly invoking a Transport.complete / subprocess claude call -> REJECTED"
+    },
+    {
+      "id": "s2",
+      "text": "the same edge emitting a marker write and returning -> PASSES"
+    },
+    {
+      "id": "s3",
+      "text": "the unbounded call in a non-edge function -> not flagged"
+    },
+    {
+      "id": "s4",
+      "text": "opt-in '# asp-fsm: edge' marker on a helper -> flagged when it embeds the call"
+    },
+    {
+      "id": "s5",
+      "text": "call another FSM's run/drive entrypoint"
+    },
+    {
+      "id": "s6",
+      "text": "enter an unbounded retry/convergence loop"
+    },
+    {
+      "id": "s7",
+      "text": "cross-module indirection defeats it (helper wraps the Transport call) \u2014 flag direct calls only"
+    }
+  ],
+  "goal": "Build and verify the ASP-FSM-EDGE-DURATION checker so it correctly separates edge bodies that do unbounded work (reject) from edge bodies that emit a durable marker and return (pass), including its documented blind spots.",
+  "acceptance_criteria": [
+    "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, calls Transport().complete(...) directly before finishing the transition. The checker should report this function as a violation.",
+    "Feed the checker the same transition function, but with the LLM call replaced by writing a marker to the bus and returning immediately. The checker should report no violation.",
+    "Feed the checker a plain helper function, with no enum dispatch and no edge marker comment, that calls Transport().complete(...) directly. The checker should not flag it because the function isn't recognized as a transition body.",
+    "Feed the checker a helper function that has no enum dispatch but is annotated with the comment '# asp-fsm: edge' and embeds a direct Transport().complete(...) call. The checker should flag it.",
+    "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, calls another FSM's run(...) method directly before finishing the transition. The checker should report this as a violation.",
+    "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, runs a 'while True' retry loop before finishing the transition. The checker should report this as a violation.",
+    "Feed the checker a transition function that dispatches on an enum-typed status, where the branch calls a separate helper function, and it's that helper (not the transition function itself) that makes the direct LLM call. The checker should not flag the transition function."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, calls Transport().complete(...) directly before finishing the transition. The checker should report this function as a violation."
+    },
+    {
+      "id": "c2",
+      "text": "Feed the checker the same transition function, but with the LLM call replaced by writing a marker to the bus and returning immediately. The checker should report no violation."
+    },
+    {
+      "id": "c3",
+      "text": "Feed the checker a plain helper function, with no enum dispatch and no edge marker comment, that calls Transport().complete(...) directly. The checker should not flag it because the function isn't recognized as a transition body."
+    },
+    {
+      "id": "c4",
+      "text": "Feed the checker a helper function that has no enum dispatch but is annotated with the comment '# asp-fsm: edge' and embeds a direct Transport().complete(...) call. The checker should flag it."
+    },
+    {
+      "id": "c5",
+      "text": "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, calls another FSM's run(...) method directly before finishing the transition. The checker should report this as a violation."
+    },
+    {
+      "id": "c6",
+      "text": "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, runs a 'while True' retry loop before finishing the transition. The checker should report this as a violation."
+    },
+    {
+      "id": "c7",
+      "text": "Feed the checker a transition function that dispatches on an enum-typed status, where the branch calls a separate helper function, and it's that helper (not the transition function itself) that makes the direct LLM call. The checker should not flag the transition function."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "description": "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, calls Transport().complete(...) directly before finishing the transition. The checker should report this function as a violation.",
+      "proves": "Proves the rule rejects an edge body that directly makes an LLM/subprocess call, the core motivating case from the exo-2e2 and exo-d1b.2 incidents.",
+      "restatement_span_id": "s1",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "from enum import Enum\n\nclass Status(Enum):\n    NEEDS_SPEC = 1\n    READY = 2\n\ndef integrate_edge(status: Status, ctx):\n    if status == Status.NEEDS_SPEC:\n        result = Transport().complete(prompt=\"derive spec\")\n        ctx.mark_integrated(result)\n    elif status == Status.READY:\n        ctx.mark_integrated(None)\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "description": "Feed the checker the same transition function, but with the LLM call replaced by writing a marker to the bus and returning immediately. The checker should report no violation.",
+      "proves": "Proves the rule allows the correct pattern \u2014 emitting a durable marker and yielding \u2014 inside an edge body.",
+      "restatement_span_id": "s2",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "from enum import Enum\n\nclass Status(Enum):\n    NEEDS_SPEC = 1\n    READY = 2\n\ndef integrate_edge(status: Status, ctx):\n    if status == Status.NEEDS_SPEC:\n        ctx.bus.write_marker(\"needs_spec_bounce\")\n        return\n    elif status == Status.READY:\n        ctx.mark_integrated(None)\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "description": "Feed the checker a plain helper function, with no enum dispatch and no edge marker comment, that calls Transport().complete(...) directly. The checker should not flag it because the function isn't recognized as a transition body.",
+      "proves": "Proves the rule only applies to functions it can identify as edges, not to every function that contains an unbounded call.",
+      "restatement_span_id": "s3",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "def helper_utility(ctx):\n    result = Transport().complete(prompt=\"derive spec\")\n    return result\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "description": "Feed the checker a helper function that has no enum dispatch but is annotated with the comment '# asp-fsm: edge' and embeds a direct Transport().complete(...) call. The checker should flag it.",
+      "proves": "Proves the opt-in marker-comment way of identifying an edge body works on its own, independent of the enum-dispatch heuristic.",
+      "restatement_span_id": "s4",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "# asp-fsm: edge\ndef dispatch_helper(ctx):\n    result = Transport().complete(prompt=\"derive spec\")\n    return result\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "description": "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, calls another FSM's run(...) method directly before finishing the transition. The checker should report this as a violation.",
+      "proves": "Proves the rule rejects an edge body that calls another FSM's run/drive entrypoint.",
+      "restatement_span_id": "s5",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "from enum import Enum\n\nclass Status(Enum):\n    NEEDS_SPEC = 1\n    READY = 2\n\ndef integrate_edge(status: Status, ctx):\n    if status == Status.NEEDS_SPEC:\n        SpecifyMachine().run(ctx)\n        ctx.mark_integrated(None)\n    elif status == Status.READY:\n        ctx.mark_integrated(None)\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "Feed the checker a transition function that dispatches on an enum-typed status and, in one branch, runs a 'while True' retry loop before finishing the transition. The checker should report this as a violation.",
+      "proves": "Proves the rule rejects an edge body containing an unbounded retry/convergence loop.",
+      "restatement_span_id": "s6",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "from enum import Enum\n\nclass Status(Enum):\n    NEEDS_SPEC = 1\n    READY = 2\n\ndef integrate_edge(status: Status, ctx):\n    if status == Status.NEEDS_SPEC:\n        while True:\n            if ctx.try_converge():\n                break\n        ctx.mark_integrated(None)\n    elif status == Status.READY:\n        ctx.mark_integrated(None)\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "description": "Feed the checker a transition function that dispatches on an enum-typed status, where the branch calls a separate helper function, and it's that helper (not the transition function itself) that makes the direct LLM call. The checker should not flag the transition function.",
+      "proves": "Proves the documented limitation holds: indirection through a helper function defeats detection, so the rule flags only direct calls inside the identified edge body.",
+      "restatement_span_id": "s7",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_edge_duration.py",
+        "args": [],
+        "stdin": "from enum import Enum\n\nclass Status(Enum):\n    NEEDS_SPEC = 1\n    READY = 2\n\ndef _call_llm(ctx):\n    return Transport().complete(prompt=\"derive spec\")\n\ndef integrate_edge(status: Status, ctx):\n    if status == Status.NEEDS_SPEC:\n        result = _call_llm(ctx)\n        ctx.mark_integrated(result)\n    elif status == Status.READY:\n        ctx.mark_integrated(None)\n"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "flagged",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 10,
+      "clause_id": "c7"
+    }
+  ],
+  "criticality": "marginal",
+  "verification_level": "bounded_model_check"
+}
