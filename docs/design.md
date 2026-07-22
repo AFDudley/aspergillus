@@ -187,6 +187,23 @@ The shell `off` for `no-throw-statements` is permanent.
 See `docs/design-decisions/2026-05-08-l3-error-handling-mechanism.md`
 for the full rationale, options considered, and risks accepted.
 
+### Catalog rules — ASP4xx (Python, advisory)
+
+`python/src/aspergillus/rules/catalog/` holds one-rule-per-file catalog-move
+and verification-integrity rules (ASP401+), re-exported at the parent
+`aspergillus.rules` package level per that package's flat-only fixit
+discovery (see `python/src/aspergillus/rules/__init__.py`). Most recent:
+
+- **ASP411 `FsmStringlyDispatch`** — warns when an `if`/`elif` chain or a
+  `match` statement dispatches on `==` comparisons against string literals
+  that shadow a same-module `Enum`'s values, bypassing exhaustiveness
+  checking. Silenced by a `# asp-fsm: boundary-parse` marker comment on the
+  dispatching function (genuine serialization-boundary parsers). Ports the
+  standalone `scripts/check_stringly_dispatch.py` probe (pebble asp-5be)
+  into the enforced fixit pack (pebble asp-fd1.4). Detection-only (Tier 2,
+  no autofix): the fix changes the dispatched-on value's type at every call
+  site, which is a judgment call the rule cannot make mechanically.
+
 ### Levels 4–5 — Planned, not implemented
 
 Contracts, property-based tests (L4), and formal verification (L5). See
@@ -402,3 +419,24 @@ grouping facts across the whole corpus.
 - Not a formatter (ruff-format/Prettier/rustfmt handle that).
 - Not a general-purpose linter (ruff/ESLint recommended/clippy defaults).
 - Not auto-fix (report-only in v0.1 for all three languages).
+### ASP4xx — Catalog & safety rules (Python only, implemented)
+Single-purpose Fixit/LibCST rules, one class per file, living in
+`python/src/aspergillus/rules/catalog/` and re-exported at the
+`aspergillus.rules` package level (fixit's rule discovery does not
+recurse into sub-packages — see `python/src/aspergillus/rules/__init__.py`).
+Two families:
+- **ASP401–407** — FP refactoring-catalog moves (map-fusion,
+  filter-fusion, eta-reduce, boolean-conditional collapse, tupling,
+  worker/wrapper). Citations in `docs/refactoring-catalog.md`.
+- **ASP408–412** — verification-integrity and FSM-safety rules:
+  `AntiSpecialCasing` (ASP408), `ShellToSelf` (ASP409), `InProcessE2E`
+  (ASP410), and **`FsmEdgeDuration` (ASP412)** — an FSM transition
+  ("edge") body must not embed unbounded work (a direct LLM/subprocess
+  call, a call into another state machine's run/drive entrypoint, or an
+  unbounded retry loop) instead of writing a durable marker and
+  returning. Ported from the standalone `scripts/check_edge_duration.py`
+  (pebble `asp-fef`/`asp-fd1.2`); classical FSM contract — time is spent
+  in STATES, transitions are instantaneous. Reject-severity: ships as an
+  immediate blocking violation through `fixit lint`, not the graduated
+  `warn`→`error` workflow the Tier 2 catalog rules use.
+Not yet ported to TypeScript/Rust.

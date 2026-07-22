@@ -34,7 +34,11 @@ itself — the linked spec's `then` clauses own the verdict.
   the dispatch bypasses exhaustiveness checking. Silenced by a
   `# asp-fsm: boundary-parse` marker comment anywhere in the flagged
   function's body (for serialization-boundary parsers), and silent when no
-  same-module Enum exists to shadow.
+```
+  same-module Enum exists to shadow. Ported into the enforced fixit rule
+  pack as ASP411 `FsmStringlyDispatch`
+  (`python/src/aspergillus/rules/catalog/fsm_stringly_dispatch.py`,
+  pebble asp-fd1.4); this script remains as the original standalone probe.
 - `verify_fsm_redundant_branches_lint.py` / `verify_fsm_redundant_branches_pytest.py`
   (asp-fd1.3): NOT dependency-free like the checkers above — these
   deliberately shell out to `uv run --directory python fixit lint` / `pytest`
@@ -43,3 +47,17 @@ itself — the linked spec's `then` clauses own the verdict.
   `python/src/aspergillus/rules/catalog/fsm_redundant_branches.py`) fires
   through the real, installed fixit CLI and repo `[tool.fixit]` config, not
   just via in-repo pytest fixtures.
+- `verify_fsm_stringly_dispatch_lint.py` — asp-fd1.4: arg-dispatched
+  (`invalid` / `boundary_marker`); writes a fixture INSIDE `python/` (fixit's
+  config discovery walks up from the file's own path, so a fixture outside
+  the `python/` tree never sees `[tool.fixit] enable`) and runs the real
+  `uv run --directory python fixit lint` CLI against it, emitting
+  `{"reports_violation": bool}`.
+- `verify_fsm_stringly_dispatch_pytest.py` — asp-fd1.4: runs the real
+  `uv run --directory python pytest tests -q -rA` suite, emitting
+  `{"exit_code": int, "mentions_rule": bool}` — `mentions_rule` confirms
+  ASP411's fixture-based tests ran as part of the full suite, not in
+  isolation.
+```
+
+Note: both sides assign **ASP411** to different rules — main's `FsmRedundantBranches` (asp-fd1.3) and this branch's `FsmStringlyDispatch` (asp-fd1.4). The merged text preserves each side's claim, but this is a real rule-number collision (ASP412 is already taken by `FsmEdgeDuration`); one rule must be renumbered in code and docs — likely `FsmStringlyDispatch` → ASP413, since fd1.3's ASP411 is already merged to main.

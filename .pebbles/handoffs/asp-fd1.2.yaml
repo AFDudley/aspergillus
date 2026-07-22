@@ -1,0 +1,79 @@
+status: completed
+pebble_id: asp-fd1.2
+summary: >
+  Ported scripts/check_edge_duration.py into FsmEdgeDuration, a LibCST
+  LintRule (ASP412) in python/src/aspergillus/rules/catalog/, re-exported at
+  both catalog/__init__.py and the parent rules/__init__.py (the load-bearing
+  seam fixit's flat-only `enable=["aspergillus.rules"]` discovery actually
+  walks). The rule replicates the standalone checker's two edge-recognition
+  heuristics (enum-typed if/elif/match dispatch with a terminal call, or an
+  explicit `# asp-fsm: edge` marker comment) and its three violation shapes
+  (direct LLM/subprocess call, another FSM's run/drive entrypoint, unbounded
+  `while True` retry loop), translated from stdlib ast to LibCST (own-scope
+  traversal that stops at nested def/class/lambda boundaries; a
+  module-header fallback for the marker-comment case when the annotated
+  function is the module's first statement, which stdlib ast's line-based
+  scan handled implicitly but LibCST's `leading_lines` does not). Ships
+  reject-severity (immediate blocking violation through fixit lint, not the
+  graduated warn->error workflow the Tier 2 catalog rules use), documented
+  in both the module docstring and docs/design.md. Tests
+  (python/tests/test_fsm_edge_duration.py) reuse add_lint_rule_tests_to_module
+  with VALID/INVALID cases converted 1:1 from the checker's own
+  derived-asp-fef acceptance scenarios (no separate tests/fixtures/*.py file
+  existed for this checker, so there was nothing left to retire). README.md
+  and docs/design.md rule listings updated. Verified end-to-end: the real
+  `uv run --directory python fixit lint` CLI, using the repo's own
+  [tool.fixit] config, reports FsmEdgeDuration and exits nonzero against an
+  edge-duration violation fixture (scripts/run_fixit_edge_duration_fixture.sh,
+  the same independent-verification bar asp-6b0 used for ASP410), and the
+  full suite (scripts/run_python_test_suite.sh) passes: 187 passed, 1
+  skipped. ruff check/format and mypy are clean on all changed files.
+  scripts/check_edge_duration.py itself is left in place — its retirement is
+  dependency-gated behind all four sibling ASP-FSM rule ports per the
+  coordinator's own triage (pebble asp-fd1, comment b8547d7), not part of
+  this pebble's acceptance.
+cost: ~85k tokens
+commits:
+  - "f678864"
+verify_transcript:
+  pytest (full suite): |
+    $ uv run --directory python pytest tests -q
+    ........................................................................ [ 38%]
+    ........................................................................ [ 77%]
+    ...........................................                              [100%]
+    187 passed, 1 skipped in 3.76s
+  pytest (rule fixtures only): |
+    $ uv run pytest tests/test_fsm_edge_duration.py -v
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_INVALID_0 PASSED
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_INVALID_1 PASSED
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_INVALID_2 PASSED
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_INVALID_3 PASSED
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_VALID_0 PASSED
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_VALID_1 PASSED
+    tests/test_fsm_edge_duration.py::FsmEdgeDuration::test_VALID_2 PASSED
+    7 passed in 0.17s
+  ruff check: |
+    $ uv run ruff check src/aspergillus/rules/catalog/fsm_edge_duration.py tests/test_fsm_edge_duration.py
+    All checks passed!
+  ruff format --check: |
+    $ uv run ruff format --check src/aspergillus/rules/catalog/fsm_edge_duration.py tests/test_fsm_edge_duration.py
+    2 files already formatted
+  mypy: |
+    $ uv run mypy src/aspergillus/rules/catalog/fsm_edge_duration.py tests/test_fsm_edge_duration.py
+    Success: no issues found in 2 source files
+  real fixit CLI against an edge-duration fixture (rs6 / c6): |
+    $ bash scripts/run_fixit_edge_duration_fixture.sh
+    {"violation_reported": true, "fixit_exit_code": 1}
+  full python test suite via the oracle script (rs7 / c7): |
+    $ bash scripts/run_python_test_suite.sh; echo "exit=$?"
+    ........................................................................ [ 38%]
+    ........................................................................ [ 77%]
+    ...........................................                              [100%]
+    187 passed, 1 skipped in 3.30s
+    exit=0
+e2e_gate:
+  spec: contracts/specs/derived-asp-fd1.2.spec.json
+  command: "bash scripts/run_fixit_edge_duration_fixture.sh && bash scripts/run_python_test_suite.sh"
+  result: passed
+  ran_at_sha: "f678864"
+  mocks_in_path: false
