@@ -55,7 +55,10 @@ rule to the gateway baseline broke 10 unit tests with
 from aspergillus.rules.catalog.anti_special_casing import AntiSpecialCasing
 from aspergillus.rules.catalog.eta_reduce import EtaReduce
 from aspergillus.rules.catalog.filter_fusion import FilterFusion
+from aspergillus.rules.catalog.fsm_edge_duration import FsmEdgeDuration
 from aspergillus.rules.catalog.fsm_enum_dispatch_exhaustive import FsmEnumDispatchExhaustive
+from aspergillus.rules.catalog.fsm_redundant_branches import FsmRedundantBranches
+from aspergillus.rules.catalog.fsm_stringly_dispatch import FsmStringlyDispatch
 from aspergillus.rules.catalog.in_process_e2e import InProcessE2E
 from aspergillus.rules.catalog.map_fusion import MapFusion
 from aspergillus.rules.catalog.redundant_conditional_bool import (
@@ -70,7 +73,10 @@ __all__ = [
     "AntiSpecialCasing",
     "EtaReduce",
     "FilterFusion",
+"FsmEdgeDuration",
     "FsmEnumDispatchExhaustive",
+    "FsmRedundantBranches",
+    "FsmStringlyDispatch",
     "InProcessE2E",
     "MapFusion",
     "RedundantConditionalBoolAnd",

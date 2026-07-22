@@ -187,33 +187,55 @@ The shell `off` for `no-throw-statements` is permanent.
 See `docs/design-decisions/2026-05-08-l3-error-handling-mechanism.md`
 for the full rationale, options considered, and risks accepted.
 
-### ASP4xx — Catalog moves (Python)
+### Catalog rules — ASP4xx (Python, advisory)
 
-One-rule-per-file Fixit/LibCST rules under
-`python/src/aspergillus/rules/catalog/`, re-exported at
-`aspergillus.rules` per that package's `__init__.py` docstring (fixit's
-rule discovery does not recurse into sub-packages). Tier semantics
-(autofix vs. detection-only vs. reject) are documented in
-`python/src/aspergillus/rules/catalog/__init__.py`. Verification-integrity
-family (ASP408–411): a static/structural line of defense against gaming
-or unsound-by-construction shapes, sibling to the L2/L3 tables above.
+`python/src/aspergillus/rules/catalog/` holds one-rule-per-file catalog-move
+and verification-integrity rules (ASP401+), re-exported at the parent
+`aspergillus.rules` package level per that package's flat-only fixit
+discovery (see `python/src/aspergillus/rules/__init__.py`). Most recent:
 
-| Rule   | Description                                                                                                                      | Severity                     |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| ASP408 | Anti-special-casing (gaming detector)                                                                                            | Tier 2, detection-only, warn |
-| ASP409 | Shell-to-self (own package invoked via subprocess)                                                                               | Tier 2, detection-only, warn |
-| ASP410 | In-process construction masquerading as an e2e                                                                                   | Tier 2, detection-only, warn |
-| ASP413 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix           |
-
-ASP413 ports `scripts/check_asp_fsm_enum_dispatch.py` (pebble asp-26e)
-into the rule pack so the check runs under the real `fixit lint` gate
-instead of a standalone script no consumer's gate invokes.
+- **ASP411 `FsmStringlyDispatch`** — warns when an `if`/`elif` chain or a
+  `match` statement dispatches on `==` comparisons against string literals
+  that shadow a same-module `Enum`'s values, bypassing exhaustiveness
+  checking. Silenced by a `# asp-fsm: boundary-parse` marker comment on the
+  dispatching function (genuine serialization-boundary parsers). Ports the
+  standalone `scripts/check_stringly_dispatch.py` probe (pebble asp-5be)
+  into the enforced fixit pack (pebble asp-fd1.4). Detection-only (Tier 2,
+  no autofix): the fix changes the dispatched-on value's type at every call
+  site, which is a judgment call the rule cannot make mechanically.
 
 ### Levels 4–5 — Planned, not implemented
 
 Contracts, property-based tests (L4), and formal verification (L5). See
 `python/src/aspergillus/` for the fullest current implementation, and
 this document's history for research pointers.
+
+### Python catalog moves — ASP4xx (Fixit, warn-tier)
+
+One rule per file under `python/src/aspergillus/rules/catalog/`,
+re-exported at both `catalog/__init__.py` and the parent
+`aspergillus/rules/__init__.py` (fixit's rule discovery does not
+recurse into sub-packages, so the parent re-export is the load-bearing
+seam that makes a catalog rule actually run). All ship at `warn`
+(severity-graduation workflow above); Tier 1 rules autofix, Tier 2
+rules are detection-only.
+
+| Rule   | Class                                 | Tier | Move                                                        |
+| ------ | ------------------------------------- | ---- | ----------------------------------------------------------- |
+| ASP401 | `MapFusion`                           | 1    | `map(f).map(g)` → composed `map`                            |
+| ASP402 | `FilterFusion`                        | 1    | `filter(p).filter(q)` → composed `filter`                   |
+| ASP403 | `EtaReduce`                           | 1    | `lambda x: f(x)` → `f`                                      |
+| ASP404 | `RedundantConditionalBoolAnd`/`...Or` | 1    | `True if X else Y` / `Y if X else False` → `or`/`and`       |
+| ASP406 | `Tupling`                             | 2    | fused multi-pass aggregation over one iterable              |
+| ASP407 | `WorkerWrapper`                       | 2    | trivial pass-through wrapper                                |
+| ASP408 | `AntiSpecialCasing`                   | 2    | hardcoded-answer / env-branching gaming detector            |
+| ASP409 | `ShellToSelf`                         | 2    | invoking your own package via subprocess                    |
+| ASP410 | `InProcessE2E`                        | 2    | in-process SUT construction masquerading as an e2e          |
+| ASP411 | `FsmRedundantBranches`                | 2    | likely redundant states in an enum `match`/if-elif dispatch |
+
+ASP405 is deliberately unassigned for Python — see
+`catalog/__init__.py`'s "Why no ASP405 redundant-await-return" for the
+JS-specific-semantics rationale.
 
 ## Purity / FC/IS enforcement (ASP205/206)
 
@@ -397,3 +419,42 @@ grouping facts across the whole corpus.
 - Not a formatter (ruff-format/Prettier/rustfmt handle that).
 - Not a general-purpose linter (ruff/ESLint recommended/clippy defaults).
 - Not auto-fix (report-only in v0.1 for all three languages).
+### ASP4xx — Catalog & safety rules (Python only, implemented)
+Single-purpose Fixit/LibCST rules, one class per file, living in
+`python/src/aspergillus/rules/catalog/` and re-exported at the
+`aspergillus.rules` package level (fixit's rule discovery does not
+recurse into sub-packages — see `python/src/aspergillus/rules/__init__.py`).
+Two families:
+- **ASP401–407** — FP refactoring-catalog moves (map-fusion,
+  filter-fusion, eta-reduce, boolean-conditional collapse, tupling,
+  worker/wrapper). Citations in `docs/refactoring-catalog.md`.
+- **ASP408–412** — verification-integrity and FSM-safety rules:
+  `AntiSpecialCasing` (ASP408), `ShellToSelf` (ASP409), `InProcessE2E`
+  (ASP410), and **`FsmEdgeDuration` (ASP412)** — an FSM transition
+  ("edge") body must not embed unbounded work (a direct LLM/subprocess
+  call, a call into another state machine's run/drive entrypoint, or an
+  unbounded retry loop) instead of writing a durable marker and
+  returning. Ported from the standalone `scripts/check_edge_duration.py`
+  (pebble `asp-fef`/`asp-fd1.2`); classical FSM contract — time is spent
+  in STATES, transitions are instantaneous. Reject-severity: ships as an
+  immediate blocking violation through `fixit lint`, not the graduated
+  `warn`→`error` workflow the Tier 2 catalog rules use.
+Not yet ported to TypeScript/Rust.
+### ASP4xx — Catalog moves (Python)
+One-rule-per-file Fixit/LibCST rules under
+`python/src/aspergillus/rules/catalog/`, re-exported at
+`aspergillus.rules` per that package's `__init__.py` docstring (fixit's
+rule discovery does not recurse into sub-packages). Tier semantics
+(autofix vs. detection-only vs. reject) are documented in
+`python/src/aspergillus/rules/catalog/__init__.py`. Verification-integrity
+family (ASP408–411): a static/structural line of defense against gaming
+or unsound-by-construction shapes, sibling to the L2/L3 tables above.
+| Rule   | Description                                                                                                                      | Severity                     |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| ASP408 | Anti-special-casing (gaming detector)                                                                                            | Tier 2, detection-only, warn |
+| ASP409 | Shell-to-self (own package invoked via subprocess)                                                                               | Tier 2, detection-only, warn |
+| ASP410 | In-process construction masquerading as an e2e                                                                                   | Tier 2, detection-only, warn |
+| ASP413 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix           |
+ASP413 ports `scripts/check_asp_fsm_enum_dispatch.py` (pebble asp-26e)
+into the rule pack so the check runs under the real `fixit lint` gate
+instead of a standalone script no consumer's gate invokes.

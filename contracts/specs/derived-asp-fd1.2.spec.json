@@ -1,0 +1,185 @@
+{
+  "id": "derived-asp-fd1.2",
+  "original_statement": "Request: Request:\n  Port the checker currently in scripts/check_edge_duration.py into a LibCST LintRule class named FsmEdgeDuration inside the aspergillus.rules rule-pack, with reject-severity semantics, placed according to the taxonomy documented in docs/design.md. Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (per rules/__init__.py's flat-only discovery documentation). Assign it an ASP4xx (or per-design) rule number. Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones. Update README.md and docs/design.md rule tables to list this new rule. Acceptance (the integrated end state, not just the class existing): running `uv run --directory python fixit lint` against an edge-duration fixture flags the violation through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410; and `uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule.\n\nacceptance_criteria:\n- Port the checker currently in scripts/check_edge_duration.py into a LibCST LintRule class named FsmEdgeDuration inside the aspergillus.rules rule-pack, with reject-severity semantics, placed according to the taxonomy documented in docs/design.md. Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (per rules/__init__.py's flat-only discovery documentation). Assign it an ASP4xx (or per-design) rule number. Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones. Update README.md and docs/design.md rule tables to list this new rule. Acceptance (the integrated end state, not just the class existing): running `uv run --directory python fixit lint` against an edge-duration fixture flags the violation through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410; and `uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule.",
+  "restatement": "Take the standalone FSM edge-duration checker (scripts/check_edge_duration.py), which currently only runs as an ad-hoc stdin/stdout script no gate actually invokes, and turn it into a real, enforced Fixit lint rule named FsmEdgeDuration living inside the aspergillus.rules Python rule pack. The new rule must behave as a blocking (reject-severity) check \u2014 the same class of hard failure ASP410 already produces \u2014 placed in the rule pack according to whatever taxonomy docs/design.md lays out for this kind of rule, and given its own rule number in the ASPxxx numbering scheme (an ASP4xx number, or whatever number the project's own design taxonomy calls for). It must be re-exported at the top of the aspergillus.rules package using the exact same mechanism the existing ASP4xx catalog rules use, because fixit's own rule discovery does not recurse into sub-packages \u2014 without that re-export the rule would exist but never actually run. Its automated tests must be authored the same way every other rule in this pack is tested: using the shared add_lint_rule_tests_to_module VALID/INVALID fixture generator, with the checker's own already-existing merged tests/fixtures/*.py scenarios converted into those VALID/INVALID cases rather than inventing a disconnected new set. Both README.md and docs/design.md must be updated so their rule tables list this new rule alongside the others already documented there. Finally, none of this counts as done merely because the class exists: it is done only once it demonstrably works end-to-end through the real command a developer or CI gate would run \u2014 linting a fixture containing the disallowed edge-duration shape via the real `fixit lint` command, using this repo's own [tool.fixit] configuration, must produce a reported violation and a failing exit status (the same bar of independent verification used when ASP410/asp-6b0 was checked) \u2014 and the project's whole test suite must still pass, including new tests exercising this rule.",
+  "restatement_spans": [
+    {
+      "id": "rs1",
+      "text": "Port the checker currently in scripts/check_edge_duration.py into a LibCST LintRule class named FsmEdgeDuration inside the aspergillus.rules rule-pack, with reject-severity semantics, placed according to the taxonomy documented in docs/design.md."
+    },
+    {
+      "id": "rs2",
+      "text": "Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (per rules/__init__.py's flat-only discovery documentation)."
+    },
+    {
+      "id": "rs3",
+      "text": "Assign it an ASP4xx (or per-design) rule number."
+    },
+    {
+      "id": "rs4",
+      "text": "Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones."
+    },
+    {
+      "id": "rs5",
+      "text": "Update README.md and docs/design.md rule tables to list this new rule."
+    },
+    {
+      "id": "rs6",
+      "text": "running `uv run --directory python fixit lint` against an edge-duration fixture flags the violation through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410"
+    },
+    {
+      "id": "rs7",
+      "text": "`uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule"
+    }
+  ],
+  "goal": "Add a working, wired-in, documented Fixit lint rule (FsmEdgeDuration) that replaces the standalone edge-duration script, verified to actually fire through the real fixit CLI and to leave the full test suite green.",
+  "acceptance_criteria": [
+    "Open the project's source code and confirm there is a lint rule class literally named FsmEdgeDuration, sitting in the rule pack alongside the project's other single-purpose lint rules, rather than the logic remaining stuck in a standalone script.",
+    "Open the rules package's top-level file and confirm it lists FsmEdgeDuration by name, the same way every other individual rule already in the pack is made visible there.",
+    "Open the new rule's own file and confirm it states a three-digit rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself.",
+    "Open the project's automated test folder and confirm a dedicated test file for this rule plugs it into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests, and that no separate tests/fixtures/*.py file for the old checker was left behind unconverted.",
+    "Open the project's README and its design document and confirm both mention the new rule by name in their rule listings.",
+    "Run the real fixit command-line linter, using this repo's own configuration, against a code sample where a state-transition function directly makes an unbounded blocking call (an LLM/subprocess call, or a call into another state machine's run loop) instead of writing a durable marker and returning. Check that the linter reports a violation and the run comes back as a failure.",
+    "Run the project's whole automated test suite and check that it completes successfully with no failing tests, including the tests newly added for this rule."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "Open the project's source code and confirm there is a lint rule class literally named FsmEdgeDuration, sitting in the rule pack alongside the project's other single-purpose lint rules, rather than the logic remaining stuck in a standalone script."
+    },
+    {
+      "id": "c2",
+      "text": "Open the rules package's top-level file and confirm it lists FsmEdgeDuration by name, the same way every other individual rule already in the pack is made visible there."
+    },
+    {
+      "id": "c3",
+      "text": "Open the new rule's own file and confirm it states a three-digit rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself."
+    },
+    {
+      "id": "c4",
+      "text": "Open the project's automated test folder and confirm a dedicated test file for this rule plugs it into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests, and that no separate tests/fixtures/*.py file for the old checker was left behind unconverted."
+    },
+    {
+      "id": "c5",
+      "text": "Open the project's README and its design document and confirm both mention the new rule by name in their rule listings."
+    },
+    {
+      "id": "c6",
+      "text": "Run the real fixit command-line linter, using this repo's own configuration, against a code sample where a state-transition function directly makes an unbounded blocking call (an LLM/subprocess call, or a call into another state machine's run loop) instead of writing a durable marker and returning. Check that the linter reports a violation and the run comes back as a failure."
+    },
+    {
+      "id": "c7",
+      "text": "Run the project's whole automated test suite and check that it completes successfully with no failing tests, including the tests newly added for this rule."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "grep",
+      "description": "Open the project's source code and confirm there is a lint rule class literally named FsmEdgeDuration, sitting in the rule pack alongside the project's other single-purpose lint rules, rather than the logic remaining stuck in a standalone script.",
+      "proves": "rs1 \u2014 the checker was ported into a proper LintRule class in the rule pack.",
+      "restatement_span_id": "rs1",
+      "pattern": "class FsmEdgeDuration",
+      "files": [
+        "python/src/aspergillus/rules/**/*.py"
+      ],
+      "clause_id": "c1"
+    },
+    {
+      "type": "grep",
+      "description": "Open the rules package's top-level file and confirm it lists FsmEdgeDuration by name, the same way every other individual rule already in the pack is made visible there.",
+      "proves": "rs2 \u2014 the rule is re-exported at the aspergillus.rules package level, matching the existing catalog re-export pattern.",
+      "restatement_span_id": "rs2",
+      "pattern": "FsmEdgeDuration",
+      "files": [
+        "python/src/aspergillus/rules/__init__.py"
+      ],
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep",
+      "description": "Open the new rule's own file and confirm it states a three-digit rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself.",
+      "proves": "rs3 \u2014 the rule was assigned its own numbered slot in the project's rule taxonomy.",
+      "restatement_span_id": "rs3",
+      "pattern": "ASP4[0-9][0-9]:",
+      "files": [
+        "python/src/aspergillus/rules/**/*.py"
+      ],
+      "clause_id": "c3"
+    },
+    {
+      "type": "grep",
+      "description": "Open the project's automated test folder and confirm a dedicated test file for this rule plugs it into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests, and that no separate tests/fixtures/*.py file for the old checker was left behind unconverted.",
+      "proves": "rs4 \u2014 the rule's tests reuse the existing VALID/INVALID fixture idiom, built from the checker's own already-existing fixture scenarios rather than a disconnected new set.",
+      "restatement_span_id": "rs4",
+      "pattern": "add_lint_rule_tests_to_module\\(globals\\(\\), \\[FsmEdgeDuration",
+      "files": [
+        "python/tests/*.py"
+      ],
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep",
+      "description": "Open the project's README and its design document and confirm both mention the new rule by name in their rule listings.",
+      "proves": "rs5 \u2014 README.md and docs/design.md rule tables were updated to list the new rule.",
+      "restatement_span_id": "rs5",
+      "pattern": "FsmEdgeDuration",
+      "files": [
+        "README.md",
+        "docs/design.md"
+      ],
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "Run the real fixit command-line linter, using this repo's own configuration, against a code sample where a state-transition function directly makes an unbounded blocking call (an LLM/subprocess call, or a call into another state machine's run loop) instead of writing a durable marker and returning. Check that the linter reports a violation and the run comes back as a failure.",
+      "proves": "rs6 \u2014 the real fixit CLI, with the repo's own [tool.fixit] config, flags an edge-duration violation fixture (the same independent-verification bar used for ASP410/asp-6b0).",
+      "restatement_span_id": "rs6",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/run_fixit_edge_duration_fixture.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violation_reported",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "observe": "stdout_json",
+          "field": "fixit_exit_code",
+          "op": "ne",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 120,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "description": "Run the project's whole automated test suite and check that it completes successfully with no failing tests, including the tests newly added for this rule.",
+      "proves": "rs7 \u2014 `uv run --directory python pytest tests -q` passes, including new fixture-based coverage for this rule.",
+      "restatement_span_id": "rs7",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/run_python_test_suite.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "exit_code",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 300,
+      "clause_id": "c7"
+    }
+  ]
+}
