@@ -3,10 +3,9 @@ dispatch.
 
 Verification-integrity family; sibling to ASP408 anti-special-casing,
 ASP409 shell-to-self, and ASP410 in-process-e2e. Ported from the
-standalone script ``scripts/check_asp_fsm_redundant_branches.py``
-(pebble ``asp-5a8``, itself derived from exophial's exo-011 rule 4)
-into the fixit rule pack so a real lint gate — not an ad-hoc script no
-CI invokes — enforces it.
+standalone ASP-FSM-REDUNDANT probe (pebble ``asp-5a8``, itself derived
+from exophial's exo-011 rule 4) into the fixit rule pack so a real lint
+gate — not an ad-hoc script no CI invokes — enforces it.
 
 Within one ``match`` statement or one ``if``/``elif`` chain dispatching
 on a single Enum-typed subject, two branch bodies whose location- and

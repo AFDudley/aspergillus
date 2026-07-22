@@ -4,9 +4,8 @@ family).
 Mirrors the catalog-move test shape: ``add_lint_rule_tests_to_module``
 consumes the rule's ``VALID``/``INVALID`` cases and generates one test method
 per case. The four standalone scenario tests below are the merged fixtures
-from ``tests/fixtures/asp_fsm_enum_dispatch.py`` (the standalone
-``scripts/check_asp_fsm_enum_dispatch.py`` checker this rule replaces),
-converted into direct contract assertions against the real fixit rule.
+from ``tests/fixtures/asp_fsm_enum_dispatch.py``, converted into direct
+contract assertions against the real fixit rule.
 """
 
 from __future__ import annotations

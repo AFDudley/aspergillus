@@ -1,8 +1,8 @@
 """ASP412: FSM edge duration — no unbounded work inside a transition body.
 
-Ported from the standalone script ``scripts/check_edge_duration.py``
-(pebble ``asp-fef``), which satisfied its own fixture-level acceptance but
-enforced nothing — no gate ran it. This rule lifts the same invariant into
+Ported from the standalone ASP-FSM-EDGE-DURATION probe (pebble ``asp-fef``),
+which satisfied its own fixture-level acceptance but enforced nothing — no
+gate ran it. This rule lifts the same invariant into
 the ``aspergillus.rules`` corpus so ``fixit lint`` (and therefore any
 consumer's commit gate, per ``[tool.fixit] enable = ["aspergillus.rules"]``)
 actually catches the shape.

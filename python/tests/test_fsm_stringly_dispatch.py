@@ -1,9 +1,9 @@
-"""Tests for ASP411 FsmStringlyDispatch (FSM-verification-integrity family).
+"""Tests for ASP414 FsmStringlyDispatch (FSM-verification-integrity family).
 
 Mirrors the catalog-move test shape: ``add_lint_rule_tests_to_module``
 consumes the rule's ``VALID``/``INVALID`` cases (ported from the standalone
-``scripts/check_stringly_dispatch.py`` probe's scenarios) and generates one
-test method per case. Standalone contract tests assert the load-bearing
+ASP-FSM-STRINGLY probe's scenarios) and generates one test method per case.
+Standalone contract tests assert the load-bearing
 properties directly, independent of the generated cases:
 
 - no same-module Enum -> silent, even with a matching literal shape;
@@ -57,7 +57,7 @@ def test_if_elif_shadowing_enum_flagged() -> None:
     )
     flagged = _reports(FsmStringlyDispatchRule(), code)
     assert len(flagged) >= 1, flagged
-    assert all("ASP411" in report.message for report in flagged)
+    assert all("ASP414" in report.message for report in flagged)
 
 
 def test_boundary_marker_silences_the_function() -> None:
@@ -91,7 +91,7 @@ def test_match_shadowing_enum_flagged() -> None:
     )
     flagged = _reports(FsmStringlyDispatchRule(), code)
     assert len(flagged) >= 1, flagged
-    assert all("ASP411" in report.message for report in flagged)
+    assert all("ASP414" in report.message for report in flagged)
 
 
 def test_dispatch_on_enum_member_itself_clean() -> None:
@@ -111,7 +111,7 @@ def test_dispatch_on_enum_member_itself_clean() -> None:
 
 
 def test_rule_is_discoverable_by_fixit() -> None:
-    """ASP411 must be reachable through fixit's ``aspergillus.rules`` walk —
+    """ASP414 must be reachable through fixit's ``aspergillus.rules`` walk —
     the parent-package re-export seam (``rules/__init__.py``). Without it the
     rule is defined but never enforced (the asp-321 gap ASP409 shipped
     with)."""

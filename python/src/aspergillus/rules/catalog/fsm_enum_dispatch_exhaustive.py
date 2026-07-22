@@ -34,11 +34,11 @@ if/elif chain into a ``match`` statement (or appending the right
 behavior for unmatched values, which is a human/agent judgment call, so
 the rule surfaces the violation without a ``replacement=``.
 
-Ported from ``scripts/check_asp_fsm_enum_dispatch.py`` (pebble
-``asp-26e``); this rule reimplements that AST-based checker's pure
-predicates directly over the LibCST tree so violations are caught by the
-same ``fixit lint`` pass as every other aspergillus rule instead of a
-standalone script nothing's gate invokes.
+Ported from the standalone ASP-FSM-EXHAUSTIVE probe (pebble ``asp-26e``);
+this rule reimplements that AST-based checker's pure predicates directly
+over the LibCST tree so violations are caught by the same ``fixit lint``
+pass as every other aspergillus rule instead of a standalone script
+nothing's gate invokes.
 
 Scope
 -----
