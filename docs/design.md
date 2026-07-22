@@ -187,6 +187,28 @@ The shell `off` for `no-throw-statements` is permanent.
 See `docs/design-decisions/2026-05-08-l3-error-handling-mechanism.md`
 for the full rationale, options considered, and risks accepted.
 
+### ASP4xx — Catalog moves (Python)
+
+One-rule-per-file Fixit/LibCST rules under
+`python/src/aspergillus/rules/catalog/`, re-exported at
+`aspergillus.rules` per that package's `__init__.py` docstring (fixit's
+rule discovery does not recurse into sub-packages). Tier semantics
+(autofix vs. detection-only vs. reject) are documented in
+`python/src/aspergillus/rules/catalog/__init__.py`. Verification-integrity
+family (ASP408–411): a static/structural line of defense against gaming
+or unsound-by-construction shapes, sibling to the L2/L3 tables above.
+
+| Rule   | Description                                                                                                                      | Severity                     |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| ASP408 | Anti-special-casing (gaming detector)                                                                                            | Tier 2, detection-only, warn |
+| ASP409 | Shell-to-self (own package invoked via subprocess)                                                                               | Tier 2, detection-only, warn |
+| ASP410 | In-process construction masquerading as an e2e                                                                                   | Tier 2, detection-only, warn |
+| ASP411 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix           |
+
+ASP411 ports `scripts/check_asp_fsm_enum_dispatch.py` (pebble asp-26e)
+into the rule pack so the check runs under the real `fixit lint` gate
+instead of a standalone script no consumer's gate invokes.
+
 ### Levels 4–5 — Planned, not implemented
 
 Contracts, property-based tests (L4), and formal verification (L5). See

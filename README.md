@@ -68,6 +68,17 @@ attribute …` crashes three layers down the call stack.
   discarded gives the operator a one-bit summary of a cause that was
   captured and thrown away. Surface the evidence, not just the code.
 
+### ASP4xx — catalog moves (Python, one-rule-per-file)
+
+- **ASP411 — `FsmEnumDispatchExhaustive`.** An `if`/`elif` chain
+  dispatching on an Enum-typed value must be exhaustiveness-checkable —
+  either written as a `match` statement, or ending in
+  `else: assert_never(subject)`. mypy's `exhaustive-match` check only
+  fires inside `match`/`assert_never` forms, so an unguarded if/elif
+  chain silently lets a newly-added enum member fall through unnoticed.
+  Reject-severity, no autofix. See `docs/design.md` § "ASP4xx — Catalog
+  moves" for the full catalog table.
+
 ### Level 4/5 — planned, not implemented
 
 Contracts and property-based tests (L4), formal verification via SMT

@@ -35,3 +35,9 @@ itself — the linked spec's `then` clauses own the verdict.
   `# asp-fsm: boundary-parse` marker comment anywhere in the flagged
   function's body (for serialization-boundary parsers), and silent when no
   same-module Enum exists to shadow.
+- `verify_fsm_enum_dispatch_lint.py` / `verify_fsm_enum_dispatch_pytest.py`
+  (pebble asp-fd1.1) — behavioral oracle probes for `FsmEnumDispatchExhaustive`
+  (ASP411, `python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py`),
+  the fixit/LibCST port of `check_asp_fsm_enum_dispatch.py` above. Drive the
+  real `uv run --directory python fixit lint` / `pytest tests` CLIs as
+  subprocesses rather than calling the rule in-process.
