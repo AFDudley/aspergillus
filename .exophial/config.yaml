@@ -42,6 +42,22 @@ worker_model:
 # `claude_cli` backend uses `claude --print` over OAuth (no API key), so Tier-2
 # conflict resolution works on keyless hosts. `anthropic_sdk` is the API-key-gated
 # alternative (it cannot honor a json_schema request — it raises, never degrades).
+# Intake spec-derivation model routing (worker-model ADR D3: consumer policy,
+# no engine default). Copied from exophial's own config 2026-07-22; required by
+# derive_for_pebble at SPECIFY — a missing section fails loud.
+intake_derivation:
+  tiers:
+    small: "sonnet"
+    frontier: "opus"
+  thinking_budgets:
+    small: 4000
+    frontier: 31999
+  routing:
+    negligible: small
+    marginal: small
+    critical: frontier
+    catastrophic: frontier
+
 llm_transport:
   backend: claude_cli
   # model: ""        # optional per-backend model/tier override
