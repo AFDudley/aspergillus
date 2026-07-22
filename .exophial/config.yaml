@@ -1,4 +1,4 @@
-coordination_repo: ""
+coordination_repo: "/home/rix/code/git_puller/repos/aspergillus"
 poll_interval: 5
 inspect_interval: 5
 
