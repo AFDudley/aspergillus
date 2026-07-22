@@ -35,3 +35,11 @@ itself — the linked spec's `then` clauses own the verdict.
   `# asp-fsm: boundary-parse` marker comment anywhere in the flagged
   function's body (for serialization-boundary parsers), and silent when no
   same-module Enum exists to shadow.
+- `verify_fsm_redundant_branches_lint.py` / `verify_fsm_redundant_branches_pytest.py`
+  (asp-fd1.3): NOT dependency-free like the checkers above — these
+  deliberately shell out to `uv run --directory python fixit lint` / `pytest`
+  to verify the ASP411 `FsmRedundantBranches` rule (ported from
+  `check_asp_fsm_redundant_branches.py` into
+  `python/src/aspergillus/rules/catalog/fsm_redundant_branches.py`) fires
+  through the real, installed fixit CLI and repo `[tool.fixit]` config, not
+  just via in-repo pytest fixtures.

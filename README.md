@@ -74,6 +74,16 @@ Contracts and property-based tests (L4), formal verification via SMT
 solvers (L5). Applied selectively to safety-critical or financial
 logic.
 
+### ASP4xx — Python catalog moves (warn-tier, Fixit)
+
+Advisory refactoring-catalog and verification-integrity rules, one
+per file under `python/src/aspergillus/rules/catalog/`. Includes
+`AntiSpecialCasing` (ASP408), `ShellToSelf` (ASP409), `InProcessE2E`
+(ASP410), and `FsmRedundantBranches` (ASP411 — likely redundant
+states in an enum `match`/if-elif dispatch, e.g. two branches both
+doing `Fail(reason)`). See `docs/design.md` § "Python catalog moves —
+ASP4xx" for the full table.
+
 ## Repository layout
 
 | Path          | Contents                                          |

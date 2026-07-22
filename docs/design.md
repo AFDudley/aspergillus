@@ -193,6 +193,33 @@ Contracts, property-based tests (L4), and formal verification (L5). See
 `python/src/aspergillus/` for the fullest current implementation, and
 this document's history for research pointers.
 
+### Python catalog moves — ASP4xx (Fixit, warn-tier)
+
+One rule per file under `python/src/aspergillus/rules/catalog/`,
+re-exported at both `catalog/__init__.py` and the parent
+`aspergillus/rules/__init__.py` (fixit's rule discovery does not
+recurse into sub-packages, so the parent re-export is the load-bearing
+seam that makes a catalog rule actually run). All ship at `warn`
+(severity-graduation workflow above); Tier 1 rules autofix, Tier 2
+rules are detection-only.
+
+| Rule   | Class                                 | Tier | Move                                                        |
+| ------ | ------------------------------------- | ---- | ----------------------------------------------------------- |
+| ASP401 | `MapFusion`                           | 1    | `map(f).map(g)` → composed `map`                            |
+| ASP402 | `FilterFusion`                        | 1    | `filter(p).filter(q)` → composed `filter`                   |
+| ASP403 | `EtaReduce`                           | 1    | `lambda x: f(x)` → `f`                                      |
+| ASP404 | `RedundantConditionalBoolAnd`/`...Or` | 1    | `True if X else Y` / `Y if X else False` → `or`/`and`       |
+| ASP406 | `Tupling`                             | 2    | fused multi-pass aggregation over one iterable              |
+| ASP407 | `WorkerWrapper`                       | 2    | trivial pass-through wrapper                                |
+| ASP408 | `AntiSpecialCasing`                   | 2    | hardcoded-answer / env-branching gaming detector            |
+| ASP409 | `ShellToSelf`                         | 2    | invoking your own package via subprocess                    |
+| ASP410 | `InProcessE2E`                        | 2    | in-process SUT construction masquerading as an e2e          |
+| ASP411 | `FsmRedundantBranches`                | 2    | likely redundant states in an enum `match`/if-elif dispatch |
+
+ASP405 is deliberately unassigned for Python — see
+`catalog/__init__.py`'s "Why no ASP405 redundant-await-return" for the
+JS-specific-semantics rationale.
+
 ## Purity / FC/IS enforcement (ASP205/206)
 
 The two languages take different approaches because their I/O surfaces are
