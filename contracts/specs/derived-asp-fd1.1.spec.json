@@ -1,0 +1,235 @@
+{
+  "id": "derived-asp-fd1.1",
+  "original_statement": "Request: Request:\n  Port the checker currently in scripts/check_asp_fsm_enum_dispatch.py into a LibCST LintRule class named FsmEnumDispatchExhaustive inside the aspergillus.rules rule-pack, with reject-severity semantics, placed according to the taxonomy documented in docs/design.md. Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (rules/__init__.py documents fixit's flat-only discovery, so a new module or a catalog/ one-rule-per-file entry must follow that same re-export pattern). Assign it an ASP4xx (or per-design) rule number. Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones. Update README.md and docs/design.md rule tables to list this new rule. Acceptance (the integrated end state, not just the class existing): running `uv run --directory python fixit lint` against a fixture containing if/elif enum-dispatch code reports the exhaustive-dispatch violation through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410; a valid fixture using match+assert_never produces no report; and `uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule.\n\nacceptance_criteria:\n- Port the checker currently in scripts/check_asp_fsm_enum_dispatch.py into a LibCST LintRule class named FsmEnumDispatchExhaustive inside the aspergillus.rules rule-pack, with reject-severity semantics, placed according to the taxonomy documented in docs/design.md. Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (rules/__init__.py documents fixit's flat-only discovery, so a new module or a catalog/ one-rule-per-file entry must follow that same re-export pattern). Assign it an ASP4xx (or per-design) rule number. Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones. Update README.md and docs/design.md rule tables to list this new rule. Acceptance (the integrated end state, not just the class existing): running `uv run --directory python fixit lint` against a fixture containing if/elif enum-dispatch code reports the exhaustive-dispatch violation through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410; a valid fixture using match+assert_never produces no report; and `uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule.",
+  "restatement": "Port the standalone enum-if/elif-exhaustiveness checker (scripts/check_asp_fsm_enum_dispatch.py) into a proper Fixit/LibCST lint rule class called FsmEnumDispatchExhaustive, living inside the aspergillus.rules Python rule pack instead of as a script no one's linter gate actually runs. The new class must behave as a blocking (reject-severity) rule \u2014 the same kind of hard failure ASP410 already produces \u2014 and must be re-exported at the aspergillus.rules package level using the exact same re-export mechanism the existing ASP4xx catalog rules use, since fixit's rule discovery does not recurse into sub-packages. It gets its own rule number in the ASPxxx numbering scheme (an ASP4xx number, or whatever number the project's own design taxonomy calls for). Its automated tests must be authored the same way every other rule in this pack is tested \u2014 using the shared add_lint_rule_tests_to_module VALID/INVALID fixture generator \u2014 and the scenarios already captured in the standalone checker's merged tests/fixtures/*.py files should become those VALID/INVALID cases rather than the author inventing a fresh, disconnected set of test scenarios. Both README.md and docs/design.md need to list the new rule alongside the other documented rules. Finally, this is only actually done once it demonstrably works end-to-end through the real command line tool a developer or CI gate would run: linting a file containing the unsafe if/elif-over-enum shape must produce a reported violation and a failing exit status via the real `fixit lint` command using this repo's own fixit configuration (matching the same bar of proof used when ASP410 was verified), linting a file that instead uses the safe match-statement-with-assert_never shape must produce no report and a clean exit status, and the project's whole test suite must still pass, including new tests that exercise this rule.",
+  "restatement_spans": [
+    {
+      "id": "rs1",
+      "text": "Port the checker currently in scripts/check_asp_fsm_enum_dispatch.py into a LibCST LintRule class named FsmEnumDispatchExhaustive inside the aspergillus.rules rule-pack, with reject-severity semantics, placed according to the taxonomy documented in docs/design.md."
+    },
+    {
+      "id": "rs2",
+      "text": "Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (rules/__init__.py documents fixit's flat-only discovery, so a new module or a catalog/ one-rule-per-file entry must follow that same re-export pattern)."
+    },
+    {
+      "id": "rs3",
+      "text": "Assign it an ASP4xx (or per-design) rule number."
+    },
+    {
+      "id": "rs4",
+      "text": "Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones."
+    },
+    {
+      "id": "rs5",
+      "text": "Update README.md and docs/design.md rule tables to list this new rule."
+    },
+    {
+      "id": "rs6",
+      "text": "running `uv run --directory python fixit lint` against a fixture containing if/elif enum-dispatch code reports the exhaustive-dispatch violation through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410"
+    },
+    {
+      "id": "rs7",
+      "text": "a valid fixture using match+assert_never produces no report"
+    },
+    {
+      "id": "rs8",
+      "text": "`uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule"
+    }
+  ],
+  "goal": "Add a working, wired-in, documented Fixit lint rule (FsmEnumDispatchExhaustive) that replaces the standalone enum-dispatch-exhaustiveness script, verified to actually fire through the real fixit CLI and to leave the full test suite green.",
+  "acceptance_criteria": [
+    "The project's source code contains a lint rule class literally named FsmEnumDispatchExhaustive, sitting in the same place other single-purpose rules in the pack live, rather than the logic staying stuck in a standalone script.",
+    "The rules package's top-level file lists FsmEnumDispatchExhaustive by name, the same way every other individual rule already in the pack is made visible.",
+    "The new rule's own file states a three-digit rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself.",
+    "A dedicated automated test file for this rule exists and plugs the rule into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests.",
+    "Both the project's README and its design document mention the new rule by name.",
+    "When a code sample containing an if/elif chain that dispatches on every value of an enum, with no safety fallback, is checked by the real command-line linter, the linter reports a violation and the check comes back failed.",
+    "When a code sample that dispatches on the same enum using Python's match statement with a safety fallback (assert_never) is checked by the real command-line linter, the linter reports nothing and the check comes back clean.",
+    "The project's whole automated test suite runs to completion successfully, and the run includes tests for the newly added rule."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "The project's source code contains a lint rule class literally named FsmEnumDispatchExhaustive, sitting in the same place other single-purpose rules in the pack live, rather than the logic staying stuck in a standalone script."
+    },
+    {
+      "id": "c2",
+      "text": "The rules package's top-level file lists FsmEnumDispatchExhaustive by name, the same way every other individual rule already in the pack is made visible."
+    },
+    {
+      "id": "c3",
+      "text": "The new rule's own file states a three-digit rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself."
+    },
+    {
+      "id": "c4",
+      "text": "A dedicated automated test file for this rule exists and plugs the rule into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests."
+    },
+    {
+      "id": "c5",
+      "text": "Both the project's README and its design document mention the new rule by name."
+    },
+    {
+      "id": "c6",
+      "text": "When a code sample containing an if/elif chain that dispatches on every value of an enum, with no safety fallback, is checked by the real command-line linter, the linter reports a violation and the check comes back failed."
+    },
+    {
+      "id": "c7",
+      "text": "When a code sample that dispatches on the same enum using Python's match statement with a safety fallback (assert_never) is checked by the real command-line linter, the linter reports nothing and the check comes back clean."
+    },
+    {
+      "id": "c8",
+      "text": "The project's whole automated test suite runs to completion successfully, and the run includes tests for the newly added rule."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "grep",
+      "description": "The project's source code contains a lint rule class literally named FsmEnumDispatchExhaustive, sitting in the same place other single-purpose rules in the pack live, rather than the logic staying stuck in a standalone script.",
+      "proves": "Confirms the checker was actually rebuilt as a properly named rule class inside the rule pack.",
+      "restatement_span_id": "rs1",
+      "pattern": "class FsmEnumDispatchExhaustive",
+      "files": [
+        "python/src/aspergillus/rules/fsm_enum_dispatch_exhaustive.py",
+        "python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py"
+      ],
+      "clause_id": "c1"
+    },
+    {
+      "type": "grep",
+      "description": "The rules package's top-level file lists FsmEnumDispatchExhaustive by name, the same way every other individual rule already in the pack is made visible.",
+      "proves": "Confirms the new rule is re-exported at the aspergillus.rules package level, following the pack's existing convention, so fixit's rule discovery can actually find it.",
+      "restatement_span_id": "rs2",
+      "pattern": "FsmEnumDispatchExhaustive",
+      "files": [
+        "python/src/aspergillus/rules/__init__.py"
+      ],
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep",
+      "description": "The new rule's own file states a three-digit rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself.",
+      "proves": "Confirms the rule was assigned a rule number consistent with the project's numbering convention.",
+      "restatement_span_id": "rs3",
+      "pattern": "\"\"\"ASP[0-9]{3}:",
+      "files": [
+        "python/src/aspergillus/rules/fsm_enum_dispatch_exhaustive.py",
+        "python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py"
+      ],
+      "clause_id": "c3"
+    },
+    {
+      "type": "grep",
+      "description": "A dedicated automated test file for this rule exists and plugs the rule into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests.",
+      "proves": "Confirms the rule's tests were authored using the existing VALID/INVALID fixture idiom rather than being left uncovered or tested in some ad-hoc way.",
+      "restatement_span_id": "rs4",
+      "pattern": "add_lint_rule_tests_to_module",
+      "files": [
+        "python/tests/test_fsm_enum_dispatch_exhaustive.py"
+      ],
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep",
+      "description": "Both the project's README and its design document mention the new rule by name.",
+      "proves": "Confirms the documentation was updated to list the new rule alongside the others.",
+      "restatement_span_id": "rs5",
+      "pattern": "FsmEnumDispatchExhaustive",
+      "files": [
+        "README.md",
+        "docs/design.md"
+      ],
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "When a code sample containing an if/elif chain that dispatches on every value of an enum, with no safety fallback, is checked by the real command-line linter, the linter reports a violation and the check comes back failed.",
+      "proves": "Confirms the ported rule actually catches the unsafe dispatch shape when run through the real linter command a developer or CI gate would use, not just inside isolated unit tests.",
+      "restatement_span_id": "rs6",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/verify_fsm_enum_dispatch_lint.py",
+        "args": [
+          "invalid"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "fixit_exit_code",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "reports_violation",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 90,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "description": "When a code sample that dispatches on the same enum using Python's match statement with a safety fallback (assert_never) is checked by the real command-line linter, the linter reports nothing and the check comes back clean.",
+      "proves": "Confirms the rule does not falsely flag the accepted, safe dispatch style.",
+      "restatement_span_id": "rs7",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/verify_fsm_enum_dispatch_lint.py",
+        "args": [
+          "valid"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "fixit_exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "reports_violation",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 90,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "description": "The project's whole automated test suite runs to completion successfully, and the run includes tests for the newly added rule.",
+      "proves": "Confirms the new rule's fixture-based coverage is part of the suite and the full suite stays green, not just the rule's own isolated tests.",
+      "restatement_span_id": "rs8",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/verify_fsm_enum_dispatch_pytest.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "mentions_rule",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 300,
+      "clause_id": "c8"
+    }
+  ]
+}
