@@ -20,3 +20,9 @@ node_modules/
 # Pebbles runtime state (config is tracked, db is not)
 .pebbles/pebbles.db
 .pebbles/events.jsonl
+
+# exophial runtime state (config.yaml stays committed)
+.exophial/*
+!.exophial/config.yaml
+.worktrees/
+.claude/worktrees/
