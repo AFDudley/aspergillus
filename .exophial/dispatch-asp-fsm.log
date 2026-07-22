@@ -1,0 +1,14 @@
+[0;36m[exophial][0m dispatch preflight: already current at 0.2.0+5b5288e1
+[0;36m[exophial][0m No daemon running against /home/rix/code/git_puller/repos/aspergillus; auto-starting an ephemeral reducer scoped to ['asp-26e', 'asp-5a8', 'asp-5be', 'asp-fef']...
+[0;36m[exophial][0m Ephemeral dispatcher started (pid 95168, log /home/rix/code/git_puller/repos/aspergillus/.exophial/logs/dispatcher.log)
+[0;33m[exophial][0m asp-26e: open
+[0;33m[exophial][0m asp-5a8: open
+[0;33m[exophial][0m asp-5be: open
+[0;33m[exophial][0m asp-fef: open
+[0;36m[exophial][0m dispatch preflight: already current at 0.2.0+5b5288e1
+[0;36m[exophial][0m No daemon running against /home/rix/code/git_puller/repos/aspergillus; auto-starting an ephemeral reducer scoped to ['asp-26e', 'asp-5a8', 'asp-5be', 'asp-fef']...
+[0;36m[exophial][0m Ephemeral dispatcher started (pid 154040, log /home/rix/code/git_puller/repos/aspergillus/.exophial/logs/dispatcher.log)
+[0;32m[exophial][0m asp-26e: closed
+[0;32m[exophial][0m asp-5a8: closed
+[0;32m[exophial][0m asp-5be: closed
+[0;32m[exophial][0m asp-fef: closed

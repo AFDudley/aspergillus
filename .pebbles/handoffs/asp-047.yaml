@@ -1,0 +1,117 @@
+status: completed
+pebble_id: asp-047
+branch: pebble/asp-047
+commits:
+  - cd0ecedbea579ec1130547691240d8cec1b73bca
+files_changed:
+  - aspergillus/python/pyproject.toml
+  - aspergillus/python/src/aspergillus/__init__.py
+  - aspergillus/python/uv.lock
+  - aspergillus/docs/design.md
+files_deleted: []
+tests_added: []
+docs_updated:
+  - aspergillus/docs/design.md
+summary: >
+  Made aspergillus/python standalone-installable + versioned so a repo OUTSIDE
+  the mtm monorepo (exophial, mtm-115) can install it and pin a version. The
+  package was consumable ONLY via the monorepo-relative editable path
+  (backtest [tool.uv.sources] path=../aspergillus/python, editable=true), which
+  resolves only inside mtm; it sat at placeholder version 0.1.0 with no tags.
+  This is packaging/distribution ONLY — no rule behavior changed.
+
+
+  WHAT CHANGED. (1) [project].version 0.1.0 -> 0.2.0 (off the placeholder;
+  first real release). (2) aspergillus.__init__ now exposes __version__ read
+  from the distribution metadata (importlib.metadata.version("aspergillus")),
+  so a parity gate can compare the standalone pin against the vendored subtree
+  version off a SINGLE source of truth (pyproject [project].version) with no
+  second hand-maintained literal to drift. (3) docs/design.md § Distribution ›
+  Python rewritten to document the versioned-pin recipe, the two-resolution-
+  path design, and the release/tag policy.
+
+
+  DISTRIBUTION CHANNEL CHOSEN: pinned git URL against a release tag with
+  subdirectory=python, NOT a package index. Reasoning: the name is not
+  published to PyPI and publishing needs credentials + name ownership (higher
+  friction, not doable here); a git tag is zero-friction, fully reproducible,
+  and — because `git subtree split` is deterministic — maps a monorepo release
+  commit to a STABLE synthetic upstream commit the tag points at, so the pin
+  is stable across round-trips. The pre-existing design.md already used
+  `git+...#subdirectory=python` unversioned; this adds the `@vX.Y.Z` tag pin
+  that makes it version-pinnable (the actual pebble gap).
+
+
+  TWO RESOLUTION PATHS (same package, same version pin, different source):
+  standalone consumers use
+  `[tool.uv.sources] aspergillus = { git = "ssh://git@github.com/AFDudley/aspergillus.git", tag = "v0.2.0", subdirectory = "python" }`;
+  in-monorepo consumers (backtest) keep
+  `aspergillus = { path = "../aspergillus/python", editable = true }`.
+  backtest was NOT modified — the pebble scopes it "backtest CAN pin ... its
+  choice"; the capability is proven (external install pins 0.2.0), and leaving
+  backtest's editable override intact keeps the monorepo path working with zero
+  blast radius into a second subtree. exophial wiring is mtm-115, out of scope.
+
+
+  ACCEPTANCE PROVEN in genuinely external, non-editable clean venvs OUTSIDE
+  this checkout (literal commands + output in verify_transcript):
+  (a) built wheel installed into /tmp/asp-standalone-check via `uv pip install`
+  — version discoverable as 0.2.0, and `python -m fixit lint` with
+  enable=["aspergillus.rules"] FIRES the rules (EtaReduce ASP403,
+  NoRedundantLambda, GlobalMutableState ASP203) against a fixture, exit 1;
+  (b) the actual distribution mechanism proven end-to-end: subtree-split of the
+  release commit pushed to a local bare repo, tagged v0.2.0, installed into a
+  fresh venv via `git+file:///...@v0.2.0#subdirectory=python` — same rules
+  fire, __version__ and dist metadata both report 0.2.0. The git+file URL is
+  mechanically identical to the real `git@github.com:AFDudley/aspergillus.git`
+  upstream; only the URL differs.
+
+
+  COORDINATOR ACTION AT MERGE (release tag on the PUBLIC remote): after merging
+  pebble/asp-047 to main, round-trip `scripts/subtree-sync.sh push aspergillus`
+  (never --squash), then `git tag v0.2.0 <upstream-commit> && git push
+  aspergillus v0.2.0`. Deterministic split guarantees the tag lands on the same
+  synthetic commit proven above. Only then can mtm-115 pin the real remote URL.
+  This is the one step reserved to merge-time round-trip (worker pushes feature
+  branch, not upstream main); the mechanism itself is fully verified here.
+
+verify_transcript:
+  regression_gate_pytest: |
+    cd aspergillus/python && uv run pytest -q
+    -> 146 passed, 1 skipped in 2.43s  (green before and after; packaging-only)
+    uv run python -c "import aspergillus; print(aspergillus.__version__)" -> 0.2.0
+  change_assertion_a_wheel_external_install: |
+    cd /tmp/asp-standalone-check && uv venv --python 3.11 .venv
+    VIRTUAL_ENV=.../.venv uv pip install .../dist/aspergillus-0.2.0-py3-none-any.whl
+    ./.venv/bin/python -c 'import importlib.metadata as m; print(m.version("aspergillus"))'
+      -> aspergillus 0.2.0
+    ./.venv/bin/python -m fixit lint fixture.py   # fixture: xs = list(map(lambda x: f(x), [1,2,3]))
+      fixture.py@1:14 EtaReduce: ASP403: Eta-reduce lambda to bare function reference (has autofix)
+      fixture.py@1:14 NoRedundantLambda: The lambda that is wrapping f is redundant. ...
+      fixture.py@1:0 GlobalMutableState: ASP203: Global mutable state: xs = list() call
+      -> exit 1 (rules fired; fixit NOT installed via editable path — transitive dep of the wheel)
+  change_assertion_b_git_tag_external_install: |
+    git subtree split --prefix=aspergillus -b <tmp> ; push to /tmp/asp-upstream.git ; tag v0.2.0
+    cd /tmp/asp-git-check && uv venv --python 3.11 .venv
+    VIRTUAL_ENV=.../.venv uv pip install "git+file:///tmp/asp-upstream.git@v0.2.0#subdirectory=python"
+    ./.venv/bin/python -c 'import aspergillus, importlib.metadata as m; print(m.version("aspergillus"), aspergillus.__version__)'
+      -> dist 0.2.0  __version__ 0.2.0
+    ./.venv/bin/python -m fixit lint fixture.py
+      fixture.py@1:0 GlobalMutableState: ASP203 ...
+      fixture.py@1:14 EtaReduce: ASP403 ...
+      fixture.py@1:14 NoRedundantLambda: ...
+      -> exit 1 (rules fired from the git-tag+subdirectory install)
+  pre_commit: |
+    Commit cd0ecedbe — all MTM pre-commit hooks Passed
+    (New source directory carries its CLAUDE.md: Passed; TDD trailer: Passed).
+e2e_exempt:
+  category: infrastructure
+  reason: >
+    Packaging/distribution-only change (version bump + build-metadata
+    verification + git-pin distribution docs). No rule behavior changed, so
+    there is no no-mock outer-loop behavioral e2e to drive. Acceptance is the
+    refactor-model pair: regression gate (aspergillus pytest, 146 passed) stays
+    green, and the change's own assertion (standalone external non-editable
+    install + `python -m fixit lint` with enable=["aspergillus.rules"] fires the
+    rules) is proven in two clean venvs outside the monorepo.
+cost: ~90k tokens (est. ~$1.10)

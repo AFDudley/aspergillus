@@ -2,7 +2,7 @@
 
 A rule set inspired by NASA's Power of 10, implemented as a Fixit/LibCST
 rule-pack for Python and as reference configs composing stock linters for
-TypeScript and Rust. Named after *Aspergillus nidulans*, the first fungus
+TypeScript and Rust. Named after _Aspergillus nidulans_, the first fungus
 NASA intentionally grew on the International Space Station.
 
 ## Repository layout
@@ -25,10 +25,10 @@ rule set; engines underneath are an internal implementation detail. The
 catalog uses three engines, chosen per-rule by what the rule's trigger
 and rewrite shapes require:
 
-| Engine | Languages | What it's good at |
-|---|---|---|
-| Custom ESLint rules + boundary plugins | TypeScript | Constraint-shaped checks that need type info, data-flow, or multi-file context; architectural import boundaries via `eslint-plugin-boundaries`. Lives under [`typescript/rules/`](../typescript/rules/) (custom rules) and [`typescript/configs/`](../typescript/configs/) (composed stock baselines). |
-| fixit / LibCST | Python | Constraint-shaped checks on the CST surface — function length, assertion density, I/O purity, raise-vs-Result. Lives under [`python/src/aspergillus/`](../python/src/aspergillus/). |
+| Engine                                  | Languages                           | What it's good at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Custom ESLint rules + boundary plugins  | TypeScript                          | Constraint-shaped checks that need type info, data-flow, or multi-file context; architectural import boundaries via `eslint-plugin-boundaries`. Lives under [`typescript/rules/`](../typescript/rules/) (custom rules) and [`typescript/configs/`](../typescript/configs/) (composed stock baselines).                                                                                                                                                                                                                      |
+| fixit / LibCST                          | Python                              | Constraint-shaped checks on the CST surface — function length, assertion density, I/O purity, raise-vs-Result. Lives under [`python/src/aspergillus/`](../python/src/aspergillus/).                                                                                                                                                                                                                                                                                                                                         |
 | [ast-grep](https://ast-grep.github.io/) | TypeScript, Python (cross-language) | Declarative shape rewrites — a YAML rule names a tree pattern and a replacement template, ast-grep applies the rewrite. Best fit for catalog moves whose trigger and fix are both expressible as tree shape (e.g. `.map().map()` → `.map()` over composed function). Lives under [`typescript/ast-grep-rules/`](../typescript/ast-grep-rules/) and [`python/ast-grep-rules/`](../python/ast-grep-rules/). Rust ast-grep coverage is planned but not yet scaffolded — the rust tree remains placeholder-tier (configs only). |
 
 ### How an engine gets chosen
@@ -37,7 +37,7 @@ A rule lands in `ast-grep-rules/` when **both** of these hold:
 
 1. The violation's trigger is expressible as a tree-shape pattern (no
    type info, no data-flow analysis, no inter-module reasoning needed).
-2. There is a *single mechanical rewrite* that resolves it.
+2. There is a _single mechanical rewrite_ that resolves it.
 
 If only (1) holds, the rule belongs in ESLint or fixit (constraint
 check, no autofix). If neither holds, the rule isn't expressible
@@ -47,7 +47,7 @@ review-time concern.
 This split aligns with the severity-graduation ADR
 ([`docs/decisions/2026-05-19-severity-graduation.md`](decisions/2026-05-19-severity-graduation.md)):
 ast-grep rules ship at `error` with `fix:` populated, because ast-grep's
-value is *applying* the rewrite. Constraint-without-autofix rules
+value is _applying_ the rewrite. Constraint-without-autofix rules
 (ASP201 function length, ASP204 unbounded loops) live in the ESLint /
 fixit surface where "error without autofix, agent applies the catalog
 move" is the contract.
@@ -80,25 +80,25 @@ layer consumes the corpus).
 
 Handled by existing tools, configured via aspergillus's reference configs:
 
-| Language   | Tools |
-|------------|-------|
-| Python     | ruff, ruff-format, mypy, bandit, pre-commit |
+| Language   | Tools                                                       |
+| ---------- | ----------------------------------------------------------- |
+| Python     | ruff, ruff-format, mypy, bandit, pre-commit                 |
 | TypeScript | ESLint, typescript-eslint, Prettier, tsc strict, pre-commit |
-| Rust       | clippy, rustfmt |
+| Rust       | clippy, rustfmt                                             |
 
 Reference configs live in `python/src/aspergillus/configs/`,
 `typescript/configs/`, and `rust/configs/` respectively.
 
 ### Level 2 — Blocking
 
-| Rule   | Description                              | Python (Fixit)                   | TypeScript                                                | Rust |
-|--------|------------------------------------------|----------------------------------|-----------------------------------------------------------|------|
-| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`                | `max-lines-per-function`                                  | `clippy::too_many_lines` |
-| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity`            | `aspergillus/asp202-min-assertions` (custom)              | Manual (planned dylint rule) |
-| ASP203 | No global mutable state                  | `GlobalMutableState`             | `no-restricted-syntax` (module-level `let`/`var`/`export let`) | Language (no safe `static mut`) |
-| ASP204 | No unbounded loops                       | `UnboundedLoop`                  | `functional/no-loop-statements` (strict; revisit)         | Manual (prefer iterators) |
-| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`                 | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core) |
-| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`                | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure |
+| Rule   | Description                              | Python (Fixit)        | TypeScript                                                               | Rust                            |
+| ------ | ---------------------------------------- | --------------------- | ------------------------------------------------------------------------ | ------------------------------- |
+| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`     | `max-lines-per-function`                                                 | `clippy::too_many_lines`        |
+| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity` | `aspergillus/asp202-min-assertions` (custom)                             | Manual (planned dylint rule)    |
+| ASP203 | No global mutable state                  | `GlobalMutableState`  | `no-restricted-syntax` (module-level `let`/`var`/`export let`)           | Language (no safe `static mut`) |
+| ASP204 | No unbounded loops                       | `UnboundedLoop`       | `functional/no-loop-statements` (strict; revisit)                        | Manual (prefer iterators)       |
+| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`      | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core)    |
+| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`     | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure                |
 
 #### TypeScript Level 2 — design notes
 
@@ -112,12 +112,38 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 ### Level 3 — Warning
 
-| Rule   | Description                        | Python (Fixit)            | TypeScript                                       | Rust |
-|--------|------------------------------------|---------------------------|--------------------------------------------------|------|
-| ASP301 | Result types, no exceptions        | `RaiseInsteadOfResult`    | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
-| ASP302 | No Optional/None returns           | `OptionalReturnType`      | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions` | No null in language |
-| ASP303 | No error swallowed into a success sentinel | `ErrorSwallowedIntoSentinel` | — (Python-specific) | — |
-| ASP304 | A surfaced failure must carry its captured evidence | `FailureDiscardsEvidence` | — (Python-specific) | — |
+| Rule   | Description                                         | Python (Fixit)                    | TypeScript                                                                                                  | Rust                                                        |
+| ------ | --------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| ASP301 | Result types, no exceptions                         | — (retired for Python; see below) | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
+| ASP302 | No Optional/None returns                            | `OptionalReturnType`              | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions`                               | No null in language                                         |
+| ASP303 | No error swallowed into a success sentinel          | `ErrorSwallowedIntoSentinel`      | — (Python-specific)                                                                                         | —                                                           |
+| ASP304 | A surfaced failure must carry its captured evidence | `FailureDiscardsEvidence`         | — (Python-specific)                                                                                         | —                                                           |
+
+#### Python Level 3 — ASP301 retired (pebble asp-80c)
+
+ASP301's Python implementation, `RaiseInsteadOfResult`, flagged any
+function with both a `raise` path and a `return <value>` path. That
+encodes a language convention Python does not have: there is no
+ergonomic `Result`/`Either` in the standard library, and idiomatic
+Python signals failure with exceptions. A guard clause — `if bad:
+raise …; …; return x` — is correct, standard Python, not an
+antipattern. The only way to satisfy the rule was to split every
+fallible function into a raise-only shell plus a pure-return half,
+doubling the function count with no Result value actually threading
+through. It mis-prescribed on Python the same way ASP202 did before
+asp-070/asp-da5 refined it, so the Python rule is retired.
+
+The safety-relevant error-shaping checks survive: **ASP302**
+(`OptionalReturnType`) still catches `None`-sentinel returns, and
+**ASP303** (`ErrorSwallowedIntoSentinel`) still catches an error
+swallowed into a success-typed falsy sentinel. ASP301 caught only FP
+style, so nothing safety-relevant is uncovered.
+
+The **Rust** (`clippy::panic`/`unwrap_used`/`expect_used`) and
+**TypeScript** (`no-throw` + neverthrow `must-consume-result`)
+analogues stay in force — those languages have ergonomic `Result`
+types, so requiring their use is a real standard, not dogma. Retiring
+ASP301 for Python does not retire the Level 3 _slot_.
 
 #### TypeScript Level 3 — design notes
 
@@ -212,16 +238,18 @@ npm; Python uses uv; Rust uses a file copy.
 
   ```js
   // eslint.config.js
-  import base from '@afdudley/aspergillus/eslint-config';
+  import base from "@afdudley/aspergillus/eslint-config";
   export default [...base];
   ```
+
   ```json
   // tsconfig.json
   { "extends": "@afdudley/aspergillus/tsconfig" }
   ```
+
   ```cjs
   // prettier.config.cjs
-  module.exports = { ...require('@afdudley/aspergillus/prettier-config') };
+  module.exports = { ...require("@afdudley/aspergillus/prettier-config") };
   ```
 
   No `vendor/` directory in consumers; aspergillus lives under
@@ -240,16 +268,68 @@ npm; Python uses uv; Rust uses a file copy.
 
 ### Python
 
-```bash
-uv tool install git+https://github.com/AFDudley/aspergillus.git#subdirectory=python
-```
+The Python rule-pack is a standalone, buildable hatchling distribution
+(`python/pyproject.toml`, `src/` layout). It is `pip`/`uv`-installable from
+the aspergillus git remote **without** the mtm monorepo — the fixit rule
+entry point (`enable = ["aspergillus.rules"]`) resolves against the installed
+package's own import structure, not a monorepo-relative editable path. The
+package is at `python/` **inside** the repo, so every git install passes
+`subdirectory=python`.
 
-Then in the consumer's `pyproject.toml`:
+#### Versioned pin (standalone consumers)
+
+Distribution channel: **pinned git URL against a release tag** (not a package
+index — the name is not published to PyPI; a git tag is zero-friction,
+reproducible, and, because `git subtree split` is deterministic, maps a
+monorepo release commit to a stable synthetic upstream commit the tag points
+at). Releases are tagged `vX.Y.Z` on the aspergillus upstream
+(`git@github.com:AFDudley/aspergillus.git`); the current release is `v0.2.0`.
+
+Add to the consumer's `pyproject.toml`:
 
 ```toml
+[project]
+dependencies = ["aspergillus==0.2.0"]
+
+[tool.uv.sources]
+aspergillus = { git = "ssh://git@github.com/AFDudley/aspergillus.git", tag = "v0.2.0", subdirectory = "python" }
+
 [tool.fixit]
 enable = ["aspergillus.rules"]
 ```
+
+The `aspergillus==0.2.0` pin is what a parity gate compares against the
+vendored subtree version (`aspergillus.__version__`, sourced from the
+distribution metadata). Bump the pin + the tag together on each release.
+
+Ad-hoc install (no project file):
+
+```bash
+uv pip install "git+ssh://git@github.com/AFDudley/aspergillus.git@v0.2.0#subdirectory=python"
+```
+
+#### In-monorepo consumers (editable override)
+
+Consumers **inside** the mtm monorepo (e.g. `backtest/`) keep the same
+`aspergillus==X.Y.Z` dependency but override the source to the local subtree,
+so a change to the vendored rules is picked up without a release round-trip:
+
+```toml
+[tool.uv.sources]
+aspergillus = { path = "../aspergillus/python", editable = true }
+```
+
+Same package, two resolution paths — the version pin is identical; only the
+`[tool.uv.sources]` entry differs (git tag standalone, editable path
+in-monorepo).
+
+#### Release / versioning policy
+
+`python/pyproject.toml` `[project].version` is the single source of truth.
+Cutting a release is: bump that version, round-trip the aspergillus subtree
+to upstream (`scripts/subtree-sync.sh push aspergillus`, never `--squash`),
+then `git tag vX.Y.Z` the resulting upstream commit and push the tag.
+Consumers then move their pin + `tag =` in lockstep.
 
 ### Rust
 
@@ -268,6 +348,26 @@ Paste `rust/configs/cargo-lints.toml` contents into the consumer's
   until violations reach 0, then flips to `error` in a dedicated PR.
 - **Per-rule suppression**: `# noqa: ASP2XX` (Python), ESLint disable comments
   (TS), `#[allow(clippy::…)]` (Rust).
+
+## Whole-project CLI tools (cross-file, not LintRules)
+
+Some code-quality facts are inherently **cross-file** and a single-file
+`fixit.LintRule` structurally cannot see them (same limitation ASP408/409
+document). Those ship as whole-project subcommands of the `aspergillus` CLI
+(`python/src/aspergillus/__main__.py`), using LibCST purely as a parser and
+grouping facts across the whole corpus.
+
+- **`aspergillus check-duplicates <path>… [--min-lines N] [--allowlist FILE]
+[--json]`** — type-2 duplicate-function detector. Parses every `.py` file,
+  normalizes each function/method (identifiers → one placeholder, literals →
+  type-only markers — standard type-2 clone normalization), hashes the
+  normalized node, and reports any hash bucket with >1 member whose span is at
+  least `--min-lines` (default 5) and whose hash is not in the `--allowlist`.
+  The allowlist is a config file of accepted `normalized_hash` values, one per
+  line with `#` citing comments (mirrors exophial's `vulture_whitelist.py`
+  pattern). Core logic is pure (`duplicates.py`); `__main__.py` is the
+  imperative shell. Proven against exophial's pre/post-exo-c3a test tree (the
+  22 duplicated `_git()` helpers). Pebble: asp-21d.
 
 ## What this is NOT
 

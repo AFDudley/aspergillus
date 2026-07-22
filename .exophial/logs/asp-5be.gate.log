@@ -1,0 +1,16 @@
+pebble: asp-5be
+action: gate_accepted
+reason: status=completed: gate passed and spec converged
+gate.ran: True
+gate.passed: True
+gate.returncode: 0
+
+--- gate output_tail ---
+spec: derived-asp-5be
+  [PASS] (behavior) Feed the checker a code sample where a function dispatches on string comparisons ('pending', 'done') that match the values of an Enum defined right there in the same file. The checker should report exactly one warning, and its wording should be exactly the required message about stringly-typed dispatch.
+         all 1 run(s) satisfied 2 predicate(s)
+  [PASS] (behavior) Feed the checker the exact same code sample as above, except the function now carries the marker comment '# asp-fsm: boundary-parse' just above the dispatch. The checker should report zero warnings for this file.
+         all 1 run(s) satisfied 1 predicate(s)
+  [PASS] (behavior) Feed the checker a code sample that dispatches on the same string literals ('pending', 'done') but where no Enum exists anywhere in the file. The checker should report zero warnings, since there is no Enum being shadowed.
+         all 1 run(s) satisfied 1 predicate(s)
+overall: PASS (3/3)

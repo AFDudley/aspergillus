@@ -2,7 +2,7 @@
 
 NASA-grade code quality rules, applied across multiple languages.
 
-Named after *Aspergillus nidulans*, the first fungus NASA intentionally
+Named after _Aspergillus nidulans_, the first fungus NASA intentionally
 grew on the International Space Station.
 
 ## What it is
@@ -47,9 +47,16 @@ rule-mapping table.
 - **ASP301 — Results, not exceptions.** Error paths appear in function
   signatures via `Result<T, E>` / `neverthrow` / similar. No hidden
   control-flow jumps; callers cannot forget to handle a failure.
+  _Retired for Python_ (pebble asp-80c): Python has no ergonomic
+  `Result`, so an idiomatic guard-raise-then-return clause is correct
+  standard code, not an antipattern — the rule only manufactured
+  function-splitting ceremony. Still enforced in Rust (`clippy::panic`)
+  and TypeScript (`no-throw` + neverthrow), which have ergonomic
+  `Result` types. See `docs/design.md` § "Python Level 3 — ASP301
+  retired".
 - **ASP302 — No `Optional` / `None` / `null` returns.** Force callers
   to handle "not there" explicitly — no silent `NoneType has no
-  attribute …` crashes three layers down the call stack.
+attribute …` crashes three layers down the call stack.
 - **ASP303 — No error swallowed into a success sentinel.** A `return []`
   / `{}` / `""` from an `except` handler in a success-typed function
   conflates "the operation failed" with "it succeeded and produced
@@ -69,12 +76,12 @@ logic.
 
 ## Repository layout
 
-| Path | Contents |
-|------|----------|
-| `docs/` | Design, implementation notes, spec/plan history |
-| `python/` | Python package, tests, pre-commit config |
-| `typescript/` | Reference configs + stub CLI |
-| `rust/` | Reference clippy/Cargo lint configs (placeholder) |
+| Path          | Contents                                          |
+| ------------- | ------------------------------------------------- |
+| `docs/`       | Design, implementation notes, spec/plan history   |
+| `python/`     | Python package, tests, pre-commit config          |
+| `typescript/` | Reference configs + stub CLI                      |
+| `rust/`       | Reference clippy/Cargo lint configs (placeholder) |
 
 ## Adoption
 
@@ -90,8 +97,8 @@ subtree(s) they need:
 - **Level 1** — external tooling baseline (ruff, ESLint, clippy, …).
   Not aspergillus code; aspergillus ships reference configs only.
 - **Level 2** — structural rules (ASP201–206). Blocking.
-- **Level 3** — error-handling rules (ASP301–304). Blocking in strict
-  adopters.
+- **Level 3** — error-handling rules (ASP302–304; ASP301 retired for
+  Python, still active in Rust/TypeScript). Blocking in strict adopters.
 - **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
 See [`docs/design.md`](docs/design.md) for the authoritative

@@ -1,0 +1,248 @@
+[worker] Starting: claude --print --dangerously-skip-permissions --model sonnet --output-format stream-json --verbose --append-system-prompt # Worker base doctrine — Layer 1, universal principles
+
+This is the single canonical statement of the methodology exophial enforces on
+**itself** and therefore injects into **every** worker it spawns, for **any**
+repository it drives. It is owned and wheel-shipped by exophial, a sibling of the
+handoff completion schema (`done.schema.json`).
+
+These are **principles**, not topology. Every concrete value a principle takes in
+a given repository — the git remote name, the subtree list and their trailers,
+the pebble-tracker prefixes, the commit-trailer category vocabulary, the
+per-surface gate commands, the deploy and production surfaces — is a **Layer-2
+parameter** supplied as data from the repository's manifest and **referenced here
+by name, never restated**. Two documents cannot disagree about a value that only
+one of them holds. The per-task acceptance oracle — the linked spec's acceptance
+tests — is **Layer 3**. The copy you see in your worktree is **DISPLAY ONLY**: the
+reducer grades the branch against the spec it holds from the immutable BASE REF
+(recorded at claim, outside your reach) with the SHIPPED `exophial.spec_oracle`
+executor, never your worktree copy (the exo-b95 trust partition). Editing your
+worktree's spec changes nothing that is graded — do not try to "lower" or relax it;
+build the artifact the oracle already names. This file is the invariant part; the
+parameters and the (base-ref) spec are the variant parts.
+
+Read this before doing any work. It is the contract you operate under.
+
+## Fail fast, no fallbacks
+
+Let errors propagate. Do not swallow failures, do not degrade silently, do not
+add a second safety net behind the first — stacked verification layers are a
+fallback chain, not a guarantee. No retry counters, no `max_loops` caps, no
+blanket `except` that continues on unknown errors; an arbitrary loop limit is a
+fallback disguised as configuration. A timeout means something did not happen —
+investigate the root cause, never bump the number. Fix the single point of
+failure, not three symptoms around it. A long-running loop that advances to the
+next available work item is not a retry loop; one that re-attempts the same failed
+operation is.
+
+## Functional core, imperative shell
+
+Pure functions compute; IO (network, filesystem, process spawn, print) happens
+only at the boundary. A function that does both is wrong — decompose it before you
+write it. Data in, data out: functions take arguments and return values, with no
+side effects in the middle and no process-exit outside the entry point. Small
+functions; if one is long it does too much — extract the pure computation. This is
+enforced mechanically by the ASP205/ASP206 rules; design for purity up front
+rather than waiting for the linter to reject the commit.
+
+## Model behavior as an explicit, typed state machine
+
+Any non-trivial behavior, pipeline, or lifecycle is a finite state machine —
+model it as one **explicitly**. Enumerate the states and the transitions between
+them, and enumerate the failure, terminal, and escalation edges with the same
+rigor as the happy path: an exit transition you left implicit is a state you
+failed to handle. A lifecycle whose only drawn edges are the success path is
+under-specified, not simple.
+
+Type the transition alphabet. Distinct outcomes get **distinct types**, never one
+stringly-typed catch-all: a single `Escalation(reason: str)` that lumps
+infra-failure, needs-human, and needs-decompose into one free-text field is the
+anti-pattern this repo exists to remove — the reason string is unbranchable and
+carries no actionable payload. A type distinction is justified precisely when
+something downstream **branches** on it, or when it carries a **distinct
+actionable payload**; absent both, do not split. Otherwise, one variant per
+outcome the machine must route or act on differently.
+
+This is not incidental advice: exophial's own SPECIFY pipeline is a checked FSM,
+and a feature IS a set of assertions over that machine — the checked-FSM is what
+the derived spec and its acceptance tests are computed FROM. Modeling your work
+as an explicit typed FSM is therefore working in the same shape the reducer grades
+you in. See `docs/decisions/2026-06-28-feature-as-assertions-pipeline-fsm.md`.
+
+## Behavioural acceptance needs a committed probe, not just unit tests
+
+If your task's acceptance is **behavioural** — "does the code actually do X?" —
+and no committed spec already names the entrypoints that acceptance binds to, you
+MUST author a committed `scripts/oracle_<name>.py` **emitting probe** as part of
+the work. This is not optional polish and it is not the same as your unit tests.
+It is load-bearing: exophial grades acceptance by deriving a spec whose `behavior`
+oracles must bind to an entrypoint that **already exists** in the tree and that
+only **emits observations** while the fixed runner judges them (`docs/ORACLES.md`
+§7). A worker that ships only `pytest` tests dead-ends at the integrator's
+needs-spec bounce with **no bindable oracle** — its `assert` / `pytest.raises`
+embed the judgment inside the test, which is self-grading and disallowed in the
+derivation path (`docs/ORACLES.md` §6) — and the branch never merges, however
+green your tests are.
+
+The probe: arg-dispatched modes, each driving the REAL code and printing exactly
+one `stdout_json` object of observations; it **judges nothing** (the derived
+spec's `then` predicates own every verdict — you emit `{"cause": "..."}`, the
+runner asserts it equals what it should). Mirror an existing one —
+`scripts/oracle_transport_lowering.py`, `scripts/oracle_escalation_cause.py`.
+Keep your unit tests as the inner loop; the
+probe is the outer-loop acceptance surface the reducer can actually consult. If
+the criterion is genuinely inexpressible as a runner-owned probe, that is the ONE
+case that escalates to `discuss` — never a `pytest`-only handoff.
+
+This mandatory-probe rule binds only where acceptance IS behavioural. A pure
+deletion or other behavior-preserving change — one whose acceptance is that the
+symbol is gone, the full test suite passes, and the dead-code/regression gate
+stays green — has no "does the code actually do X?" question to bind a probe
+to, so it needs no committed `scripts/oracle_<name>.py`. This is the same case
+the "Outside-in double loop" section below already names as having no
+functional red→green outer loop: do not manufacture a behavioral oracle (and
+the spec that would carry it) for a task whose own doctrine says no outer loop
+applies. Authoring one anyway is not extra rigor — a spec derived and committed
+inside the worktree is exactly what the exo-b95 trust partition quarantines at
+INTEGRATE when it is absent from the base ref, so the deletion fails to merge
+for a probe the acceptance criteria never needed.
+
+## Evidence-based reasoning — run before you read
+
+Never speculate without evidence. When **diagnosing**, execution is evidence and
+code review is opinion: run the tests, check the imports, observe the behavior
+first; only read the code if running it found nothing. Errors found by execution
+are facts; errors found by reading are hypotheses — label them as such. When
+**modifying** code, read first. Verify automation output: self-reported success is
+a claim until you have checked the artifact independently. State the defect and
+the correction in factual terms; do not apologize, and do not project an inner
+state.
+
+## Real-fixture testing — no mocks in the e2e path
+
+The acceptance gate runs against real services, real processes, real IO — there
+are **no mocks in the e2e path**. Tests use real fixtures and real instances from
+the shared fixtures, not mocked internals. Mock only genuine system boundaries
+(network egress, signal handlers, external subprocesses) and never internal
+functions — a test that needs to mock an internal function is telling you the
+design is wrong; use a real fixture instead. Component tests with mocked
+dependencies are inner-loop tools only, never the completion gate.
+
+## Outside-in double loop
+
+Work outside-in. The **outer loop** is the acceptance oracle — the per-task spec's
+acceptance tests (Layer 3), handed to you red-first and graded from the same
+object. You do not skirt a contract you were given and are graded on identically.
+The **inner loop** is unit tests pulled into existence by the outer loop, in
+proportion to what the outer loop requires — never a suite grown for its own sake.
+
+A **fabricated red→green is forbidden.** Do not invent failing-then-passing unit
+tests to simulate a cycle no failing outer loop is pulling. For behavior-preserving
+work (refactor, infrastructure, move, rename, doctrine) there is **no** functional
+outer loop that goes red→green: acceptance is that the named regression gate stays
+green **and** the change's own specific assertion holds. A single inner-loop
+contract test pinning the invariant that motivates such a change is allowed only
+when genuinely needed; a unit suite is not.
+
+## Aspergillus level 3
+
+All code must pass aspergillus level 3. This is **native**, not borrowed:
+exophial ships its own grammar corpus (`aspergillus.yaml`) and **gates its own
+merges on ASP202**; the ASP205/ASP206 rules named above *are* the
+functional-core/imperative-shell enforcement. Code is linted (no warnings),
+well-typed (strict type-checking, no bare suppressions), documented at public
+APIs, and idiomatic. A suppression is a last resort: verify the tool runs against
+the project environment with full dependencies in scope, empirically confirm the
+suppression is load-bearing by removing it, prefer a source-fix that removes the
+underlying shape, and only then justify a specific-rule suppression with a
+specific reason. Dev/prod dependency splits are an antipattern — the thing you
+test must be the thing you ship.
+
+## Every commit declares its test status
+
+Pre-commit must pass locally; never bypass it. Iterate to green autonomously. A
+hook failure means the commit did not happen — make a **new** commit to fix it,
+never amend the prior. Every commit declares whether it is **tested-behavior** (it
+adds a behavior test that now passes) or **exempt with a named category** (the
+honest one of the repository's trailer vocabulary — behavior-preserving
+restructure, infrastructure/plumbing, documentation, or hygiene). Never mislabel a
+behavior change as exempt to skip the test; a genuine behavior change belongs to
+the tested-behavior path. Commits explain *why*; the diff shows *what*.
+
+## Pebbles are the work bus
+
+Pebbles are the issue tracker and the work bus. A blocker you hit is your problem:
+file a pebble, dispatch the fix, continue your own task — do not report-and-wait,
+do not fix it inline yourself. File each pebble in the tracker that **owns the
+affected code**, not a default one; a worker dispatched at a given surface files
+its pebble in that surface's tracker. Check existing issues before filing a
+duplicate.
+
+## You are single-invocation: finish synchronously, never background-and-yield
+
+You are a spawn-and-wait subprocess (`claude --print -p`), not an interactive
+multi-turn session. There is no next turn: when your final response ends, the
+process exits and nothing re-invokes you — not a Monitor notification, not a
+scheduled wakeup, not a `/loop` continuation. Those are affordances of a
+different, long-lived harness; if you background a long step (a test suite, a
+build, a slow migration) and end your turn expecting to "pick it up again"
+once it finishes, the backgrounded process is orphaned and killed with the
+worktree, and everything you did this invocation is lost — no handoff, no
+commits recovered, no partial credit. This has happened: a worker backgrounded
+the full test suite and yielded expecting a future notification that this
+backend structurally cannot deliver.
+
+Run every step synchronously in the foreground within this one invocation —
+implementation, verification, pre-commit, the commit, and the typed handoff —
+and write the handoff to `.pebbles/handoffs/<pebble-id>.yaml` before you
+produce your final response. A slow step is not a reason to background it;
+wait for it inline. If you genuinely cannot finish (a step will not complete
+before you must end the turn), that is not something to defer to an imagined
+future turn — write a `blocked` or `failed` handoff now, with the blocker
+named, before you stop.
+
+## Done means integrated and verified
+
+A change is not done until it is **integrated** into the surface its consumer
+uses — no pending follow-up wiring for it to take effect — **and** verified
+end-to-end against that real surface, with no mocks in the path. Not "the new
+artifact exists," not "the unit tests pass," not "it is pushed," not "pre-commit
+passed," not "a follow-up pebble is filed." For a deployable, user-visible change,
+done additionally means **shipped and verified in production**: green on a
+pre-production gate is not production-verified. If you cannot complete the integrate
+or ship step yourself, done is *blocked*, not achieved — say so and name who owns
+the remaining step.
+
+## The handoff completion contract
+
+You emit exactly one typed artifact when your work terminates: a handoff written
+to `.pebbles/handoffs/<pebble-id>.yaml`, validated against the canonical handoff
+schema (`done.schema.json`) before any integration. The integrator never parses
+free-form prose, DMs, or self-reports — only this typed artifact. Completion is
+gated by construction: a `completed` status requires the commits and the
+verify-transcript evidence to be present. The handoff **is** your report:
+`summary` carries the prose, `verify_transcript` carries the evidence, and the
+token-cost field is required on every status. Bind to your assigned worktree and
+branch; do not edit outside it, do not push elsewhere. When done, hand off and
+stop.
+ -p @/home/rix/code/git_puller/repos/aspergillus/.exophial/logs/asp-fef.prompt
+[worker] Agent: claude
+[worker] Working directory: /home/rix/code/git_puller/repos/aspergillus/.worktrees/worker-asp-fef
+[worker] Task: asp-fef
+
+[worker] Process started (PID: 628407)
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+Now writing the checker script.
+Now let's run all 7 fixtures to verify.
+All 7 clauses pass exactly as expected. Now let's run linting/type checks consistent with repo standards (ruff, mypy) since aspergillus enforces its own gates.
+Both clean. Now let's check pre-commit passes and run the actual gate to be thorough.
+Need a `scripts/CLAUDE.md` since this is a new source directory. Let me check an existing one for style.
+I'll write a short directory-scoped CLAUDE.md for `scripts/`.
+All hooks pass. Now let's commit.
+Committed as `fc1aff5`. Now let's re-run the full acceptance-spec fixtures once more against the committed state (final verification) and write the handoff.
+All 7 acceptance clauses pass at the committed SHA, ruff/mypy clean. Now writing the handoff.
+The pebble is already closed — the exophial reducer independently graded commit `fc1aff5` against the spec, verdict "pass", merged it into main, and closed the pebble. No further action is needed from me; the worktree was cleaned up as part of that merge.
+
+**Summary:** Built `scripts/check_edge_duration.py` (an AST-based, dependency-free checker for ASP-FSM-EDGE-DURATION) plus `scripts/CLAUDE.md`, verified all 7 spec fixtures pass, ruff/mypy clean, committed as `fc1aff5`. The exophial reducer graded that commit against `contracts/specs/derived-asp-fef.spec.json`, recorded `gate-verdict: fc1aff5... passed`, merged it into `main` (`fd16994`), and closed pebble asp-fef — all before I could write the handoff file, since it merges autonomously once its spec gate is green. Nothing further to do.
+
+[worker] Finished with status: completed
+[worker] Exit code: 0

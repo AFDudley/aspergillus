@@ -19,8 +19,10 @@ fixit's flat-only discovery.
 """
 
 from aspergillus.rules.catalog import (
+    AntiSpecialCasing,
     EtaReduce,
     FilterFusion,
+    InProcessE2E,
     MapFusion,
     RedundantConditionalBoolAnd,
     RedundantConditionalBoolOr,
@@ -29,8 +31,10 @@ from aspergillus.rules.catalog import (
 )
 
 __all__ = [
+    "AntiSpecialCasing",
     "EtaReduce",
     "FilterFusion",
+    "InProcessE2E",
     "MapFusion",
     "RedundantConditionalBoolAnd",
     "RedundantConditionalBoolOr",

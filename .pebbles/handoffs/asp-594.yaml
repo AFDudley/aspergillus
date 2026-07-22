@@ -1,0 +1,155 @@
+status: completed
+pebble_id: asp-594
+branch: pebble/asp-r2
+commits:
+  - 15f3220529294d4a7ef3a8b42c78b4f21fe90a3a
+files_changed:
+  - aspergillus/typescript/rules/asp202-min-assertions.js
+  - aspergillus/typescript/rules/asp202-min-assertions.test.js
+  - aspergillus/typescript/rules/package.json
+  - aspergillus/typescript/rules/bun.lock
+  - aspergillus/python/src/aspergillus/rules/level2.py
+  - aspergillus/python/src/aspergillus/io_blocklist.py
+tests_added: []
+docs_updated: []
+summary: >
+  Round-2 rule-correctness on ONE branch covering BOTH asp-594 (TS ASP202
+  parity) and asp-108 (Python io_blocklist pandas-rename false-positive),
+  one commit, one round-trip. Guiding principle honoured throughout: the
+  min=2 assertion floor (NASA Rule #5) is NEVER lowered — the PREDICATE is
+  made correct so genuinely-correct code is recognized/exempt BY
+  CONSTRUCTION, not forced into theatre assertions.
+
+
+  ── asp-594 (TS ASP202, parity with Python LowAssertionDensity) ──
+  Three options-driven recognitions added to
+  typescript/rules/asp202-min-assertions.js, each with a sensible default,
+  matching the rule's existing options style:
+
+  (1) exemptMethods (default [constructor, toString, valueOf]) — parity
+  with the Python sibling's EXEMPT_PREFIXES (__init__/__repr__/…). A
+  constructor initialises fields; toString/valueOf are coercion hooks;
+  none is a precondition-bearing shell function. Exemption is checked
+  BEFORE the length gate (detected via node.parent MethodDefinition/
+  Property key, with kind==='constructor' handled).
+
+  (2) countErrReturns (default true) + errorResultCallees (default
+  [err, errAsync]) — a `return err(...)` (neverthrow) counts as a
+  precondition guard. In a codebase where eslint-plugin-functional BANS
+  throw, the err-return IS the idiomatic precondition-failure: the moral
+  equivalent of the Python sibling's raise-guard (COUNT_RAISE default on).
+
+  (3) recognizeUntrustedDischarge (default true) + resultCallees (default
+  [ok, err, okAsync, errAsync]) — the load-bearing predicate refinement.
+  A PURE function (no I/O) whose ONLY imperative-shell signal is an
+  untrusted (any/unknown) parameter is treated as FUNCTIONAL CORE (exempt)
+  when it DISCHARGES that input by construction, detected by two shapes in
+  bodyDischarges(): (a) it returns a neverthrow Result (return ok(...) /
+  return err(...)), so the unknown becomes a statically-typed Result<T,E>
+  whose error arm is explicit (the parse-don't-validate boundary); or
+  (b) it narrows a value with `instanceof`, after which tsc(strict)
+  guarantees type-safe use in the matched branch and FORBIDS unguarded use
+  of the still-unknown value in the others — so a pure unknown→union
+  normalizer is safe in every branch by construction. This is a predicate
+  change, NOT a count change: min stays >=2 and is simply inapplicable to
+  the functional core (exactly like every other pure FC function the rule
+  already exempts). A blind-coerce consumer of untrusted data (String(x) /
+  Object.keys(x) with no guard) is NOT discharged and stays shell — the
+  pre-existing INVALID fixtures (normalize: any→string, decode: unknown→
+  number) still flag, pinning that the discharge does not over-exempt.
+
+
+  THE 4 NAMED TS RESIDUALS, re-run with treatAwaitAsIo=false:
+  - mobile/src/contracts/decode.ts :: decode(data: unknown) — RESOLVED by
+    construction. Pure ajv-validate→neverthrow-Result adapter; returns
+    ok/err → untrusted-discharge → functional core → exempt.
+  - mobile/src/errors/AppError.ts :: toAppError(e: unknown) — RESOLVED by
+    construction. Pure total normalizer; narrows via `e instanceof Error`
+    + exhaustive branches + unknownError fallback → instanceof-discharge →
+    functional core → exempt.
+  - mobile/src/services/notifee-signals.ts :: FirebaseMessagingError
+    constructor — RESOLVED. Constructor exemption (exemptMethods default).
+  - arcade/.../lib/x402.ts :: makeSessionRequiredFetch / fetchOrRefuse —
+    INSPECTED. The OUTER makeSessionRequiredFetch only CLOSES OVER fetch
+    (returns the wrapper, does no I/O at its own scope) and is ALREADY
+    correctly exempt — the rule's existing skip-nested walk does not see
+    the nested arrow's I/O, so no closed-over-I/O refinement was needed.
+    The flagged function is the INNER `fetchOrRefuse` arrow, which
+    GENUINELY calls `fetch` at its own scope (real imperative-shell I/O)
+    and has exactly ONE precondition guard (the 402 → throw). This is a
+    GENUINE min-2 case: it needs a real second assertion (e.g. an explicit
+    check on `input`/`response`) added IN arcade — NOT a rule change. Per
+    task instruction the rule was NOT hacked to silence it; reported here.
+
+
+  ── asp-108 (Python io_blocklist pandas-rename false-positive) ──
+  The bare method name `rename` in IO_METHOD_NAMES collides with pandas
+  DataFrame.rename / Series.rename (pure in-memory transforms). Approach
+  (precise, not wholesale-delete): added _is_pandas_rename() in
+  rules/level2.py and gated the bare-`rename` match in _walk_for_io_calls
+  on `not (method == "rename" and _is_pandas_rename(node))`. A `.rename`
+  call is treated as a pure pandas transform (NOT I/O) when EITHER it
+  carries a pandas-rename keyword (columns/index/mapper/axis/inplace/
+  level/errors/copy) OR its receiver is a COMPUTED expression (not a Name
+  or attribute chain — you cannot filesystem-rename the result of an
+  arithmetic / chained expression). Tradeoff: this PRESERVES instance-form
+  pathlib `Path.rename(target)` detection (simple-name receiver, single
+  positional, no pandas kwarg) rather than deleting `rename` wholesale.
+  Residual ambiguity (documented in the rule docstring): `s.rename("x")`
+  on a simple Series NAME with a single positional is shape-identical to
+  `p.rename(target)` and is left matching (conservative — a real rename is
+  never silently dropped). None of the backtest reproducer sites hit that
+  residual.
+
+  VERIFIED against the live backtest reproducer (editable aspergillus dep
+  resolves to this worktree's aspergillus/python; `cd backtest &&
+  .venv/bin/python -m fixit lint src`): ZERO `rename` I/O findings — the 3
+  pandas sites (_normalize_dune_df df.rename@68, _compute_pair_z .rename@
+  269/272, _scan_one_pair .rename@355) all cleared; the 2 GENUINE pathlib
+  sites remain (fixture_loader read_text@16, data_fetcher mkdir@99, each as
+  ASP205 + ASP206 = 4 findings total).
+
+
+  Commit message carries TDD-Exempt: refactor (behavior-preserving
+  rule-correctness; the new Valid/Invalid fixtures are the contract tests
+  pinning each recognition and the unchanged min=2 floor) and
+  git-subtree-dir: aspergillus/. Pre-commit green (gateway lint ratchets
+  required gateway/.venv — set up via `cd gateway && uv sync --group dev`,
+  then commit succeeded with no --no-verify).
+verify_transcript:
+  ts_bun_test: |
+    bun test ./asp202-min-assertions.test.js
+     31 pass
+     0 fail
+    Ran 31 tests across 1 file.
+    (was 22 pass before; +9 new fixtures: constructor/toString exempt,
+     Result-discharge, instanceof-discharge, err-return COUNT reaching 2,
+     and INVALID cases pinning min=2 floor + countErrReturns:false +
+     recognizeUntrustedDischarge:false + exemptMethods:[] toggles.)
+  ts_residuals_probe: |
+    ESLint Linter, rule with { treatAwaitAsIo:false } (defaults else):
+    decode.ts            -> (clean)   [was: L30 0 asserts]
+    AppError.ts          -> (clean)   [was: L44 0 asserts]
+    notifee-signals.ts   -> (clean)   [was: L494 ctor 0 asserts]
+    x402.ts              -> L140 fetchOrRefuse 0 asserts (GENUINE shell;
+                            inner arrow calls fetch at own scope; reported)
+  python_pytest: |
+    cd aspergillus/python && uv run pytest
+    116 passed, 1 skipped in 2.48s
+    (was 113 passed; +3 ASP205 fixtures: df.rename pure, computed-receiver
+     Series.rename pure, Path.rename(target) still I/O.)
+  python_ruff_mypy: |
+    uv run ruff check  -> All checks passed!
+    uv run ruff format --check -> 2 files already formatted
+    uv run mypy src/.../level2.py io_blocklist.py -> Success: no issues
+    (Pre-existing self-fixit ASP302/ASP204 at level2.py _resolve_call_name
+     L756/768 are unchanged from HEAD and not in aspergillus pre-commit.)
+  backtest_fixit_lint: |
+    cd backtest && .venv/bin/python -m fixit lint src   (editable
+    aspergillus -> this worktree)
+    grep -i rename  -> (no matches; 3 pandas sites cleared)
+    ASP205/206 findings = 4: fixture_loader read_text@16 (ASP205+206),
+    data_fetcher mkdir@99 (ASP205+206) — the 2 genuine pathlib sites remain.
+  pre_commit: |
+    git commit -> all hooks Passed (aspergillus ratchet, mypy-ratchet,
+    ruff-ratchet, subtree-edit guard, TDD trailer). Commit 15f32205.

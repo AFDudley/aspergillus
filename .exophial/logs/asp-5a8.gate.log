@@ -1,0 +1,20 @@
+pebble: asp-5a8
+action: gate_accepted
+reason: status=completed: gate passed and spec converged
+gate.ran: True
+gate.passed: True
+gate.returncode: 0
+
+--- gate output_tail ---
+spec: derived-asp-5a8
+  [PASS] (behavior) Show the checker two branches of an enum dispatch that do exactly the same thing (like the real PRESERVE/FAIL bug, where both branches just returned Fail(reason)). The checker should flag exactly one warning, worded exactly 'likely redundant states'.
+         all 1 run(s) satisfied 2 predicate(s)
+  [PASS] (behavior) Show the checker two branches of an enum dispatch where one branch has an extra comment and different indentation/whitespace, but otherwise does the same thing as the other branch. The checker should still flag exactly one warning.
+         all 1 run(s) satisfied 1 predicate(s)
+  [PASS] (behavior) Show the checker two branches of an enum dispatch that use a different local variable name but are otherwise structured the same way. Because the rule deliberately never renames variables to compare bodies, this should NOT be flagged.
+         all 1 run(s) satisfied 1 predicate(s)
+  [PASS] (behavior) Show the checker two branches of an enum dispatch that genuinely do different things. The checker should report no warnings at all.
+         all 1 run(s) satisfied 1 predicate(s)
+  [PASS] (behavior) Show the checker a dispatch (match or if/elif) over a plain non-enum value (like a string or number) where two branches happen to do exactly the same thing. Since the subject isn't an Enum, the checker should report no warnings.
+         all 1 run(s) satisfied 1 predicate(s)
+overall: PASS (5/5)

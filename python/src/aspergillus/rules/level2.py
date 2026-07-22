@@ -45,14 +45,90 @@ class FunctionTooLong(LintRule):
 
 
 class LowAssertionDensity(LintRule):
-    """ASP202: Functions should have >=2 assertions.
+    """ASP202: Imperative-shell functions should have >=2 assertions.
 
-    NASA Power of 10 Rule #5: High assertion density. Minimum of
-    2 assertions per function to verify assumptions. Assertions are
-    executable documentation of invariants.
+    NASA Power of 10 Rule #5: High assertion density. Assertions are
+    executable documentation of invariants — and the correct correctness
+    mechanism for the **imperative shell**, where a runtime precondition
+    guards data the type system cannot. They are NOT the mechanism for
+    the **functional core**: a pure, fully-typed transform earns its
+    correctness statically from the OTHER L3 rules (``mypy --strict``
+    types, ``Result``-not-throw, purity ASP205/206), so demanding two
+    runtime ``assert``\\ s there mis-prescribes the shell mechanism onto
+    the core. This rule therefore applies its >=2-assertion requirement
+    **only to functions in the imperative shell** (see
+    ``_is_imperative_shell``) and exempts the pure, statically-constrained
+    functional core.
+
+    Functional-core / imperative-shell predicate (asp-da5). A function is
+    in the imperative shell — and thus in scope for ASP202 — iff EITHER:
+
+    - **it performs I/O** — its body calls a known I/O function (the SAME
+      ``io_blocklist`` signal ASP205 / ASP206 use; ``_find_io_calls``).
+      Side-effecting functions are the shell; preconditions on their
+      inputs/environment are exactly NASA Rule #5's domain. OR
+    - **it ingests dynamically-typed / untrusted data** — it has a
+      parameter that is unannotated or annotated with a dynamic,
+      unconstrained type (``DYNAMIC_PARAM_ANNOTATIONS`` — ``Any`` /
+      ``object``). The type system cannot constrain such a value, so a
+      pure function that takes it is still shell-ish: a runtime
+      precondition IS the right guard (``_has_untrusted_param``).
+
+    A PURE function whose every parameter is concretely typed is the
+    functional core and is EXEMPT — this composes the existing FC/IS
+    boundary (the ASP205/206 I/O signal) with the type system, rather
+    than inventing a new heuristic. (Evidence, asp-da5: of the gateway's
+    261-finding asp-070 residual, 255 were pure + fully-typed functional
+    core — the rule mis-prescribing the shell mechanism — collapsing to
+    6 genuine imperative-shell low-assertion functions; backtest 109 -> 8.)
+
+    What counts as an assertion (NASA equivalence ``assert(cond)`` ≡
+    ``if not cond: raise``):
+
+    - ``assert`` statements (anywhere in the body, including inside
+      ``if`` / ``for`` / ``with`` blocks).
+    - ``raise`` statements, when ``COUNT_RAISE_STATEMENTS`` is true. A
+      precondition guard (``if bad: raise ...``) enforces an invariant
+      exactly as an ``assert`` does — and survives ``python -O``, which
+      strips ``assert``. Parity with the TS sibling's
+      ``countThrowStatements``.
+    - calls to validation methods named in ``ASSERTION_METHOD_NAMES``
+      regardless of receiver — ``payload.model_validate(...)``,
+      ``Schema.parse(...)``, etc. These re-validate a value against a
+      declared shape. Parity with the TS sibling's ``methodNames``.
+    - a method decorated with a pydantic validator
+      (``VALIDATION_DECORATORS`` — ``@field_validator`` /
+      ``@model_validator`` / legacy ``@validator`` / ``@root_validator``)
+      IS itself a precondition check, so the method is exempt; it also
+      contributes one assertion to its enclosing model (below).
+    - a model field declared with a *constraining* ``Field(...)`` call
+      (``FIELD_CONSTRAINT_CALLEES`` whose call carries at least one
+      keyword in ``FIELD_CONSTRAINT_KWARGS`` — ``Field(gt=0)``,
+      ``Field(min_length=1)``, …) is a declarative precondition. Each
+      such field, and each validator method, credits the model's
+      methods: a method of a constrained model inherits the model's
+      declared invariants and need not restate them as ``assert``.
+
+    These were blanket-disabled in gateway/backtest because the
+    original implementation counted only literal ``assert`` statements,
+    false-positiving on idiomatic pydantic + ``raise``-guard Python
+    (gateway: ``docs/labbook/2026-04-19-asp202-disabled-gateway.md``).
+
+    Configurability (parity with the TS sibling
+    ``aspergillus/typescript/rules/asp202-min-assertions.js`` options):
+    every recognized set is an overridable class attribute, the
+    idiomatic fixit tuning mechanism (cf. ``MAX_LINES`` on
+    ``FunctionTooLong``). A consumer tunes by subclassing and enabling
+    the subclass rather than disabling the rule wholesale::
+
+        class ProjectASP202(LowAssertionDensity):
+            ASSERTION_METHOD_NAMES = frozenset({"parse", "check_schema"})
 
     Exemptions: functions <=5 lines (trivial), test functions,
-    __init__, __repr__, __str__.
+    ``__init__``, ``__repr__``, ``__str__``, ``__eq__``, ``__hash__``,
+    pydantic-validator methods, and pure functional-core functions (no
+    I/O and no dynamically-typed parameter — see the FC/IS predicate
+    above).
     """
 
     MESSAGE = "ASP202: Function has {actual} assertions (min {min_asserts})"
@@ -60,6 +136,44 @@ class LowAssertionDensity(LintRule):
     EXEMPT_PREFIXES = ("test_", "__init__", "__repr__", "__str__", "__eq__", "__hash__")
     MIN_LINES_FOR_RULE = 5
     METADATA_DEPENDENCIES = (cst.metadata.PositionProvider,)
+
+    # --- recognized-assertion configuration (parity with the TS rule) ---
+    # ≡ TS countThrowStatements: NASA `assert(cond)` is `if (!cond) throw`.
+    COUNT_RAISE_STATEMENTS = True
+    # ≡ TS methodNames: validation methods that count regardless of receiver.
+    ASSERTION_METHOD_NAMES = frozenset(
+        {"model_validate", "model_validate_json", "parse", "parse_obj", "validate"}
+    )
+    # Decorators that mark a method as a pydantic validator (precondition).
+    VALIDATION_DECORATORS = frozenset(
+        {"field_validator", "model_validator", "validator", "root_validator"}
+    )
+    # Callees whose constraining keyword args declare a field precondition.
+    FIELD_CONSTRAINT_CALLEES = frozenset({"Field"})
+    # Keyword args that make a `Field(...)` a constraint (not a bare default).
+    FIELD_CONSTRAINT_KWARGS = frozenset(
+        {
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "multiple_of",
+            "min_length",
+            "max_length",
+            "min_items",
+            "max_items",
+            "pattern",
+            "regex",
+            "max_digits",
+            "decimal_places",
+            "allow_inf_nan",
+            "strict",
+        }
+    )
+    # Parameter annotations the type system cannot constrain. A function
+    # taking such a value ingests untrusted data and is imperative-shell
+    # even when otherwise pure (see the FC/IS predicate in the docstring).
+    DYNAMIC_PARAM_ANNOTATIONS = frozenset({"Any", "object"})
 
     VALID = [
         Valid(
@@ -73,9 +187,52 @@ class LowAssertionDensity(LintRule):
             "def test_something():\n    result = compute()\n    assert result == 42\n"
         ),  # test function, exempt
         Valid("def __init__(self, x: int):\n    self.x = x\n"),  # dunder, exempt
-    ]
-    INVALID = [
-        Invalid(
+        # `raise` guards count: precondition enforcement ≡ assert.
+        Valid(
+            "def validate_range(lo: int, hi: int) -> int:\n"
+            "    if lo < 0:\n"
+            "        raise ValueError('lo')\n"
+            "    if hi < lo:\n"
+            "        raise ValueError('hi')\n"
+            "    span = hi - lo\n"
+            "    return span\n"
+        ),
+        # validation method-name calls count regardless of receiver.
+        Valid(
+            "def decode(raw: bytes, schema: object) -> object:\n"
+            "    parsed = schema.model_validate(raw)\n"
+            "    checked = schema.model_validate(parsed)\n"
+            "    enriched = dict(checked)\n"
+            "    return enriched\n"
+        ),
+        # a pydantic-validator method is itself a precondition — exempt.
+        Valid(
+            "class Order(BaseModel):\n"
+            "    @field_validator('qty')\n"
+            "    @classmethod\n"
+            "    def check_qty(cls, v: int) -> int:\n"
+            "        normalized = int(v)\n"
+            "        doubled = normalized * 2\n"
+            "        adjusted = doubled - normalized\n"
+            "        return adjusted\n"
+        ),
+        # a constraining-Field model credits its methods' assertion count.
+        Valid(
+            "class Account(BaseModel):\n"
+            "    balance: float = Field(gt=0)\n"
+            "    limit: float = Field(ge=0)\n"
+            "    def describe(self) -> str:\n"
+            "        label = 'account'\n"
+            "        parts = [label, str(self.balance)]\n"
+            "        joined = ' '.join(parts)\n"
+            "        result = joined.upper()\n"
+            "        return result\n"
+        ),
+        # --- FC/IS predicate (asp-da5): functional core is EXEMPT ---
+        # A pure, fully-typed transform earns correctness from the type
+        # system, not runtime asserts. No I/O, every param concretely
+        # typed -> functional core -> exempt despite 0 assertions.
+        Valid(
             "def process(data: list) -> int:\n"
             "    total = 0\n"
             "    for item in data:\n"
@@ -84,11 +241,94 @@ class LowAssertionDensity(LintRule):
             "    result = sum(x.value for x in filtered)\n"
             "    return result\n"
         ),
+        Valid(
+            "def compute(data: list) -> int:\n"
+            "    a = data[0]\n"
+            "    b = data[1]\n"
+            "    c = a + b\n"
+            "    d = c * 2\n"
+            "    e = d - a\n"
+            "    return e\n"
+        ),
+        # A plain model's pure, typed method is functional core -> exempt.
+        Valid(
+            "class Plain(BaseModel):\n"
+            "    name: str\n"
+            "    value: int\n"
+            "    def render(self) -> str:\n"
+            "        a = self.name\n"
+            "        b = str(self.value)\n"
+            "        c = a + b\n"
+            "        d = c.strip()\n"
+            "        return d\n"
+        ),
+        # A pure, fully-typed helper with 0 assertions: functional core.
+        Valid(
+            "def summarize(values: tuple[int, ...]) -> int:\n"
+            "    total = sum(values)\n"
+            "    count = len(values)\n"
+            "    scaled = total * 2\n"
+            "    shifted = scaled - count\n"
+            "    return shifted\n"
+        ),
     ]
+    INVALID = [
+        # --- FC/IS predicate (asp-da5): imperative shell IS in scope ---
+        # Performs I/O (io_blocklist) with <2 assertions -> shell, flagged.
+        Invalid(
+            "def write_log(path: str, message: str) -> None:\n"
+            "    prefix = '[log] '\n"
+            "    body = prefix + message\n"
+            "    full = body.upper()\n"
+            "    trimmed = full.strip()\n"
+            "    print(trimmed)\n"
+        ),
+        # Pure but ingests a dynamically-typed value (`Any`) -> untrusted
+        # boundary -> imperative shell, flagged at <2 assertions.
+        Invalid(
+            "def normalize(payload: Any) -> dict:\n"
+            "    raw = payload\n"
+            "    keys = list(raw)\n"
+            "    first = keys[0]\n"
+            "    rest = keys[1:]\n"
+            "    return {first: rest}\n"
+        ),
+        # Unannotated parameters -> the type system cannot constrain them
+        # -> untrusted boundary -> imperative shell, flagged.
+        Invalid(
+            "def merge(left, right) -> dict:\n"
+            "    combined = {}\n"
+            "    combined.update(left)\n"
+            "    combined.update(right)\n"
+            "    sized = len(combined)\n"
+            "    return combined if sized else left\n"
+        ),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Stack of per-enclosing-class declarative-assertion credit.
+        self._class_credit: list[int] = []
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        self._class_credit.append(
+            _class_assertion_credit(
+                node,
+                self.FIELD_CONSTRAINT_CALLEES,
+                self.FIELD_CONSTRAINT_KWARGS,
+                self.VALIDATION_DECORATORS,
+            )
+        )
+        return True
+
+    def leave_ClassDef(self, node: cst.ClassDef) -> None:
+        self._class_credit.pop()
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
         name = node.name.value
         if any(name.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return
+        if _has_decorator_in(node, self.VALIDATION_DECORATORS):
             return
 
         pos = self.get_metadata(cst.metadata.PositionProvider, node)
@@ -96,23 +336,205 @@ class LowAssertionDensity(LintRule):
         if line_count <= self.MIN_LINES_FOR_RULE:
             return
 
-        assert_count = self._count_asserts(node.body)
+        # FC/IS predicate: ASP202 is the imperative-shell mechanism. A
+        # pure, fully-typed functional-core function is exempt — its
+        # correctness is enforced statically by the other L3 rules.
+        if not _is_imperative_shell(node, self.DYNAMIC_PARAM_ANNOTATIONS):
+            return
+
+        assert_count = _count_assertions(
+            node.body,
+            self.COUNT_RAISE_STATEMENTS,
+            self.ASSERTION_METHOD_NAMES,
+        )
+        if self._class_credit:
+            assert_count += self._class_credit[-1]
         if assert_count < self.MIN_ASSERTS:
             self.report(
                 node,
                 self.MESSAGE.format(actual=assert_count, min_asserts=self.MIN_ASSERTS),
             )
 
-    def _count_asserts(self, body: cst.BaseSuite) -> int:
-        """Count assert statements in a function body (non-recursive)."""
-        count = 0
-        if isinstance(body, cst.IndentedBlock):
-            for stmt in body.body:
-                if isinstance(stmt, cst.SimpleStatementLine):
-                    for item in stmt.body:
-                        if isinstance(item, cst.Assert):
-                            count += 1
-        return count
+
+def _iter_skip_nested(node: cst.CSTNode) -> list[cst.CSTNode]:
+    """All descendants of ``node`` (incl. ``node``), not descending into
+    nested function/lambda bodies — those are visited as their own units.
+    """
+    found: list[cst.CSTNode] = [node]
+    for child in node.children:
+        if isinstance(child, cst.FunctionDef | cst.Lambda):
+            continue
+        found.extend(_iter_skip_nested(child))
+    return found
+
+
+def _is_assertion_method_call(node: cst.CSTNode, method_names: frozenset[str]) -> bool:
+    """True for ``recv.<method>(...)`` where ``<method>`` is recognized."""
+    return (
+        isinstance(node, cst.Call)
+        and isinstance(node.func, cst.Attribute)
+        and node.func.attr.value in method_names
+    )
+
+
+def _count_assertions(
+    body: cst.BaseSuite,
+    count_raise: bool,
+    method_names: frozenset[str],
+) -> int:
+    """Count assertion-like constructs in a function body.
+
+    Recurses through nested ``if`` / ``for`` / ``with`` / ``try`` blocks
+    (a ``raise`` inside a guard counts) but not into nested function or
+    lambda bodies. Recognized: ``assert`` statements; ``raise``
+    statements when ``count_raise``; calls to ``method_names``.
+    """
+    if not isinstance(body, cst.IndentedBlock):
+        return 0
+    count = 0
+    for node in _iter_skip_nested(body):
+        if isinstance(node, cst.Assert):
+            count += 1
+        elif count_raise and isinstance(node, cst.Raise):
+            count += 1
+        elif _is_assertion_method_call(node, method_names):
+            count += 1
+    return count
+
+
+def _decorator_base_name(decorator: cst.Decorator) -> str:
+    """Resolve a decorator to its base callee name (``""`` if unresolved).
+
+    ``@field_validator('x')`` and ``@pydantic.field_validator`` both
+    resolve to ``field_validator``.
+    """
+    expr = decorator.decorator
+    if isinstance(expr, cst.Call):
+        expr = expr.func
+    name = _resolve_call_name(expr)
+    if name is None:
+        return ""
+    return name.rsplit(".", 1)[-1]
+
+
+def _has_decorator_in(node: cst.FunctionDef, names: frozenset[str]) -> bool:
+    """True if any of the function's decorators resolves into ``names``."""
+    return any(_decorator_base_name(dec) in names for dec in node.decorators)
+
+
+def _is_constraining_field(
+    value: cst.BaseExpression | None,
+    callees: frozenset[str],
+    kwargs: frozenset[str],
+) -> bool:
+    """True for ``Field(gt=0)``-style calls: a recognized callee carrying
+    at least one constraining keyword (not a bare ``Field(default=...)``).
+    """
+    if not isinstance(value, cst.Call):
+        return False
+    name = _resolve_call_name(value.func)
+    if name is None or name.rsplit(".", 1)[-1] not in callees:
+        return False
+    return any(arg.keyword is not None and arg.keyword.value in kwargs for arg in value.args)
+
+
+def _class_assertion_credit(
+    node: cst.ClassDef,
+    field_callees: frozenset[str],
+    field_kwargs: frozenset[str],
+    validator_decorators: frozenset[str],
+) -> int:
+    """Declarative-assertion credit a class confers on its methods.
+
+    Counts top-level constraining ``Field(...)`` declarations plus
+    validator-decorated methods in the class body. A method of a model
+    whose fields/validators already declare its invariants inherits
+    them and need not restate them as ``assert``.
+    """
+    body = node.body
+    if not isinstance(body, cst.IndentedBlock):
+        return 0
+    credit = 0
+    for stmt in body.body:
+        if isinstance(stmt, cst.SimpleStatementLine):
+            for item in stmt.body:
+                if isinstance(item, cst.AnnAssign) and _is_constraining_field(
+                    item.value, field_callees, field_kwargs
+                ):
+                    credit += 1
+                elif isinstance(item, cst.Assign) and _is_constraining_field(
+                    item.value, field_callees, field_kwargs
+                ):
+                    credit += 1
+        elif isinstance(stmt, cst.FunctionDef) and _has_decorator_in(stmt, validator_decorators):
+            credit += 1
+    return credit
+
+
+# Sentinel returned by `_param_annotation_basename` for a parameter with
+# no annotation. Empty string is unrepresentable as a real annotation
+# name, so this keeps the function total (no Optional) while letting the
+# caller treat "absent" as one of the untrusted cases.
+_NO_ANNOTATION = ""
+
+
+def _param_annotation_basename(annotation: cst.Annotation | None) -> str:
+    """Resolve a parameter annotation to a base name.
+
+    Returns ``_NO_ANNOTATION`` (``""``) when absent; ``Any`` -> ``"Any"``;
+    ``object`` -> ``"object"``; ``dict[str, int]`` -> ``"dict"``;
+    ``mod.Thing`` -> ``"Thing"``. The base name is all the FC/IS predicate
+    needs — it only distinguishes dynamic/unconstrained annotations from
+    concrete ones.
+    """
+    if annotation is None:
+        return _NO_ANNOTATION
+    expr = annotation.annotation
+    if isinstance(expr, cst.Name):
+        return expr.value
+    if isinstance(expr, cst.Attribute):
+        return expr.attr.value
+    if isinstance(expr, cst.Subscript):
+        base = expr.value
+        if isinstance(base, cst.Name):
+            return base.value
+        if isinstance(base, cst.Attribute):
+            return base.attr.value
+    return "<other>"
+
+
+def _has_untrusted_param(node: cst.FunctionDef, dynamic_annotations: frozenset[str]) -> bool:
+    """True if a parameter is unannotated or dynamically typed.
+
+    Such a parameter carries no static guarantee, so a function taking
+    it ingests untrusted data and is imperative-shell. The leading
+    ``self`` / ``cls`` of a method is skipped (it is never the untrusted
+    input). ``*args`` / ``**kwargs`` collectors are not considered.
+    """
+    params = node.params
+    ordered = list(params.posonly_params) + list(params.params) + list(params.kwonly_params)
+    for index, param in enumerate(ordered):
+        if index == 0 and param.name.value in ("self", "cls"):
+            continue
+        basename = _param_annotation_basename(param.annotation)
+        if basename == _NO_ANNOTATION or basename in dynamic_annotations:
+            return True
+    return False
+
+
+def _is_imperative_shell(node: cst.FunctionDef, dynamic_annotations: frozenset[str]) -> bool:
+    """True if the function is in the imperative shell (ASP202 applies).
+
+    Shell iff it performs I/O (``_find_io_calls`` — the ASP205/206
+    signal) OR ingests dynamically-typed / untrusted data
+    (``_has_untrusted_param``). A pure, fully-typed function is the
+    functional core and returns ``False`` (exempt). This composes the
+    existing FC/IS boundary with the type system rather than inventing a
+    new heuristic.
+    """
+    if _find_io_calls(node.body):
+        return True
+    return _has_untrusted_param(node, dynamic_annotations)
 
 
 class GlobalMutableState(LintRule):
@@ -365,6 +787,44 @@ def _find_io_calls(body: cst.BaseSuite) -> set[str]:
     return found
 
 
+# pandas `DataFrame.rename` / `Series.rename` keyword arguments. A bare
+# `.rename(...)` carrying any of these is a pure in-memory pandas transform,
+# NOT a filesystem rename (asp-108). `pathlib.Path.rename(target)` takes a
+# single positional `target` and none of these.
+_PANDAS_RENAME_KWARGS: frozenset[str] = frozenset(
+    {"columns", "index", "mapper", "axis", "inplace", "level", "errors", "copy"}
+)
+
+
+def _is_pandas_rename(node: cst.Call) -> bool:
+    """True for a pandas `DataFrame`/`Series.rename(...)` (pure), not a
+    filesystem `Path.rename(target)` (I/O).
+
+    Two by-shape signals distinguish the pure pandas transform from a
+    filesystem rename without type resolution (asp-108):
+
+    - a pandas-`rename` keyword argument (``columns=`` / ``index=`` /
+      ``mapper=`` / ``axis=`` …); ``Path.rename`` takes only a positional
+      ``target``; OR
+    - a COMPUTED receiver — ``(np.log(a) - b).rename("spread")``,
+      ``(s / sd).rename("z")`` — you cannot filesystem-rename the result of
+      an arithmetic / chained expression; ``Path.rename`` is called on a
+      name or attribute (``p.rename(...)`` / ``self.path.rename(...)``).
+
+    The residual ambiguous case — ``s.rename("x")`` on a simple Series name
+    with a single positional — is indistinguishable from ``p.rename(target)``
+    by shape alone and is left matching (conservative: a real rename is not
+    silently dropped).
+    """
+    if not isinstance(node.func, cst.Attribute):
+        return False
+    for arg in node.args:
+        if arg.keyword is not None and arg.keyword.value in _PANDAS_RENAME_KWARGS:
+            return True
+    receiver = node.func.value
+    return not isinstance(receiver, cst.Name | cst.Attribute)
+
+
 def _walk_for_io_calls(
     node: cst.CSTNode,
     found: set[str],
@@ -380,7 +840,11 @@ def _walk_for_io_calls(
         # `path_obj.read_text()` → Attribute(attr=Name("read_text"))
         elif isinstance(node.func, cst.Attribute):
             method_name = node.func.attr.value
-            if method_name in io_method_names:
+            # `rename` collides with pandas DataFrame/Series.rename, a pure
+            # in-memory transform — exclude those shapes (asp-108).
+            if method_name in io_method_names and not (
+                method_name == "rename" and _is_pandas_rename(node)
+            ):
                 found.add(method_name)
     for child in node.children:
         if isinstance(child, cst.CSTNode):
@@ -407,6 +871,21 @@ class ImpureFunction(LintRule):
             "    assert b >= 0\n"
             "    return a + b\n"
         ),
+        # asp-108: pandas DataFrame.rename(columns=...) is a pure in-memory
+        # transform, NOT filesystem I/O — the `columns=` kwarg distinguishes
+        # it from `Path.rename(target)`.
+        Valid(
+            "def normalize_df(df: object) -> object:\n"
+            "    renamed = df.rename(columns={'old': 'new'})\n"
+            "    return renamed\n"
+        ),
+        # asp-108: Series.rename on a COMPUTED receiver (arithmetic result)
+        # is pure — you cannot filesystem-rename an expression result.
+        Valid(
+            "def label_spread(a: object, b: object) -> object:\n"
+            "    spread = (a - b).rename('spread')\n"
+            "    return spread\n"
+        ),
     ]
     INVALID = [
         Invalid(
@@ -420,6 +899,14 @@ class ImpureFunction(LintRule):
             "    assert path is not None\n"
             "    assert hasattr(path, 'read_text')\n"
             "    return path.read_text()\n",
+        ),
+        # asp-108: a filesystem `Path.rename(target)` — simple-name receiver,
+        # single positional, no pandas kwarg — STILL counts as I/O.
+        Invalid(
+            "def move(p: object, q: object) -> None:\n"
+            "    assert p is not None\n"
+            "    assert q is not None\n"
+            "    p.rename(q)\n"
         ),
     ]
 
