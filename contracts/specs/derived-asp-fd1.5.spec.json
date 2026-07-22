@@ -1,0 +1,262 @@
+{
+  "id": "derived-asp-fd1.5",
+  "original_statement": "Request: Request:\n  Once FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, and FsmStringlyDispatch all carry their behavior as LintRules in the aspergillus.rules rule-pack (so there is one code path, not two), delete scripts/check_asp_fsm_enum_dispatch.py, scripts/check_asp_fsm_redundant_branches.py, scripts/check_edge_duration.py, and scripts/check_stringly_dispatch.py. Before deleting, grep the repository for any references to these four script paths or their module names (imports, CI configs, docs, other scripts) and remove or update any that remain. Update README.md and docs/design.md so their rule taxonomy tables list all four new rules (FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, FsmStringlyDispatch) with their assigned rule numbers. Acceptance (the integrated end state): the four scripts/ checker files no longer exist in the repository; a repository-wide search finds no remaining references to them; README.md and docs/design.md rule taxonomy tables list all four new rules; and the full test suite passes via `uv run --directory python pytest tests -q`.\n\nacceptance_criteria:\n- Once FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, and FsmStringlyDispatch all carry their behavior as LintRules in the aspergillus.rules rule-pack (so there is one code path, not two), delete scripts/check_asp_fsm_enum_dispatch.py, scripts/check_asp_fsm_redundant_branches.py, scripts/check_edge_duration.py, and scripts/check_stringly_dispatch.py. Before deleting, grep the repository for any references to these four script paths or their module names (imports, CI configs, docs, other scripts) and remove or update any that remain. Update README.md and docs/design.md so their rule taxonomy tables list all four new rules (FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, FsmStringlyDispatch) with their assigned rule numbers. Acceptance (the integrated end state): the four scripts/ checker files no longer exist in the repository; a repository-wide search finds no remaining references to them; README.md and docs/design.md rule taxonomy tables list all four new rules; and the full test suite passes via `uv run --directory python pytest tests -q`.\n\nNOTE (appended):\nCoordinator scope addition (2026-07-22): ALSO reconcile the ASP41x numbering collision the four concurrent sibling ports created. Current merged state: ASP411 doubly-claimed by FsmRedundantBranches (asp-fd1.3, f8f10c4) and FsmStringlyDispatch (asp-fd1.4, 6b23845); ASP412 = FsmEdgeDuration; ASP413 = FsmEnumDispatchExhaustive (renumbered from 411 pre-integrate, 95ff94d). Renumber ONE of the ASP411 pair to ASP414 (pick by docs/design.md table ordering), update the rule file docstring/message, its tests, README.md and docs/design.md tables so every ASP4xx number is unique, and verify with a grep that no number is claimed twice. This folds into the existing acceptance clause (f).\n\nNOTE (appended):\nexophial-authoring:",
+  "restatement": "The four FSM checker rules (FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, FsmStringlyDispatch) already live as real LintRules in the aspergillus.rules pack, re-exported and enforced through fixit \u2014 confirmed by reading python/src/aspergillus/rules/__init__.py, so that precondition is already satisfied. What remains is to finish retiring the standalone scripts they replaced and to clean up the documentation debt the four-way concurrent port left behind. Concretely: delete the four now-redundant standalone checker scripts (scripts/check_asp_fsm_enum_dispatch.py, scripts/check_asp_fsm_redundant_branches.py, scripts/check_edge_duration.py, scripts/check_stringly_dispatch.py); before deleting, sweep the repository for anything still pointing at those four script paths or module names (imports, CI config, docs, other scripts) and fix or remove those references so nothing is left dangling; bring README.md's and docs/design.md's rule-taxonomy documentation up to date so all four ported rules are listed there together with their assigned rule numbers; and, separately, fix a real defect the concurrent ports produced \u2014 two of the four rule files (FsmRedundantBranches and FsmStringlyDispatch) both currently claim rule number ASP411 in their own docstrings, warning messages, tests, and in README.md/docs/design.md. One of that pair must be renumbered to ASP414 (the coordinator's instruction is to pick which one based on docs/design.md's existing table ordering \u2014 an implementation decision for whoever does the work, not fixed here), with the change propagated consistently to that rule's docstring/message, its test assertions, and both documentation files, and the end state must be verifiable by confirming no ASP4xx number is claimed by more than one rule anywhere in the repo. Finally, the project's full test suite must still pass via `uv run --directory python pytest tests -q` once all of this lands.",
+  "restatement_spans": [
+    {
+      "id": "span-del-enum",
+      "text": "delete scripts/check_asp_fsm_enum_dispatch.py"
+    },
+    {
+      "id": "span-del-redundant",
+      "text": "delete scripts/check_asp_fsm_redundant_branches.py"
+    },
+    {
+      "id": "span-del-edge",
+      "text": "delete scripts/check_edge_duration.py"
+    },
+    {
+      "id": "span-del-stringly",
+      "text": "delete scripts/check_stringly_dispatch.py"
+    },
+    {
+      "id": "span-grep-refs",
+      "text": "grep the repository for any references to these four script paths or their module names (imports, CI configs, docs, other scripts) and remove or update any that remain"
+    },
+    {
+      "id": "span-readme-table",
+      "text": "Update README.md ... rule taxonomy tables list all four new rules (FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, FsmStringlyDispatch) with their assigned rule numbers"
+    },
+    {
+      "id": "span-design-table",
+      "text": "Update ... docs/design.md so ... rule taxonomy tables list all four new rules (FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, FsmStringlyDispatch) with their assigned rule numbers"
+    },
+    {
+      "id": "span-test-suite",
+      "text": "the full test suite passes via `uv run --directory python pytest tests -q`"
+    },
+    {
+      "id": "span-renumber-code",
+      "text": "Renumber ONE of the ASP411 pair to ASP414 ... update the rule file docstring/message"
+    },
+    {
+      "id": "span-renumber-tests",
+      "text": "update ... its tests ... so every ASP4xx number is unique"
+    },
+    {
+      "id": "span-renumber-unique",
+      "text": "update README.md and docs/design.md ... so every ASP4xx number is unique, and verify with a grep that no number is claimed twice"
+    }
+  ],
+  "goal": "Finish the LintRule migration cleanup for the four FSM checkers: delete the superseded standalone scripts, remove every stray reference to them, bring README.md and docs/design.md's rule tables up to date for all four ported rules, resolve the ASP411 rule-number collision left by the concurrent ports (uniquely renumbering one claimant to ASP414), and keep the test suite green throughout.",
+  "acceptance_criteria": [
+    "The file scripts/check_asp_fsm_enum_dispatch.py is no longer in the repository.",
+    "The file scripts/check_asp_fsm_redundant_branches.py is no longer in the repository.",
+    "The file scripts/check_edge_duration.py is no longer in the repository.",
+    "The file scripts/check_stringly_dispatch.py is no longer in the repository.",
+    "None of the project's currently-maintained documentation, tests, rule source, or helper scripts still mention the four deleted checker script filenames.",
+    "Someone reading README.md's list of lint rules can find all four newly ported FSM rules named there, each next to its own rule number.",
+    "Someone reading docs/design.md's rule tables can find all four newly ported FSM rules listed there, each next to its own rule number.",
+    "Running the project's full Python test suite finishes without any test failing.",
+    "One of the two rule files that currently both claim rule number ASP411 (FsmRedundantBranches and FsmStringlyDispatch) now carries the new number ASP414 in its own header and warning message.",
+    "The automated tests for whichever rule got renumbered now check for the ASP414 label instead of the old ASP411 one.",
+    "No two rules in the project claim the same ASP4xx number anywhere in the rule source files or in README.md and docs/design.md \u2014 the ASP411 double-claim between FsmRedundantBranches and FsmStringlyDispatch is fully resolved and no other number collides."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "The file scripts/check_asp_fsm_enum_dispatch.py is no longer in the repository."
+    },
+    {
+      "id": "c2",
+      "text": "The file scripts/check_asp_fsm_redundant_branches.py is no longer in the repository."
+    },
+    {
+      "id": "c3",
+      "text": "The file scripts/check_edge_duration.py is no longer in the repository."
+    },
+    {
+      "id": "c4",
+      "text": "The file scripts/check_stringly_dispatch.py is no longer in the repository."
+    },
+    {
+      "id": "c5",
+      "text": "None of the project's currently-maintained documentation, tests, rule source, or helper scripts still mention the four deleted checker script filenames."
+    },
+    {
+      "id": "c6",
+      "text": "Someone reading README.md's list of lint rules can find all four newly ported FSM rules named there, each next to its own rule number."
+    },
+    {
+      "id": "c7",
+      "text": "Someone reading docs/design.md's rule tables can find all four newly ported FSM rules listed there, each next to its own rule number."
+    },
+    {
+      "id": "c8",
+      "text": "Running the project's full Python test suite finishes without any test failing."
+    },
+    {
+      "id": "c9",
+      "text": "One of the two rule files that currently both claim rule number ASP411 (FsmRedundantBranches and FsmStringlyDispatch) now carries the new number ASP414 in its own header and warning message."
+    },
+    {
+      "id": "c10",
+      "text": "The automated tests for whichever rule got renumbered now check for the ASP414 label instead of the old ASP411 one."
+    },
+    {
+      "id": "c11",
+      "text": "No two rules in the project claim the same ASP4xx number anywhere in the rule source files or in README.md and docs/design.md \u2014 the ASP411 double-claim between FsmRedundantBranches and FsmStringlyDispatch is fully resolved and no other number collides."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_absent",
+      "description": "The file scripts/check_asp_fsm_enum_dispatch.py is no longer in the repository.",
+      "proves": "the standalone enum-dispatch checker script was deleted now that FsmEnumDispatchExhaustive carries its behavior",
+      "restatement_span_id": "span-del-enum",
+      "path": "scripts/check_asp_fsm_enum_dispatch.py",
+      "clause_id": "c1"
+    },
+    {
+      "type": "file_absent",
+      "description": "The file scripts/check_asp_fsm_redundant_branches.py is no longer in the repository.",
+      "proves": "the standalone redundant-branches checker script was deleted now that FsmRedundantBranches carries its behavior",
+      "restatement_span_id": "span-del-redundant",
+      "path": "scripts/check_asp_fsm_redundant_branches.py",
+      "clause_id": "c2"
+    },
+    {
+      "type": "file_absent",
+      "description": "The file scripts/check_edge_duration.py is no longer in the repository.",
+      "proves": "the standalone edge-duration checker script was deleted now that FsmEdgeDuration carries its behavior",
+      "restatement_span_id": "span-del-edge",
+      "path": "scripts/check_edge_duration.py",
+      "clause_id": "c3"
+    },
+    {
+      "type": "file_absent",
+      "description": "The file scripts/check_stringly_dispatch.py is no longer in the repository.",
+      "proves": "the standalone stringly-dispatch checker script was deleted now that FsmStringlyDispatch carries its behavior",
+      "restatement_span_id": "span-del-stringly",
+      "path": "scripts/check_stringly_dispatch.py",
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep_absent",
+      "description": "None of the project's currently-maintained documentation, tests, rule source, or helper scripts still mention the four deleted checker script filenames.",
+      "proves": "no leftover imports, CI config, docs, or other scripts still point at the four deleted checker scripts",
+      "restatement_span_id": "span-grep-refs",
+      "pattern": "check_asp_fsm_enum_dispatch\\.py|check_asp_fsm_redundant_branches\\.py|check_edge_duration\\.py|check_stringly_dispatch\\.py",
+      "files": [
+        "scripts/CLAUDE.md",
+        "README.md",
+        "docs/design.md",
+        "tests/fixtures/asp_fsm_enum_dispatch.py",
+        "tests/fixtures/asp_fsm_redundant.py",
+        "python/tests/test_fsm_stringly_dispatch.py",
+        "python/tests/test_fsm_edge_duration.py",
+        "python/tests/test_fsm_enum_dispatch_exhaustive.py",
+        "python/src/aspergillus/rules/catalog/fsm_stringly_dispatch.py",
+        "python/src/aspergillus/rules/catalog/fsm_redundant_branches.py",
+        "python/src/aspergillus/rules/catalog/fsm_edge_duration.py",
+        "python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py",
+        "scripts/verify_fsm_enum_dispatch_lint.py",
+        "scripts/verify_fsm_enum_dispatch_pytest.py",
+        "scripts/verify_fsm_redundant_branches_lint.py",
+        "scripts/verify_fsm_redundant_branches_pytest.py",
+        "scripts/verify_fsm_stringly_dispatch_lint.py",
+        "scripts/verify_fsm_stringly_dispatch_pytest.py",
+        "scripts/run_fixit_edge_duration_fixture.sh"
+      ],
+      "clause_id": "c5"
+    },
+    {
+      "type": "proof_obligation",
+      "description": "Someone reading README.md's list of lint rules can find all four newly ported FSM rules named there, each next to its own rule number.",
+      "proves": "README.md's rule taxonomy documentation lists all four new rules with their assigned numbers",
+      "restatement_span_id": "span-readme-table",
+      "run": [
+        "python3",
+        "scripts/verify_readme_rule_table.py",
+        "README.md"
+      ],
+      "postcondition": "README.md's text mentions FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, and FsmStringlyDispatch, and each of those four rule names appears alongside a distinct ASP4xx rule number label.",
+      "clause_id": "c6"
+    },
+    {
+      "type": "proof_obligation",
+      "description": "Someone reading docs/design.md's rule tables can find all four newly ported FSM rules listed there, each next to its own rule number.",
+      "proves": "docs/design.md's rule taxonomy tables list all four new rules with their assigned numbers",
+      "restatement_span_id": "span-design-table",
+      "run": [
+        "python3",
+        "scripts/verify_design_doc_rule_table.py",
+        "docs/design.md"
+      ],
+      "postcondition": "docs/design.md's rule tables/text mention FsmEnumDispatchExhaustive, FsmEdgeDuration, FsmRedundantBranches, and FsmStringlyDispatch, and each of those four rule names appears alongside a distinct ASP4xx rule number label.",
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "description": "Running the project's full Python test suite finishes without any test failing.",
+      "proves": "the full test suite passes via `uv run --directory python pytest tests -q`",
+      "restatement_span_id": "span-test-suite",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/run_python_test_suite.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "exit_code",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 180,
+      "clause_id": "c8"
+    },
+    {
+      "type": "grep",
+      "description": "One of the two rule files that currently both claim rule number ASP411 (FsmRedundantBranches and FsmStringlyDispatch) now carries the new number ASP414 in its own header and warning message.",
+      "proves": "the renumbered rule's docstring/message was updated to ASP414",
+      "restatement_span_id": "span-renumber-code",
+      "pattern": "ASP414",
+      "files": [
+        "python/src/aspergillus/rules/catalog/fsm_redundant_branches.py",
+        "python/src/aspergillus/rules/catalog/fsm_stringly_dispatch.py"
+      ],
+      "clause_id": "c9"
+    },
+    {
+      "type": "grep",
+      "description": "The automated tests for whichever rule got renumbered now check for the ASP414 label instead of the old ASP411 one.",
+      "proves": "the renumbered rule's test file was updated to match its new ASP414 number",
+      "restatement_span_id": "span-renumber-tests",
+      "pattern": "ASP414",
+      "files": [
+        "python/tests/test_fsm_redundant_branches.py",
+        "python/tests/test_fsm_stringly_dispatch.py"
+      ],
+      "clause_id": "c10"
+    },
+    {
+      "type": "proof_obligation",
+      "description": "No two rules in the project claim the same ASP4xx number anywhere in the rule source files or in README.md and docs/design.md \u2014 the ASP411 double-claim between FsmRedundantBranches and FsmStringlyDispatch is fully resolved and no other number collides.",
+      "proves": "every ASP4xx rule number is unique across the rule pack and its documentation, verified after the ASP411-to-ASP414 renumbering",
+      "restatement_span_id": "span-renumber-unique",
+      "run": [
+        "python3",
+        "scripts/verify_asp4xx_numbers_unique.py",
+        "python/src/aspergillus/rules/catalog",
+        "README.md",
+        "docs/design.md"
+      ],
+      "postcondition": "Scanning every rule file's own ASP4xx number label plus README.md's and docs/design.md's rule listings, each ASP4xx number is claimed by exactly one rule -- no number appears twice.",
+      "clause_id": "c11"
+    }
+  ]
+}
