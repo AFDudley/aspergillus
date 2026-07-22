@@ -1,0 +1,156 @@
+{
+  "id": "derived-asp-26e",
+  "original_statement": "Request: Origin: exophial exo-011 (2026-07-18 sourced research pass, 'Enforce well-formed FSMs statically'). exo-011's body assigned this rule to aspergillus ('file there; this pebble depends on that') but the aspergillus-side pebble was never filed; exo-011 closed 2026-07-21 with the cross-repo dependency silently dropped. Filed 2026-07-22 to close that gap.\n\nTHE RULE: an if/elif chain whose conditions compare one Enum-typed subject (is/== against Enum members) must either (a) be written as a match statement, or (b) terminate in `else: assert_never(subject)`. Otherwise REJECT.\n\nWHY IT IS THE KEYSTONE: mypy's exhaustive-match error code (already enabled repo-wide in exophial, exo-011.1, pyproject enable_error_code=['exhaustive-match']) only fires inside match/assert_never forms. An if/elif enum dispatch silently OPTS OUT of exhaustiveness \u2014 the exact malformed-FSM class exo-011 names ('if/else dispatch that silently swallows a new state'). This rule forces dispatch code into the form where the mypy check can bite; without it the type checking exists but nothing compels code to stand where it is checked.\n\nIMPLEMENTATION SHAPE: AST visitor mirroring the existing ASP205/ASP206 visitor shape (per exo-011's design: aspergillus is the commit-boundary AST surface; the mypy plugin API is experimental and statement-body-blind, so the AST side lives here). Enum-typed subject detection: annotations + Enum-member attribute access in the comparisons; boundary string-parsers are out of scope (see ASP-FSM-STRINGLY).\n\nACCEPTANCE: a fixture module with (1) an if/elif enum dispatch with no assert_never else \u2192 REJECTED; (2) the same dispatch as match + assert_never \u2192 PASSES; (3) if/elif with else: assert_never(x) \u2192 PASSES; (4) an if/elif over non-enum values \u2192 not flagged. Consumer note: exophial wires canonical aspergillus via its exo-125.",
+  "restatement": "This request closes a cross-repo gap left when exophial's exo-011 research pass ('Enforce well-formed FSMs statically') assigned a follow-up rule to aspergillus, but exo-011 closed on 2026-07-21 with that follow-up never filed here. The rule required: aspergillus's static checker must reject any if/elif chain that dispatches on a single Enum-typed subject (comparing it with is/== against Enum members) unless that dispatch is either rewritten as a Python match statement, or its if/elif chain ends in an else clause that calls assert_never on the subject. This matters because the repository's mypy configuration already enables the exhaustive-match error code, but that check only fires inside match/assert_never constructs \u2014 an if/elif dispatch over enum values sidesteps it entirely, silently permitting the exact 'unhandled new state' bug class exo-011 was written to close. Forcing enum dispatch into a match/assert_never shape is what lets the existing mypy check actually catch a missed enum case; without this rule the type checking exists on paper but nothing compels dispatch code to stand where it can be checked. The deliverable is a single, self-contained static check whose correctness is demonstrated by four example dispatch patterns collected in one fixture module, each producing one specific, independently-observable outcome when the check is run over it.",
+  "restatement_spans": [
+    {
+      "id": "span-1",
+      "text": "an if/elif enum dispatch with no assert_never else \u2192 REJECTED"
+    },
+    {
+      "id": "span-2",
+      "text": "the same dispatch as match + assert_never \u2192 PASSES"
+    },
+    {
+      "id": "span-3",
+      "text": "if/elif with else: assert_never(x) \u2192 PASSES"
+    },
+    {
+      "id": "span-4",
+      "text": "an if/elif over non-enum values \u2192 not flagged"
+    }
+  ],
+  "goal": "Add a static check to aspergillus that rejects if/elif dispatch on an Enum-typed subject unless it is written as a match statement or ends in else: assert_never(subject), so the code is forced into the shape the repo's exhaustive-match mypy check can actually verify.",
+  "acceptance_criteria": [
+    "When the checker is run over a sample piece of code that dispatches on an enum value through a chain of if/elif comparisons with no catch-all handling at the end, the checker reports that code as a problem.",
+    "When the checker is run over the same dispatch logic rewritten as a match statement whose final case calls assert_never, the checker reports no problem with that code.",
+    "When the checker is run over an if/elif dispatch whose final else branch calls assert_never on the value being dispatched on, the checker reports no problem with that code.",
+    "When the checker is run over an if/elif chain that compares a non-enum value, the checker reports no problem with that code, since the rule only applies to enum-typed dispatch."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "When the checker is run over a sample piece of code that dispatches on an enum value through a chain of if/elif comparisons with no catch-all handling at the end, the checker reports that code as a problem."
+    },
+    {
+      "id": "c2",
+      "text": "When the checker is run over the same dispatch logic rewritten as a match statement whose final case calls assert_never, the checker reports no problem with that code."
+    },
+    {
+      "id": "c3",
+      "text": "When the checker is run over an if/elif dispatch whose final else branch calls assert_never on the value being dispatched on, the checker reports no problem with that code."
+    },
+    {
+      "id": "c4",
+      "text": "When the checker is run over an if/elif chain that compares a non-enum value, the checker reports no problem with that code, since the rule only applies to enum-typed dispatch."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "description": "When the checker is run over a sample piece of code that dispatches on an enum value through a chain of if/elif comparisons with no catch-all handling at the end, the checker reports that code as a problem.",
+      "proves": "Proves an if/elif enum dispatch with no assert_never else is rejected, as required.",
+      "restatement_span_id": "span-1",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_asp_fsm_enum_dispatch.py",
+        "args": [
+          "tests/fixtures/asp_fsm_enum_dispatch.py",
+          "no_assert_never_else"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violation_count",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "description": "When the checker is run over the same dispatch logic rewritten as a match statement whose final case calls assert_never, the checker reports no problem with that code.",
+      "proves": "Proves the match-statement-with-assert_never form passes, as required.",
+      "restatement_span_id": "span-2",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_asp_fsm_enum_dispatch.py",
+        "args": [
+          "tests/fixtures/asp_fsm_enum_dispatch.py",
+          "match_assert_never"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violation_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "description": "When the checker is run over an if/elif dispatch whose final else branch calls assert_never on the value being dispatched on, the checker reports no problem with that code.",
+      "proves": "Proves an if/elif chain ending in else: assert_never(x) passes, as required.",
+      "restatement_span_id": "span-3",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_asp_fsm_enum_dispatch.py",
+        "args": [
+          "tests/fixtures/asp_fsm_enum_dispatch.py",
+          "if_elif_assert_never_else"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violation_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "description": "When the checker is run over an if/elif chain that compares a non-enum value, the checker reports no problem with that code, since the rule only applies to enum-typed dispatch.",
+      "proves": "Proves an if/elif dispatch over non-enum values is left unflagged, as required.",
+      "restatement_span_id": "span-4",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/check_asp_fsm_enum_dispatch.py",
+        "args": [
+          "tests/fixtures/asp_fsm_enum_dispatch.py",
+          "if_elif_non_enum"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violation_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c4"
+    }
+  ],
+  "criticality": "marginal",
+  "verification_level": "bounded_model_check"
+}
