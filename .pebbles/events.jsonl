@@ -108,3 +108,5 @@
 {"type":"dep_add","timestamp":"2026-07-22T21:17:39.619891815Z","issue_id":"asp-fd1.5","payload":{"dep_type":"blocks","depends_on":"asp-fd1.2"}}
 {"type":"dep_add","timestamp":"2026-07-22T21:17:39.656936705Z","issue_id":"asp-fd1.5","payload":{"dep_type":"blocks","depends_on":"asp-fd1.3"}}
 {"type":"dep_add","timestamp":"2026-07-22T21:17:39.699478917Z","issue_id":"asp-fd1.5","payload":{"dep_type":"blocks","depends_on":"asp-fd1.4"}}
+{"type":"comment","timestamp":"2026-07-22T21:17:55.954927173Z","issue_id":"asp-fd1.1","payload":{"body":"base-sha: 57e6dc957149629427cb415fb3fd01b63a07aa75"}}
+{"type":"comment","timestamp":"2026-07-22T21:18:45.392586075Z","issue_id":"asp-fd1.1","payload":{"body":"base-sha: 57e6dc957149629427cb415fb3fd01b63a07aa75"}}
