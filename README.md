@@ -68,6 +68,21 @@ attribute …` crashes three layers down the call stack.
   discarded gives the operator a one-bit summary of a cause that was
   captured and thrown away. Surface the evidence, not just the code.
 
+### Catalog / verification-integrity — ASP4xx (advisory)
+
+Beyond ASP201–304, the Python rule pack also ships catalog-move and
+verification-integrity rules (ASP401+, detection-only where noted) —
+see `python/src/aspergillus/rules/catalog/`. Most recent addition:
+
+- **ASP411 — `FsmStringlyDispatch`.** Warns when an `if`/`elif` chain or
+  a `match` statement dispatches on `==` comparisons against string
+  literals that shadow a same-module `Enum`'s values — the dispatch
+  bypasses exhaustiveness checking, so adding a new Enum member silently
+  leaves the string-keyed branches un-updated. Escape hatch: a
+  `# asp-fsm: boundary-parse` comment on a genuine serialization-boundary
+  parser. Ported from the standalone `scripts/check_stringly_dispatch.py`
+  probe (pebble asp-fd1.4).
+
 ### Level 4/5 — planned, not implemented
 
 Contracts and property-based tests (L4), formal verification via SMT

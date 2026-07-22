@@ -187,6 +187,23 @@ The shell `off` for `no-throw-statements` is permanent.
 See `docs/design-decisions/2026-05-08-l3-error-handling-mechanism.md`
 for the full rationale, options considered, and risks accepted.
 
+### Catalog rules — ASP4xx (Python, advisory)
+
+`python/src/aspergillus/rules/catalog/` holds one-rule-per-file catalog-move
+and verification-integrity rules (ASP401+), re-exported at the parent
+`aspergillus.rules` package level per that package's flat-only fixit
+discovery (see `python/src/aspergillus/rules/__init__.py`). Most recent:
+
+- **ASP411 `FsmStringlyDispatch`** — warns when an `if`/`elif` chain or a
+  `match` statement dispatches on `==` comparisons against string literals
+  that shadow a same-module `Enum`'s values, bypassing exhaustiveness
+  checking. Silenced by a `# asp-fsm: boundary-parse` marker comment on the
+  dispatching function (genuine serialization-boundary parsers). Ports the
+  standalone `scripts/check_stringly_dispatch.py` probe (pebble asp-5be)
+  into the enforced fixit pack (pebble asp-fd1.4). Detection-only (Tier 2,
+  no autofix): the fix changes the dispatched-on value's type at every call
+  site, which is a judgment call the rule cannot make mechanically.
+
 ### Levels 4–5 — Planned, not implemented
 
 Contracts, property-based tests (L4), and formal verification (L5). See
