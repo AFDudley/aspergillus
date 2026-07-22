@@ -1,0 +1,18 @@
+{
+  "git_remote": "origin",
+  "subtrees": [],
+  "pebble_tracker_prefixes": {
+    "root": "asp-"
+  },
+  "commit_trailer_categories": [
+    "hygiene",
+    "refactor",
+    "docs",
+    "infrastructure",
+    "pebble-filing"
+  ],
+  "gate_commands": {
+    "python": "uv run --directory python pytest tests -q"
+  },
+  "deploy_surfaces": {}
+}
