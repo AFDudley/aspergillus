@@ -56,6 +56,7 @@ from aspergillus.rules.catalog.anti_special_casing import AntiSpecialCasing
 from aspergillus.rules.catalog.eta_reduce import EtaReduce
 from aspergillus.rules.catalog.filter_fusion import FilterFusion
 from aspergillus.rules.catalog.fsm_edge_duration import FsmEdgeDuration
+from aspergillus.rules.catalog.fsm_stringly_dispatch import FsmStringlyDispatch
 from aspergillus.rules.catalog.in_process_e2e import InProcessE2E
 from aspergillus.rules.catalog.map_fusion import MapFusion
 from aspergillus.rules.catalog.redundant_conditional_bool import (
@@ -70,7 +71,8 @@ __all__ = [
     "AntiSpecialCasing",
     "EtaReduce",
     "FilterFusion",
-    "FsmEdgeDuration",
+"FsmEdgeDuration",
+    "FsmStringlyDispatch",
     "InProcessE2E",
     "MapFusion",
     "RedundantConditionalBoolAnd",

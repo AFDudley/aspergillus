@@ -1,0 +1,223 @@
+{
+  "id": "derived-asp-fd1.3",
+  "original_statement": "Request: Request:\n  Port the checker currently in scripts/check_asp_fsm_redundant_branches.py into a LibCST LintRule class named FsmRedundantBranches inside the aspergillus.rules rule-pack, using warn-severity semantics (the corpus convention for advisory rules), placed according to the taxonomy documented in docs/design.md. Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (per rules/__init__.py's flat-only discovery documentation). Assign it an ASP4xx (or per-design) rule number. Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones. Update README.md and docs/design.md rule tables to list this new rule. Acceptance (the integrated end state, not just the class existing): running `uv run --directory python fixit lint` against a redundant-branches fixture warns through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410; a valid fixture with renamed-variable branches produces no report; and `uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule.\n\nacceptance_criteria:\n- Port the checker currently in scripts/check_asp_fsm_redundant_branches.py into a LibCST LintRule class named FsmRedundantBranches inside the aspergillus.rules rule-pack, using warn-severity semantics (the corpus convention for advisory rules), placed according to the taxonomy documented in docs/design.md. Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (per rules/__init__.py's flat-only discovery documentation). Assign it an ASP4xx (or per-design) rule number. Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones. Update README.md and docs/design.md rule tables to list this new rule. Acceptance (the integrated end state, not just the class existing): running `uv run --directory python fixit lint` against a redundant-branches fixture warns through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410; a valid fixture with renamed-variable branches produces no report; and `uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule.",
+  "restatement": "Take the standalone redundant-branch checker (scripts/check_asp_fsm_redundant_branches.py, originally derived under asp-5a8 from exophial's exo-011 rule 4), which today only runs as an ad-hoc script no linter gate actually invokes, and turn it into a real Fixit/LibCST lint rule class named FsmRedundantBranches living inside the aspergillus.rules Python rule pack. The new rule keeps the checker's exact logic (within one match statement or if/elif chain dispatching on a single Enum-typed subject, warn 'likely redundant states' when two branch bodies have identical location- and comment-stripped, non-alpha-renamed ASTs) but ships as an advisory warn-severity rule \u2014 the same starting tier documented for the pack's other catalog/verification-integrity rules (ASP406 onward) rather than a hard-blocking one. It must be placed in the rule pack the way the project's own taxonomy dictates (a catalog/ one-rule-per-file module, following the same layout as sibling rules such as ASP408/409/410), and re-exported at the top of the aspergillus.rules package using the exact mechanism the existing ASP4xx catalog rules already use, because fixit's own rule discovery does not recurse into sub-packages \u2014 without that re-export the rule would exist in source but never actually run. It needs its own numbered slot in the ASPxxx scheme (an ASP4xx number, or whatever number the project's numbering convention actually calls for). Its automated tests must be authored the same way every other rule in the pack is tested: via the shared add_lint_rule_tests_to_module VALID/INVALID fixture generator, with the scenarios already captured in the checker's existing merged fixtures file (tests/fixtures/asp_fsm_redundant.py, which currently holds named scenarios for the identical-bodies case, the comment/whitespace-only-difference case, the renamed-variable case, the genuinely-different-bodies case, and the non-enum-dispatch case) converted into those VALID/INVALID cases rather than the author inventing a disconnected new set. Both README.md and docs/design.md must be updated so their rule listings/tables mention this new rule. Finally, none of this counts as done merely because the class exists in source: it is done only once it demonstrably works end-to-end through the real command a developer or CI gate would run \u2014 linting a fixture containing the redundant-branches shape via the real `fixit lint` command, using this repo's own [tool.fixit] configuration, must produce a reported violation (the same bar of independent, real-CLI verification used when ASP410 was checked under asp-6b0) \u2014 a separate fixture whose two branches are structured identically but use a renamed local variable must produce no report at all (the rule's deliberate no-alpha-rename design choice), and the project's whole test suite (`uv run --directory python pytest tests -q`) must still pass, including new fixture-based tests covering this rule.",
+  "restatement_spans": [
+    {
+      "id": "rs1",
+      "text": "Port the checker currently in scripts/check_asp_fsm_redundant_branches.py into a LibCST LintRule class named FsmRedundantBranches inside the aspergillus.rules rule-pack, using warn-severity semantics (the corpus convention for advisory rules), placed according to the taxonomy documented in docs/design.md."
+    },
+    {
+      "id": "rs2",
+      "text": "Re-export the rule at the aspergillus.rules level exactly as the existing ASP4xx catalog rules are re-exported (per rules/__init__.py's flat-only discovery documentation)."
+    },
+    {
+      "id": "rs3",
+      "text": "Assign it an ASP4xx (or per-design) rule number."
+    },
+    {
+      "id": "rs4",
+      "text": "Reuse the existing VALID/INVALID fixture idiom (add_lint_rule_tests_to_module in python/tests) by converting this checker's merged tests/fixtures/*.py files into rule fixtures rather than writing new ones."
+    },
+    {
+      "id": "rs5",
+      "text": "Update README.md and docs/design.md rule tables to list this new rule."
+    },
+    {
+      "id": "rs6",
+      "text": "running `uv run --directory python fixit lint` against a redundant-branches fixture warns through the real fixit CLI using the repo's own [tool.fixit] config \u2014 the same independent-verification bar asp-6b0 used for ASP410"
+    },
+    {
+      "id": "rs7",
+      "text": "a valid fixture with renamed-variable branches produces no report"
+    },
+    {
+      "id": "rs8",
+      "text": "`uv run --directory python pytest tests -q` passes including the new fixture-based coverage for this rule"
+    }
+  ],
+  "goal": "Add a working, wired-in, documented Fixit lint rule (FsmRedundantBranches) that replaces the standalone redundant-branch script, verified to actually fire (as a warn-tier advisory rule) through the real fixit CLI, stay silent on a renamed-variable fixture, and leave the full test suite green.",
+  "acceptance_criteria": [
+    "Open the project's source code and confirm a lint rule class literally named FsmRedundantBranches exists inside the rule pack, in the same place other single-purpose rules already live, rather than the logic staying stuck in a standalone script.",
+    "Open the rules package's top-level file and confirm it lists FsmRedundantBranches by name, the same way every other individual rule already in the pack is made visible there.",
+    "Open the new rule's own source file and confirm it states a three-digit ASP4xx rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself.",
+    "Open the project's automated test folder and confirm a dedicated test file for this rule plugs it into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests.",
+    "Open the project's README and its design document and confirm both mention the new rule by name in their rule listings.",
+    "Run the real command-line linter, using this repo's own configuration, against a code sample containing two branches of an enum dispatch that do exactly the same thing (the real PRESERVE/FAIL-style redundant-branch shape). Check that the linter reports the redundant-branches violation.",
+    "Run the same real command-line linter against a code sample whose two branches are structured identically but use a different local variable name in each branch. Check that the linter reports nothing for this sample.",
+    "Run the project's whole automated test suite and check that it completes successfully with no failing tests, and that the run includes tests for the newly added rule."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "Open the project's source code and confirm a lint rule class literally named FsmRedundantBranches exists inside the rule pack, in the same place other single-purpose rules already live, rather than the logic staying stuck in a standalone script."
+    },
+    {
+      "id": "c2",
+      "text": "Open the rules package's top-level file and confirm it lists FsmRedundantBranches by name, the same way every other individual rule already in the pack is made visible there."
+    },
+    {
+      "id": "c3",
+      "text": "Open the new rule's own source file and confirm it states a three-digit ASP4xx rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself."
+    },
+    {
+      "id": "c4",
+      "text": "Open the project's automated test folder and confirm a dedicated test file for this rule plugs it into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests."
+    },
+    {
+      "id": "c5",
+      "text": "Open the project's README and its design document and confirm both mention the new rule by name in their rule listings."
+    },
+    {
+      "id": "c6",
+      "text": "Run the real command-line linter, using this repo's own configuration, against a code sample containing two branches of an enum dispatch that do exactly the same thing (the real PRESERVE/FAIL-style redundant-branch shape). Check that the linter reports the redundant-branches violation."
+    },
+    {
+      "id": "c7",
+      "text": "Run the same real command-line linter against a code sample whose two branches are structured identically but use a different local variable name in each branch. Check that the linter reports nothing for this sample."
+    },
+    {
+      "id": "c8",
+      "text": "Run the project's whole automated test suite and check that it completes successfully with no failing tests, and that the run includes tests for the newly added rule."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "grep",
+      "description": "Open the project's source code and confirm a lint rule class literally named FsmRedundantBranches exists inside the rule pack, in the same place other single-purpose rules already live, rather than the logic staying stuck in a standalone script.",
+      "proves": "Confirms the checker was actually rebuilt as a properly named rule class inside the rule pack (rs1).",
+      "restatement_span_id": "rs1",
+      "pattern": "class FsmRedundantBranches",
+      "files": [
+        "python/src/aspergillus/rules/*.py",
+        "python/src/aspergillus/rules/catalog/*.py"
+      ],
+      "clause_id": "c1"
+    },
+    {
+      "type": "grep",
+      "description": "Open the rules package's top-level file and confirm it lists FsmRedundantBranches by name, the same way every other individual rule already in the pack is made visible there.",
+      "proves": "Confirms the new rule is re-exported at the aspergillus.rules package level, following the pack's existing convention, so fixit's rule discovery can actually find it (rs2).",
+      "restatement_span_id": "rs2",
+      "pattern": "FsmRedundantBranches",
+      "files": [
+        "python/src/aspergillus/rules/__init__.py"
+      ],
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep",
+      "description": "Open the new rule's own source file and confirm it states a three-digit ASP4xx rule identifier in the same \"ASPxxx: description\" format every other rule in the pack uses to name itself.",
+      "proves": "Confirms the rule was assigned a rule number consistent with the project's numbering convention (rs3).",
+      "restatement_span_id": "rs3",
+      "pattern": "ASP4[0-9][0-9]:",
+      "files": [
+        "python/src/aspergillus/rules/*.py",
+        "python/src/aspergillus/rules/catalog/*.py"
+      ],
+      "clause_id": "c3"
+    },
+    {
+      "type": "grep",
+      "description": "Open the project's automated test folder and confirm a dedicated test file for this rule plugs it into the project's shared pass/fail fixture-test generator, the exact mechanism every other rule in the pack uses for its own tests.",
+      "proves": "Confirms the rule's tests were authored using the existing VALID/INVALID fixture idiom, built from the checker's own already-existing fixture scenarios, rather than being left uncovered or tested some ad-hoc new way (rs4).",
+      "restatement_span_id": "rs4",
+      "pattern": "add_lint_rule_tests_to_module\\(globals\\(\\), \\[FsmRedundantBranches",
+      "files": [
+        "python/tests/*.py"
+      ],
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep",
+      "description": "Open the project's README and its design document and confirm both mention the new rule by name in their rule listings.",
+      "proves": "Confirms the documentation was updated to list the new rule alongside the others (rs5).",
+      "restatement_span_id": "rs5",
+      "pattern": "FsmRedundantBranches",
+      "files": [
+        "README.md",
+        "docs/design.md"
+      ],
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "Run the real command-line linter, using this repo's own configuration, against a code sample containing two branches of an enum dispatch that do exactly the same thing (the real PRESERVE/FAIL-style redundant-branch shape). Check that the linter reports the redundant-branches violation.",
+      "proves": "Confirms the ported rule actually fires on the redundant-branches shape when run through the real fixit CLI a developer or CI gate would use \u2014 the same bar of real-CLI verification used when ASP410 was checked under asp-6b0 (rs6).",
+      "restatement_span_id": "rs6",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/verify_fsm_redundant_branches_lint.py",
+        "args": [
+          "redundant"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "reports_violation",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 90,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "description": "Run the same real command-line linter against a code sample whose two branches are structured identically but use a different local variable name in each branch. Check that the linter reports nothing for this sample.",
+      "proves": "Confirms the rule's deliberate no-alpha-rename design choice holds when checked through the real CLI, not just an isolated unit test \u2014 a rename-only difference must not be flagged (rs7).",
+      "restatement_span_id": "rs7",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/verify_fsm_redundant_branches_lint.py",
+        "args": [
+          "renamed"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "reports_violation",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 90,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "description": "Run the project's whole automated test suite and check that it completes successfully with no failing tests, and that the run includes tests for the newly added rule.",
+      "proves": "Confirms the new rule's fixture-based coverage is part of the suite and the full suite stays green, not just the rule's own isolated tests (rs8).",
+      "restatement_span_id": "rs8",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/verify_fsm_redundant_branches_pytest.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "mentions_rule",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 300,
+      "clause_id": "c8"
+    }
+  ]
+}

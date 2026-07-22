@@ -34,4 +34,18 @@ itself — the linked spec's `then` clauses own the verdict.
   the dispatch bypasses exhaustiveness checking. Silenced by a
   `# asp-fsm: boundary-parse` marker comment anywhere in the flagged
   function's body (for serialization-boundary parsers), and silent when no
-  same-module Enum exists to shadow.
+  same-module Enum exists to shadow. Ported into the enforced fixit rule
+  pack as ASP411 `FsmStringlyDispatch`
+  (`python/src/aspergillus/rules/catalog/fsm_stringly_dispatch.py`,
+  pebble asp-fd1.4); this script remains as the original standalone probe.
+- `verify_fsm_stringly_dispatch_lint.py` — asp-fd1.4: arg-dispatched
+  (`invalid` / `boundary_marker`); writes a fixture INSIDE `python/` (fixit's
+  config discovery walks up from the file's own path, so a fixture outside
+  the `python/` tree never sees `[tool.fixit] enable`) and runs the real
+  `uv run --directory python fixit lint` CLI against it, emitting
+  `{"reports_violation": bool}`.
+- `verify_fsm_stringly_dispatch_pytest.py` — asp-fd1.4: runs the real
+  `uv run --directory python pytest tests -q -rA` suite, emitting
+  `{"exit_code": int, "mentions_rule": bool}` — `mentions_rule` confirms
+  ASP411's fixture-based tests ran as part of the full suite, not in
+  isolation.

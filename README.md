@@ -68,17 +68,20 @@ attribute …` crashes three layers down the call stack.
   discarded gives the operator a one-bit summary of a cause that was
   captured and thrown away. Surface the evidence, not just the code.
 
-### ASP4xx — catalog & safety rules (Python only, implemented)
+### Catalog / verification-integrity — ASP4xx (advisory)
 
-Single-purpose Fixit/LibCST rules living in
-`python/src/aspergillus/rules/catalog/`: FP refactoring-catalog moves
-(ASP401–407), verification-integrity rules (ASP408–410), and FSM-safety
-rules including **ASP412 — `FsmEdgeDuration`** (an FSM transition body
-must not embed unbounded work — an LLM/subprocess call, another state
-machine's run/drive entrypoint, or an unbounded retry loop — instead of
-writing a durable marker and returning). See `docs/design.md` for the
-full list and `docs/refactoring-catalog.md` for the FP move citations.
-Not yet ported to TypeScript/Rust.
+Beyond ASP201–304, the Python rule pack also ships catalog-move and
+verification-integrity rules (ASP401+, detection-only where noted) —
+see `python/src/aspergillus/rules/catalog/`. Most recent addition:
+
+- **ASP411 — `FsmStringlyDispatch`.** Warns when an `if`/`elif` chain or
+  a `match` statement dispatches on `==` comparisons against string
+  literals that shadow a same-module `Enum`'s values — the dispatch
+  bypasses exhaustiveness checking, so adding a new Enum member silently
+  leaves the string-keyed branches un-updated. Escape hatch: a
+  `# asp-fsm: boundary-parse` comment on a genuine serialization-boundary
+  parser. Ported from the standalone `scripts/check_stringly_dispatch.py`
+  probe (pebble asp-fd1.4).
 
 ### Level 4/5 — planned, not implemented
 
@@ -111,9 +114,19 @@ subtree(s) they need:
 - **Level 2** — structural rules (ASP201–206). Blocking.
 - **Level 3** — error-handling rules (ASP302–304; ASP301 retired for
   Python, still active in Rust/TypeScript). Blocking in strict adopters.
-- **ASP4xx** — catalog & safety rules (Python only), e.g. `FsmEdgeDuration`
-  (ASP412). Blocking.
 - **Level 4/5** — planned (contracts; formal verification). Not implemented.
 
 See [`docs/design.md`](docs/design.md) for the authoritative
 per-language rule-mapping table.
+### ASP4xx — catalog & safety rules (Python only, implemented)
+Single-purpose Fixit/LibCST rules living in
+`python/src/aspergillus/rules/catalog/`: FP refactoring-catalog moves
+(ASP401–407), verification-integrity rules (ASP408–410), and FSM-safety
+rules including **ASP412 — `FsmEdgeDuration`** (an FSM transition body
+must not embed unbounded work — an LLM/subprocess call, another state
+machine's run/drive entrypoint, or an unbounded retry loop — instead of
+writing a durable marker and returning). See `docs/design.md` for the
+full list and `docs/refactoring-catalog.md` for the FP move citations.
+Not yet ported to TypeScript/Rust.
+- **ASP4xx** — catalog & safety rules (Python only), e.g. `FsmEdgeDuration`
+  (ASP412). Blocking.
