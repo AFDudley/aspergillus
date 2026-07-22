@@ -13,3 +13,7 @@ itself — the linked spec's `then` clauses own the verdict.
   if/elif dispatch on an Enum-typed subject unless it is a `match` statement
   or ends in `else: assert_never(subject)`. Fixture:
   `tests/fixtures/asp_fsm_enum_dispatch.py`.
+- `check_asp_fsm_redundant_branches.py` — ASP-FSM-REDUNDANT (asp-5a8): warns
+  when two branch bodies of a single Enum-typed `match`/if-elif dispatch have
+  identical location- and comment-stripped (but not alpha-renamed) ASTs.
+  Fixture: `tests/fixtures/asp_fsm_redundant.py`.
