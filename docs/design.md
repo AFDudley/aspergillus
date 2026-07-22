@@ -203,9 +203,9 @@ or unsound-by-construction shapes, sibling to the L2/L3 tables above.
 | ASP408 | Anti-special-casing (gaming detector)                                                                                            | Tier 2, detection-only, warn |
 | ASP409 | Shell-to-self (own package invoked via subprocess)                                                                               | Tier 2, detection-only, warn |
 | ASP410 | In-process construction masquerading as an e2e                                                                                   | Tier 2, detection-only, warn |
-| ASP411 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix           |
+| ASP413 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix           |
 
-ASP411 ports `scripts/check_asp_fsm_enum_dispatch.py` (pebble asp-26e)
+ASP413 ports `scripts/check_asp_fsm_enum_dispatch.py` (pebble asp-26e)
 into the rule pack so the check runs under the real `fixit lint` gate
 instead of a standalone script no consumer's gate invokes.
 

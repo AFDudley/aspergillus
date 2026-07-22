@@ -1,0 +1,87 @@
+status: completed
+pebble_id: asp-fd1.1
+branch: worker/asp-fd1-1
+commits:
+  - "17707769f85e5340747799f910253b05ba8ffd94"
+summary: >
+  Ported scripts/check_asp_fsm_enum_dispatch.py into FsmEnumDispatchExhaustive,
+  a reject-severity Fixit/LibCST LintRule (ASP411) under
+  python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py. It
+  reimplements the standalone checker's pure predicates (enum-class
+  detection, if/elif chain walking, the assert_never-guard check) directly
+  over the LibCST tree, so an if/elif dispatch on a module-local Enum with no
+  `else: assert_never(subject)` guard (and no rewrite to `match`) is now
+  caught by the real `fixit lint` CLI instead of a standalone script no
+  gate invokes. Re-exported in both catalog/__init__.py and the parent
+  rules/__init__.py (the load-bearing seam fixit's flat-only
+  `enable=["aspergillus.rules"]` discovery actually walks) following the
+  existing ASP4xx one-rule-per-file convention. python/tests/
+  test_fsm_enum_dispatch_exhaustive.py converts the four merged scenarios
+  from tests/fixtures/asp_fsm_enum_dispatch.py (no_assert_never_else ->
+  flagged; match_assert_never, if_elif_assert_never_else, if_elif_non_enum ->
+  clean) into direct contract assertions, plus a fixit-discoverability test,
+  plus the standard add_lint_rule_tests_to_module VALID/INVALID fixture
+  idiom. README.md and docs/design.md (new "ASP4xx — Catalog moves" table)
+  document the rule. scripts/check_asp_fsm_enum_dispatch.py and its fixture
+  were left in place per the coordinator triage (b8547d7): script retirement
+  is a separate step gated behind all four rule ports, not this one.
+
+
+  VERIFIED end-to-end the same way asp-6b0 verified ASP410: two
+  dependency-free (stdlib-only) oracle probes, scripts/
+  verify_fsm_enum_dispatch_lint.py and scripts/
+  verify_fsm_enum_dispatch_pytest.py, shell out to the REAL
+  `uv run --directory python fixit lint` / `pytest tests -q` CLIs (never
+  call the rule in-process) using the repo's own python/pyproject.toml
+  `[tool.fixit] enable=["aspergillus.rules"]` config. The if/elif-no-guard
+  fixture reports FsmEnumDispatchExhaustive and exits 1; the
+  match+assert_never fixture is clean and exits 0; the full suite (191
+  tests, +11 new) stays green; mypy and ruff are clean.
+cost: "~95k tokens"
+verify_transcript:
+  oracle_lint_invalid: |
+    $ python3 scripts/verify_fsm_enum_dispatch_lint.py invalid
+    {"fixit_exit_code": 1, "reports_violation": true}
+  oracle_lint_valid: |
+    $ python3 scripts/verify_fsm_enum_dispatch_lint.py valid
+    {"fixit_exit_code": 0, "reports_violation": false}
+  oracle_pytest: |
+    $ python3 scripts/verify_fsm_enum_dispatch_pytest.py
+    {"exit_code": 0, "mentions_rule": true}
+  raw_fixit_lint_invalid: |
+    $ uv run --directory python fixit lint <tmpdir-under-python>/sample.py
+    <tmpdir>/sample.py@10:4 FsmEnumDispatchExhaustive: ASP411: if/elif dispatch
+    on an Enum-typed value is not exhaustiveness-checkable -- mypy's
+    `exhaustive-match` only fires inside `match`/`assert_never` forms, so a
+    new enum member added later falls through unnoticed. Rewrite as a `match`
+    statement, or end the chain with `else: assert_never(<subject>)`.
+    🛠️  1 file checked, 1 file with errors 🛠️
+    exit=1
+  pytest: |
+    $ uv run --directory python pytest tests -q
+    ........................................................................ [ 37%]
+    ........................................................................ [ 75%]
+    ..............................................                           [100%]
+    190 passed, 1 skipped in 3.16s
+  mypy: |
+    $ uv run --directory python mypy src
+    Success: no issues found in 18 source files
+  ruff: |
+    $ uv run --directory python ruff check .
+    All checks passed!
+  pre_commit: |
+    $ pre-commit run --config python/.pre-commit-config.yaml --files <changed python files>
+    trim trailing whitespace.................................................Passed
+    fix end of files.........................................................Passed
+    ruff.....................................................................Passed
+    ruff-format...............................................................Passed
+    mypy.....................................................................Passed
+    $ pre-commit run --files <all changed files>   # root config (JS/docs hooks)
+    New source directory carries its CLAUDE.md...............................Passed
+    prettier..................................................................Passed
+e2e_gate:
+  spec: scripts/verify_fsm_enum_dispatch_lint.py
+  command: "python3 scripts/verify_fsm_enum_dispatch_lint.py invalid && python3 scripts/verify_fsm_enum_dispatch_lint.py valid"
+  result: passed
+  ran_at_sha: "17707769f85e5340747799f910253b05ba8ffd94"
+  mocks_in_path: false

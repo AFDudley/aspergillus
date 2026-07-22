@@ -70,7 +70,7 @@ attribute …` crashes three layers down the call stack.
 
 ### ASP4xx — catalog moves (Python, one-rule-per-file)
 
-- **ASP411 — `FsmEnumDispatchExhaustive`.** An `if`/`elif` chain
+- **ASP413 — `FsmEnumDispatchExhaustive`.** An `if`/`elif` chain
   dispatching on an Enum-typed value must be exhaustiveness-checkable —
   either written as a `match` statement, or ending in
   `else: assert_never(subject)`. mypy's `exhaustive-match` check only

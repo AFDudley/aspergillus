@@ -34,10 +34,26 @@ itself — the linked spec's `then` clauses own the verdict.
   the dispatch bypasses exhaustiveness checking. Silenced by a
   `# asp-fsm: boundary-parse` marker comment anywhere in the flagged
   function's body (for serialization-boundary parsers), and silent when no
-  same-module Enum exists to shadow.
+  same-module Enum exists to shadow. Ported into the enforced fixit rule
+  pack as ASP413 `FsmStringlyDispatch`
+  (`python/src/aspergillus/rules/catalog/fsm_stringly_dispatch.py`,
+  pebble asp-fd1.4); this script remains as the original standalone probe.
 - `verify_fsm_enum_dispatch_lint.py` / `verify_fsm_enum_dispatch_pytest.py`
   (pebble asp-fd1.1) — behavioral oracle probes for `FsmEnumDispatchExhaustive`
-  (ASP411, `python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py`),
-  the fixit/LibCST port of `check_asp_fsm_enum_dispatch.py` above. Drive the
-  real `uv run --directory python fixit lint` / `pytest tests` CLIs as
+  (ASP412, `python/src/aspergillus/rules/catalog/fsm_enum_dispatch_exhaustive.py`;
+  authored as ASP413 on its worker branch, renumbered at merge because main
+  had already assigned ASP413 to `FsmStringlyDispatch`), the fixit/LibCST
+  port of `check_asp_fsm_enum_dispatch.py` above. Drive the real
+  `uv run --directory python fixit lint` / `pytest tests` CLIs as
   subprocesses rather than calling the rule in-process.
+- `verify_fsm_stringly_dispatch_lint.py` — asp-fd1.4: arg-dispatched
+  (`invalid` / `boundary_marker`); writes a fixture INSIDE `python/` (fixit's
+  config discovery walks up from the file's own path, so a fixture outside
+  the `python/` tree never sees `[tool.fixit] enable`) and runs the real
+  `uv run --directory python fixit lint` CLI against it, emitting
+  `{"reports_violation": bool}`.
+- `verify_fsm_stringly_dispatch_pytest.py` — asp-fd1.4: runs the real
+  `uv run --directory python pytest tests -q -rA` suite, emitting
+  `{"exit_code": int, "mentions_rule": bool}` — `mentions_rule` confirms
+  ASP413's fixture-based tests ran as part of the full suite, not in
+  isolation.

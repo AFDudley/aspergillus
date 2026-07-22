@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ASP411 pytest-suite oracle probe: emits observations, judges nothing.
+"""ASP413 pytest-suite oracle probe: emits observations, judges nothing.
 
 Drives the REAL `uv run --directory python pytest tests -q` command --
 the whole project test suite, not just the new rule's own tests -- and

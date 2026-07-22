@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""ASP411 fixit-lint oracle probe: emits observations, judges nothing.
+"""ASP413 fixit-lint oracle probe: emits observations, judges nothing.
 
 Drives the REAL `uv run --directory python fixit lint` CLI, using the
 repo's own `python/pyproject.toml` `[tool.fixit]` config (`enable =
 ["aspergillus.rules"]`), against a temp copy of one of the two canonical
-FsmEnumDispatchExhaustive (ASP411) fixtures -- the same shapes ported from
+FsmEnumDispatchExhaustive (ASP413) fixtures -- the same shapes ported from
 `scripts/check_asp_fsm_enum_dispatch.py` / `tests/fixtures/
 asp_fsm_enum_dispatch.py` into the rule's own VALID/INVALID lists. This
 is the independent-verification bar asp-6b0 used for ASP410: a real CLI

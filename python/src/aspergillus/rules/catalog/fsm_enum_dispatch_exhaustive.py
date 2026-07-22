@@ -1,8 +1,8 @@
-"""ASP411: FSM enum dispatch must be checkable for exhaustiveness.
+"""ASP413: FSM enum dispatch must be checkable for exhaustiveness.
 
 Verification-integrity family; sibling to ASP408 anti-special-casing,
 ASP409 shell-to-self, and ASP410 in-process-e2e. Where those three guard
-the honesty of a test/verification seam, ASP411 guards a state-machine
+the honesty of a test/verification seam, ASP413 guards a state-machine
 correctness seam: whether an enum-typed dispatch can even be checked for
 exhaustiveness by the type checker.
 
@@ -184,7 +184,7 @@ def is_unguarded_enum_dispatch(node: cst.If, enum_names: frozenset[str]) -> bool
 
 
 class FsmEnumDispatchExhaustive(LintRule):
-    """ASP411: an if/elif chain dispatching on an Enum-typed subject must be
+    """ASP413: an if/elif chain dispatching on an Enum-typed subject must be
     exhaustiveness-checkable — either rewritten as a ``match`` statement, or
     ending in ``else: assert_never(subject)``.
 
@@ -193,7 +193,7 @@ class FsmEnumDispatchExhaustive(LintRule):
     """
 
     MESSAGE = (
-        "ASP411: if/elif dispatch on an Enum-typed value is not "
+        "ASP413: if/elif dispatch on an Enum-typed value is not "
         "exhaustiveness-checkable — mypy's `exhaustive-match` only fires "
         "inside `match`/`assert_never` forms, so a new enum member added "
         "later falls through unnoticed. Rewrite as a `match` statement, or "

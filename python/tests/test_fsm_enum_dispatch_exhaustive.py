@@ -1,4 +1,4 @@
-"""Tests for ASP411 FSM enum dispatch exhaustiveness (verification-integrity
+"""Tests for ASP413 FSM enum dispatch exhaustiveness (verification-integrity
 family).
 
 Mirrors the catalog-move test shape: ``add_lint_rule_tests_to_module``
@@ -53,7 +53,7 @@ def test_no_assert_never_else_flagged() -> None:
     )
     flagged = _reports(FsmEnumDispatchExhaustiveRule(), code)
     assert len(flagged) == 1, flagged
-    assert "ASP411" in flagged[0].message
+    assert "ASP413" in flagged[0].message
 
 
 def test_match_assert_never_clean() -> None:
@@ -109,7 +109,7 @@ def test_if_elif_non_enum_clean() -> None:
 
 
 def test_rule_is_discoverable_by_fixit() -> None:
-    """ASP411 must be reachable through fixit's ``aspergillus.rules`` walk --
+    """ASP413 must be reachable through fixit's ``aspergillus.rules`` walk --
     the parent-package re-export seam (``rules/__init__.py``). Without it the
     rule is defined but never enforced."""
     cfg = generate_config(Path.cwd() / "sample.py")
