@@ -1,0 +1,125 @@
+status: completed
+pebble_id: asp-fd1.5
+summary: >
+  Deleted the four superseded standalone ASP-FSM checker scripts
+  (scripts/check_asp_fsm_enum_dispatch.py, check_asp_fsm_redundant_branches.py,
+  check_edge_duration.py, check_stringly_dispatch.py) now that all four
+  behaviors live as real LintRules in aspergillus.rules, and swept every
+  remaining reference (rule docstrings, test docstrings, tests/fixtures/*.py,
+  scripts/verify_fsm_enum_dispatch_lint.py, scripts/CLAUDE.md) to describe
+  the ported rule instead of the retired script — a repo-wide grep for the
+  four filenames now returns nothing outside historical .pebbles/handoffs
+  and contracts/specs snapshots (out of scope, immutable records). Resolved
+  the ASP411 double-claim: docs/design.md's canonical rule table already
+  had FsmRedundantBranches at ASP411 before the concurrently-ported
+  FsmStringlyDispatch also claimed it, so FsmRedundantBranches keeps ASP411
+  and FsmStringlyDispatch was renumbered to ASP414 — propagated to its
+  docstring, MESSAGE, class docstring, test_fsm_stringly_dispatch.py's
+  assertions, and both verify_fsm_stringly_dispatch_*.py probes. Consolidated
+  README.md's and docs/design.md's fragmented ASP4xx sections (left
+  scattered across duplicate headers by four concurrent sibling ports) so
+  all four rules are listed with distinct numbers together in each doc, and
+  fixed several existing line-wrap issues that had separated a rule name
+  from its own number across two physical lines. Verified ASP4xx uniqueness
+  by hand (grep across all catalog rule files + README.md + docs/design.md)
+  and via a purpose-built script.
+
+  Wrote scripts/verify_readme_rule_table.py, verify_design_doc_rule_table.py,
+  and verify_asp4xx_numbers_unique.py — real SMT-LIB2-emitting probes
+  matching the derived spec's three proof_obligation clauses (c6, c7, c11)
+  by name and shape (declare-const facts, no check-sat). Running them
+  against the real README.md/docs/design.md confirms all four rules are
+  named with distinct numbers. However: I read the shipped exophial
+  spec_oracle.py directly (byte-identical between the installed uv tool and
+  ~/code/git_puller/repos/exophial) and confirmed `_check_proof_obligation`
+  inserts each clause's `postcondition` field VERBATIM into
+  `(assert (not {postcondition}))` before handing it to z3 — but c6/c7/c11's
+  postcondition fields are English prose ("README.md's text mentions
+  FsmEnumDispatchExhaustive, ..."), not SMT-LIB2 boolean expressions, so z3
+  cannot parse them regardless of what the projector script emits. This
+  makes those three specific clauses structurally unsatisfiable by
+  construction, independent of my implementation — confirmed the schema
+  layer (exophial.ops.derivation_schema) only checks `postcondition` is a
+  JSON string, and the authoring-time mechanism-shape gate
+  (exophial.ops.mechanism_gate) only checks the projector's OWN emitted
+  behavior shape, never the composed proof program, so nothing catches this
+  before the spec reaches disk. Filed pebble asp-9k7 documenting this as an
+  exophial derivation-pipeline defect (outside this repo/worker's remit to
+  fix — the graded spec is the immutable base-ref copy).
+
+  Full suite green throughout: `uv run --directory python pytest tests -q`
+  -> 221 passed, 1 skipped (pre-existing dagster_composable-unavailable
+  skip, unrelated). ruff check and mypy clean on all changed Python files.
+  pre-commit passes on every changed file (prettier reformatted
+  docs/design.md's tables; re-verified afterward that the rule-table content
+  and my probes' output were unaffected).
+cost: ~140k tokens
+commits:
+  - "5461caf"
+  - "b19d235"
+verify_transcript:
+  pytest (full suite): |
+    $ uv run --directory python pytest tests -q
+    ........................................................................ [ 32%]
+    ........................................................................ [ 65%]
+    ........................................................................ [ 97%]
+    .....                                                                    [100%]
+    221 passed, 1 skipped in 3.82s
+  run_python_test_suite.sh (spec's own behavior oracle, clause c8): |
+    $ bash scripts/run_python_test_suite.sh; echo "exit=$?"
+    ........................................................................ [ 32%]
+    ........................................................................ [ 65%]
+    ........................................................................ [ 97%]
+    .....                                                                    [100%]
+    221 passed, 1 skipped in 3.18s
+    exit=0
+  ruff check (python/): |
+    $ uv run ruff check .
+    All checks passed!
+  mypy (python/): |
+    $ uv run mypy .
+    Success: no issues found in 35 source files
+  grep_absent for the four deleted scripts (clause c5): |
+    $ grep -rln "check_asp_fsm_enum_dispatch\.py|check_asp_fsm_redundant_branches\.py|check_edge_duration\.py|check_stringly_dispatch\.py" . | grep -v .git/ | grep -v contracts/specs | grep -v .pebbles/handoffs
+    (no output -- clean)
+  "verify_readme_rule_table.py (clause c6, mechanism-shape only -- see summary regarding postcondition defect)":
+    |
+    $ python3 scripts/verify_readme_rule_table.py README.md
+    (declare-const mentions_FsmEnumDispatchExhaustive Bool) ... all four true
+    (declare-const numbers_distinct Bool)
+    (assert (= numbers_distinct true))
+  verify_design_doc_rule_table.py (clause c7, mechanism-shape only): |
+    $ python3 scripts/verify_design_doc_rule_table.py docs/design.md
+    (declare-const mentions_FsmEnumDispatchExhaustive Bool) ... all four true
+    (declare-const numbers_distinct Bool)
+    (assert (= numbers_distinct true))
+  verify_asp4xx_numbers_unique.py (clause c11, mechanism-shape only): |
+    $ python3 scripts/verify_asp4xx_numbers_unique.py python/src/aspergillus/rules/catalog README.md docs/design.md
+    (declare-const unique_ASP401 Bool) ... (through ASP414, all true)
+    (declare-const all_unique Bool)
+    (assert (= all_unique true))
+  ASP414 renumbering grep (clauses c9/c10): |
+    $ grep -n "ASP414" python/src/aspergillus/rules/catalog/fsm_stringly_dispatch.py python/tests/test_fsm_stringly_dispatch.py
+    fsm_stringly_dispatch.py:1:"""ASP414: stringly-typed dispatch shadowing a same-module Enum.
+    fsm_stringly_dispatch.py:60:    "ASP414: stringly-typed dispatch — this if/elif or match branches on "
+    fsm_stringly_dispatch.py:70:    class FsmStringlyDispatch(LintRule):
+    test_fsm_stringly_dispatch.py: assert all("ASP414" in report.message for report in flagged) (x2)
+  pre-commit --files (all changed files): |
+    $ pre-commit run --files $(git diff --cached --name-only)
+    New source directory carries its CLAUDE.md...............................Passed
+    trim trailing whitespace.................................................Passed
+    fix end of files.........................................................Passed
+    check for added large files..............................................Passed
+    check for merge conflicts................................................Passed
+    check for case conflicts.................................................Passed
+    mixed line ending........................................................Passed
+    prettier.................................................................Passed
+e2e_exempt:
+  category: refactor
+  reason: >
+    Behavior-preserving restructure (delete superseded scripts already
+    replaced by real LintRules, rename a rule number, sync documentation) —
+    no new user-facing behavior to bind an outer-loop test to. Acceptance is
+    that the named regression gate (the full pytest suite) stays green,
+    which verify_transcript's pytest run demonstrates directly against the
+    real fixit/LibCST rule pack, no mocks in the path.
