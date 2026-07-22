@@ -1,10 +1,10 @@
 """Fixtures for ASP-FSM-REDUNDANT (asp-5a8): redundant-branch dispatch shapes.
 
-Each top-level function is one independently-checked scenario, selected by
-name via the second CLI argument to
-``scripts/check_asp_fsm_redundant_branches.py``. This module is never
-imported or executed as a whole -- some scenarios below are exactly the
-malformed shape the checker exists to flag.
+Each top-level function is one independently-checked scenario, merged into
+``python/tests/test_fsm_redundant_branches.py`` as direct contract
+assertions against the ``FsmRedundantBranches`` (ASP411) fixit rule. This
+module is never imported or executed as a whole -- some scenarios below are
+exactly the malformed shape the rule exists to flag.
 """
 
 from enum import Enum

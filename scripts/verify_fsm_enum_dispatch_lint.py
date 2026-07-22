@@ -5,8 +5,8 @@ Drives the REAL `uv run --directory python fixit lint` CLI, using the
 repo's own `python/pyproject.toml` `[tool.fixit]` config (`enable =
 ["aspergillus.rules"]`), against a temp copy of one of the two canonical
 FsmEnumDispatchExhaustive (ASP413) fixtures -- the same shapes ported from
-`scripts/check_asp_fsm_enum_dispatch.py` / `tests/fixtures/
-asp_fsm_enum_dispatch.py` into the rule's own VALID/INVALID lists. This
+`tests/fixtures/asp_fsm_enum_dispatch.py` into the rule's own VALID/INVALID
+lists. This
 is the independent-verification bar asp-6b0 used for ASP410: a real CLI
 subprocess, not an in-process rule call.
 

@@ -2,7 +2,7 @@
 """Acceptance probe for pebble asp-fd1.4 (behavior oracle, single mode).
 
 Proves the project's whole test suite (``uv run --directory python pytest
-tests -q``) stays green with ASP411 FsmStringlyDispatch's fixture-based
+tests -q``) stays green with ASP414 FsmStringlyDispatch's fixture-based
 coverage included — not just the rule's own isolated test file. Runs the
 REAL suite via subprocess and EMITS one ``stdout_json`` observation; it
 judges nothing — the linked spec's ``then`` predicates own the verdict.

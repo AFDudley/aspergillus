@@ -72,32 +72,44 @@ attribute …` crashes three layers down the call stack.
 
 Beyond ASP201–304, the Python rule pack also ships catalog-move and
 verification-integrity rules (ASP401+, detection-only where noted) —
-see `python/src/aspergillus/rules/catalog/`. Most recent addition:
+see `python/src/aspergillus/rules/catalog/`:
 
-- **ASP411 — `FsmStringlyDispatch`.** Warns when an `if`/`elif` chain or
+- **ASP408 — `AntiSpecialCasing`.** Hardcoded-answer / env-branching
+  gaming detector.
+- **ASP409 — `ShellToSelf`.** Invoking your own package via subprocess.
+- **ASP410 — `InProcessE2E`.** In-process SUT construction masquerading
+  as an e2e test.
+
+Plus the FSM-safety family:
+
+- **ASP411 — `FsmRedundantBranches`.** Warns when two branches of a
+  single Enum-typed `match`/if-elif dispatch have identical location-
+  and comment-stripped bodies — a likely sign of a redundant state
+  (e.g. two branches both doing `Fail(reason)`).
+- **ASP412 — `FsmEdgeDuration`.** Rejects an FSM transition ("edge")
+  body that embeds unbounded work — a direct LLM/subprocess call,
+  another state machine's run/drive entrypoint, or an unbounded retry
+  loop — instead of writing a durable marker and returning.
+  Reject-severity: blocking, not the graduated warn→error workflow.
+- **ASP413 — `FsmEnumDispatchExhaustive`.** An `if`/`elif` chain
+  dispatching on an Enum-typed value must be exhaustiveness-checkable —
+  either written as a `match` statement, or ending in
+  `else: assert_never(subject)`. Reject-severity, no autofix.
+- **ASP414 — `FsmStringlyDispatch`.** Warns when an `if`/`elif` chain or
   a `match` statement dispatches on `==` comparisons against string
   literals that shadow a same-module `Enum`'s values — the dispatch
   bypasses exhaustiveness checking, so adding a new Enum member silently
   leaves the string-keyed branches un-updated. Escape hatch: a
   `# asp-fsm: boundary-parse` comment on a genuine serialization-boundary
-  parser. Ported from the standalone `scripts/check_stringly_dispatch.py`
-  probe (pebble asp-fd1.4).
+  parser.
+
+See `docs/design.md` § "Python catalog moves — ASP4xx" for the full table.
 
 ### Level 4/5 — planned, not implemented
 
 Contracts and property-based tests (L4), formal verification via SMT
 solvers (L5). Applied selectively to safety-critical or financial
 logic.
-
-### ASP4xx — Python catalog moves (warn-tier, Fixit)
-
-Advisory refactoring-catalog and verification-integrity rules, one
-per file under `python/src/aspergillus/rules/catalog/`. Includes
-`AntiSpecialCasing` (ASP408), `ShellToSelf` (ASP409), `InProcessE2E`
-(ASP410), and `FsmRedundantBranches` (ASP411 — likely redundant
-states in an enum `match`/if-elif dispatch, e.g. two branches both
-doing `Fail(reason)`). See `docs/design.md` § "Python catalog moves —
-ASP4xx" for the full table.
 
 ## Repository layout
 
@@ -128,24 +140,3 @@ subtree(s) they need:
 
 See [`docs/design.md`](docs/design.md) for the authoritative
 per-language rule-mapping table.
-### ASP4xx — catalog & safety rules (Python only, implemented)
-Single-purpose Fixit/LibCST rules living in
-`python/src/aspergillus/rules/catalog/`: FP refactoring-catalog moves
-(ASP401–407), verification-integrity rules (ASP408–410), and FSM-safety
-rules including **ASP412 — `FsmEdgeDuration`** (an FSM transition body
-must not embed unbounded work — an LLM/subprocess call, another state
-machine's run/drive entrypoint, or an unbounded retry loop — instead of
-writing a durable marker and returning). See `docs/design.md` for the
-full list and `docs/refactoring-catalog.md` for the FP move citations.
-Not yet ported to TypeScript/Rust.
-- **ASP4xx** — catalog & safety rules (Python only), e.g. `FsmEdgeDuration`
-  (ASP412). Blocking.
-### ASP4xx — catalog moves (Python, one-rule-per-file)
-- **ASP413 — `FsmEnumDispatchExhaustive`.** An `if`/`elif` chain
-  dispatching on an Enum-typed value must be exhaustiveness-checkable —
-  either written as a `match` statement, or ending in
-  `else: assert_never(subject)`. mypy's `exhaustive-match` check only
-  fires inside `match`/`assert_never` forms, so an unguarded if/elif
-  chain silently lets a newly-added enum member fall through unnoticed.
-  Reject-severity, no autofix. See `docs/design.md` § "ASP4xx — Catalog
-  moves" for the full catalog table.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Acceptance probe for pebble asp-fd1.4 (behavior oracles, arg-dispatched).
 
-Proves ASP411 FsmStringlyDispatch actually fires through the SHIPPED fixit
+Proves ASP414 FsmStringlyDispatch actually fires through the SHIPPED fixit
 CLI (``uv run --directory python fixit lint``), using this repo's own
 ``[tool.fixit]`` config — not just via ``LintRunner`` in a unit test — and
 that the ``# asp-fsm: boundary-parse`` escape hatch silences it. Mirrors the

@@ -1,20 +1,24 @@
-"""ASP411: stringly-typed dispatch shadowing a same-module Enum.
+"""ASP414: stringly-typed dispatch shadowing a same-module Enum.
 
 FSM-verification-integrity family; sibling to ASP408 anti-special-casing,
 ASP409 shell-to-self, and ASP410 in-process-e2e. Where those three guard the
-*honesty* of a verification gate, ASP411 guards the *exhaustiveness* of a
+*honesty* of a verification gate, ASP414 guards the *exhaustiveness* of a
 dispatch: an `if`/`elif` chain or `match` statement that branches on `==`
 comparisons against string literals which happen to shadow a same-module
 `Enum`'s values bypasses both mypy's `match` exhaustiveness checking and this
-pack's own ASP-FSM-EXHAUSTIVE invariant (`scripts/check_asp_fsm_enum_dispatch.py`)
-— the Enum exists, but the dispatch never goes through it, so adding a new
-member silently leaves the string-keyed branches un-updated.
+pack's own `FsmEnumDispatchExhaustive` (ASP413) invariant — the Enum exists,
+but the dispatch never goes through it, so adding a new member silently
+leaves the string-keyed branches un-updated.
 
-Ported from the standalone probe `scripts/check_stringly_dispatch.py`
-(pebble asp-5be, exophial exo-011 rule 5), which ran only as an ad-hoc
-stdin/stdout script with no linter gate invoking it. This rule carries the
-exact same trigger and escape hatch into the enforced `aspergillus.rules`
-fixit pack: pebble asp-fd1.4.
+Ported from the standalone ASP-FSM-STRINGLY probe (pebble asp-5be, exophial
+exo-011 rule 5), which ran only as an ad-hoc stdin/stdout script with no
+linter gate invoking it. This rule carries the exact same trigger and escape
+hatch into the enforced `aspergillus.rules` fixit pack: pebble asp-fd1.4.
+Originally landed claiming ASP411, which collided with the concurrently
+ported `FsmRedundantBranches`; renumbered to ASP414 (pebble asp-fd1.5) —
+ASP411/412/413 were already claimed by `FsmRedundantBranches`,
+`FsmEdgeDuration`, and `FsmEnumDispatchExhaustive` respectively by the time
+all four sibling ports had merged.
 
 **Ships without autofix** (Tier 2, detection-only, per
 `docs/decisions/2026-05-19-mtm-past-warn-promotion-phase.md`). The fix —
@@ -48,7 +52,7 @@ ENUM_BASE_NAMES: frozenset[str] = frozenset({"Enum", "IntEnum", "StrEnum", "Flag
 BOUNDARY_MARKER = "asp-fsm: boundary-parse"
 
 _MESSAGE = (
-    "ASP411: stringly-typed dispatch — this if/elif or match branches on "
+    "ASP414: stringly-typed dispatch — this if/elif or match branches on "
     "string literals that shadow a same-module Enum's values, bypassing "
     "exhaustiveness checking. Dispatch on the Enum member instead (or add "
     "'# asp-fsm: boundary-parse' if this is a genuine serialization-boundary "
@@ -57,7 +61,7 @@ _MESSAGE = (
 
 
 class FsmStringlyDispatch(LintRule):
-    """ASP411: if/elif or match dispatches on string literals that shadow a
+    """ASP414: if/elif or match dispatches on string literals that shadow a
     same-module Enum's values — dispatch on the Enum instead.
 
     Detection-only (no autofix): the fix changes the dispatched-on value's

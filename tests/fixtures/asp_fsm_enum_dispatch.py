@@ -1,10 +1,10 @@
 """Fixtures for ASP-FSM-EXHAUSTIVE (asp-26e): enum dispatch shapes.
 
-Each top-level function is one independently-checked scenario, selected by
-name via the second CLI argument to
-``scripts/check_asp_fsm_enum_dispatch.py``. This module is never imported or
-executed as a whole — some scenarios below are exactly the malformed shape
-the checker exists to reject.
+Each top-level function is one independently-checked scenario, merged into
+``python/tests/test_fsm_enum_dispatch_exhaustive.py`` as direct contract
+assertions against the ``FsmEnumDispatchExhaustive`` (ASP413) fixit rule.
+This module is never imported or executed as a whole — some scenarios below
+are exactly the malformed shape the rule exists to reject.
 """
 
 from enum import Enum

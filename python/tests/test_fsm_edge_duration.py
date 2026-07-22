@@ -1,5 +1,5 @@
 """Tests for ASP412 FsmEdgeDuration (ASP-FSM family; ported from the
-standalone ``scripts/check_edge_duration.py`` under pebble ``asp-fd1.2``).
+standalone ASP-FSM-EDGE-DURATION probe under pebble ``asp-fd1.2``).
 
 Mirrors the level2/level3/catalog test shape:
 ``add_lint_rule_tests_to_module`` consumes the rule's ``VALID``/``INVALID``
