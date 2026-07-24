@@ -1,0 +1,87 @@
+status: completed
+pebble_id: asp-9b8
+summary: >
+  Added ASP415 ReducerReachability, a generic AST (fixit/libcst) rule in
+  python/src/aspergillus/rules/catalog/reducer_reachability.py built in the
+  same generic-rule-plus-subclass-config shape as ASP410 InProcessE2E: it
+  rejects a call reaching a configured reducer/daemon-start symbol
+  (run_cli_dispatch; daemon.start/dispatcher.run dotted calls; the fluent
+  Dispatcher(...).run() construct+drive shape; subprocess.run/Popen whose
+  argv carries a configured marker) inside a configured watched path set,
+  unless the call is exempt via a configured decorator
+  (@requires_container_reducer) or a configured container-harness import.
+  Every symbol set, path glob, and exemption marker is an overridable class
+  attribute, not hardcoded. Registered the rule in rules/__init__.py and
+  catalog/__init__.py (the seam fixit's aspergillus.rules walk depends on)
+  and added python/tests/test_reducer_reachability.py (14 pytest cases plus
+  the generated VALID/INVALID fixture tests, 22 total) covering each
+  detection shape, both exemption mechanisms, path-gating, and full
+  symbol-set reconfigurability via an inline subclass. Wrote the linked
+  spec's acceptance oracle, scripts/reducer_reachability_harness.py: for
+  each of the four modes it builds a scratch consumer configuration (a
+  fixit "local rule" module plus a root=true .fixit.toml, so ONLY that
+  config is read — the shipped aspergillus.rules default is excluded) and
+  a fixture inside python/, runs the real `uv run --directory python fixit
+  lint` CLI as a subprocess against it, and maps the real violation outcome
+  to a conventional lint-gate exit code (0 clean, 1 fired). Verified by
+  running all four spec scenarios directly via `python3
+  scripts/reducer_reachability_harness.py <mode> <config>` (no venv,
+  matching the spec's exact invocation) and confirming exit codes match:
+  generic/alt-demo -> 1 (an entirely unrelated made-up folder/symbol still
+  gets caught, proving the engine is config-driven not hardcoded),
+  bare/exophial -> 1 (unguarded call rejected), guarded/exophial -> 0
+  (decorator-exempted call passes), outside-scope/exophial -> 0 (file
+  outside watched folders never flagged). Also ran the full python test
+  suite, ruff check/format, and mypy strict over the changed files —  all
+  green — and confirmed pre-commit passes on the changed files.
+cost: "~110k tokens"
+commits:
+  - "0e3ab15"
+verify_transcript:
+  pytest: |
+    uv run pytest tests -q
+    ........................................................................ [ 29%]
+    ........................................................................ [ 59%]
+    ........................................................................ [ 88%]
+    ...........................                                              [100%]
+    243 passed, 1 skipped in 3.57s
+  ruff_check: |
+    uv run ruff check .
+    All checks passed!
+  ruff_format: |
+    uv run ruff format --check src/aspergillus/rules/catalog/reducer_reachability.py tests/test_reducer_reachability.py src/aspergillus/rules/__init__.py src/aspergillus/rules/catalog/__init__.py
+    4 files already formatted
+  mypy: |
+    uv run mypy src/aspergillus/rules
+    Success: no issues found in 18 source files
+  pre_commit: |
+    pre-commit run --files <changed files>
+    New source directory carries its CLAUDE.md...............................Passed
+    trim trailing whitespace.................................................Passed
+    fix end of files.........................................................Passed
+    check for added large files..............................................Passed
+    check for merge conflicts................................................Passed
+    check for case conflicts..................................................Passed
+    mixed line ending.........................................................Passed
+  harness_c1_generic_alt_demo: |
+    python3 scripts/reducer_reachability_harness.py generic alt-demo
+    {"mode": "generic", "config": "alt-demo", "rule": "AltDemoReachability", "violated": true}
+    exit=1
+  harness_c2_bare_exophial: |
+    python3 scripts/reducer_reachability_harness.py bare exophial
+    {"mode": "bare", "config": "exophial", "rule": "ExophialReducerReachability", "violated": true}
+    exit=1
+  harness_c3_guarded_exophial: |
+    python3 scripts/reducer_reachability_harness.py guarded exophial
+    {"mode": "guarded", "config": "exophial", "rule": "ExophialReducerReachability", "violated": false}
+    exit=0
+  harness_c4_outside_scope_exophial: |
+    python3 scripts/reducer_reachability_harness.py outside-scope exophial
+    {"mode": "outside-scope", "config": "exophial", "rule": "ExophialReducerReachability", "violated": false}
+    exit=0
+e2e_gate:
+  spec: contracts/specs/derived-asp-9b8.spec.json
+  command: "python3 scripts/reducer_reachability_harness.py <mode> <config>, run for all four (mode, config) pairs named in the spec's acceptance_tests"
+  result: passed
+  ran_at_sha: "0e3ab15"
+  mocks_in_path: false
