@@ -61,6 +61,7 @@ from aspergillus.rules.catalog.fsm_redundant_branches import FsmRedundantBranche
 from aspergillus.rules.catalog.fsm_stringly_dispatch import FsmStringlyDispatch
 from aspergillus.rules.catalog.in_process_e2e import InProcessE2E
 from aspergillus.rules.catalog.map_fusion import MapFusion
+from aspergillus.rules.catalog.reducer_reachability import ReducerReachability
 from aspergillus.rules.catalog.redundant_conditional_bool import (
     RedundantConditionalBoolAnd,
     RedundantConditionalBoolOr,
@@ -73,7 +74,7 @@ __all__ = [
     "AntiSpecialCasing",
     "EtaReduce",
     "FilterFusion",
-"FsmEdgeDuration",
+    "FsmEdgeDuration",
     "FsmEnumDispatchExhaustive",
     "FsmRedundantBranches",
     "FsmStringlyDispatch",
@@ -81,6 +82,7 @@ __all__ = [
     "MapFusion",
     "RedundantConditionalBoolAnd",
     "RedundantConditionalBoolOr",
+    "ReducerReachability",
     "ShellToSelf",
     "Tupling",
     "WorkerWrapper",
