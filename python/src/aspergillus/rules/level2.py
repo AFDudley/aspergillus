@@ -1022,14 +1022,16 @@ def _walk_for_io_calls(
 #    share of the program's functions are pure. Its report was PER
 #    FUNCTION. A fixit rule sees one file and cannot compute a ratio, so
 #    the rule substituted "this function does I/O" for "too little of
-#    this program is pure". Those are different claims. The ratio is now
-#    measured where it can be measured, by the corpus command
-#    `aspergillus purity-ratio` (see `__main__.py`), which reports the
-#    NASA Level-2 70% target as a project-wide number and exits non-zero
-#    when the target is missed. On the exophial corpus that target was
-#    already met by a wide margin while ASP205 still emitted 297
-#    findings: 298 of 2918 functions in src/exophial call a blocklist
-#    name, so 89.8% are pure against a 70% floor.
+#    this program is pure". Those are different claims. The corpus
+#    ratio was then measured by `aspergillus purity-ratio`, and that
+#    command is now deleted too (pebble exo-c6ce). Its floor was 70%
+#    against a corpus measured at 89.8%, so it could not fail, and its
+#    denominator rose when a pure function was added while no effect
+#    moved. What replaces both is `aspergillus io-census` (see
+#    `census.py`), which enumerates the effects and reaches no verdict.
+#    On the tree at de33d712^, ASP205 emitted 298 findings over 298 of
+#    2918 functions that call a blocklist name, and the census
+#    reproduces that finding set exactly.
 #
 # 2. IT HAD NO LEGAL PASSING FORM. A boundary function exists in order
 #    to perform its effect. The only edit that clears the finding is to
@@ -1071,7 +1073,8 @@ def _walk_for_io_calls(
 # consumers: ASP202's imperative-shell predicate (`_is_imperative_shell`,
 # which decides where NASA Rule #5's assertion requirement applies) and
 # ASP206's gate (which decides where the mixing check applies). The
-# corpus ratio moves to `aspergillus purity-ratio`. The per-function
+# enumeration ASP205 produced beside its verdict moves to
+# `aspergillus io-census`. The per-function
 # verdict, the only thing removed, was the part the rule's own docstring
 # disclaimed.
 #

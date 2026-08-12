@@ -97,7 +97,7 @@ Reference configs live in `python/src/aspergillus/configs/`,
 | ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity` | `aspergillus/asp202-min-assertions` (custom)                             | Manual (planned dylint rule)    |
 | ASP203 | No global mutable state                  | `GlobalMutableState`  | `no-restricted-syntax` (module-level `let`/`var`/`export let`)           | Language (no safe `static mut`) |
 | ASP204 | No unbounded loops                       | `UnboundedLoop`       | `functional/no-loop-statements` (strict; revisit)                        | Manual (prefer iterators)       |
-| ASP205 | Corpus purity ratio ≥ 70%                | *retired for Python* (per-function unit was wrong; see the retirement note in `rules/level2.py`) — the corpus criterion is `aspergillus purity-ratio` (`purity.py`) | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core)    |
+| ASP205 | Corpus purity ratio ≥ 70%                | *retired for Python* (per-function unit was wrong; see the retirement note in `rules/level2.py`) — the enumeration it produced beside its verdict is `aspergillus io-census` (`census.py`) | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core)    |
 | ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`     | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure                |
 
 #### TypeScript Level 2 — design notes

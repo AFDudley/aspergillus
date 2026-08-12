@@ -17,13 +17,6 @@ Two invocations:
       ``duplicates.py``; this module is the imperative shell (argument
       parsing, filesystem reads, stdout). Pebble: asp-21d.
 
-  python -m aspergillus purity-ratio <path>... [--min-ratio R] [--json]
-      Whole-project purity ratio — the corpus criterion the retired ASP205
-      reported per function and therefore could not decide (see the ASP205
-      retirement note in ``rules/level2.py``). Exit 0 = the corpus meets the
-      floor, 1 = below it, 2 = input error. Pure logic lives in
-      ``purity.py``.
-
   python -m aspergillus io-census <path>... [--json]
       Whole-project enumeration of every function that performs an effect,
       with its module. The standing enumeration the retired ASP205 produced
@@ -58,13 +51,6 @@ from aspergillus.duplicates import (
     format_report,
     parse_allowlist,
 )
-from aspergillus.purity import (
-    DEFAULT_MIN_PURE_RATIO,
-    FunctionPurity,
-    function_purities,
-    summarize,
-)
-from aspergillus.purity import format_report as format_purity_report
 
 # Matches "ASP201", "ASP302", etc. at the start of a message.
 _RULE_CODE_RE = re.compile(r"^(ASP\d{3})")
@@ -162,62 +148,6 @@ def _check_duplicates_main(argv: list[str]) -> int:
     return 1 if groups else 0
 
 
-def _gather_purities(files: list[Path]) -> tuple[list[FunctionPurity], list[str]]:
-    """Read + parse each file into per-function purity records (IO shell)."""
-    purities: list[FunctionPurity] = []
-    parse_errors: list[str] = []
-    for path in files:
-        try:
-            source = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            parse_errors.append(f"{path}: {exc}")
-            continue
-        try:
-            purities.extend(function_purities(str(path), source))
-        except ParserSyntaxError as exc:
-            parse_errors.append(f"{path}: {exc}")
-    return purities, parse_errors
-
-
-def _purity_ratio_main(argv: list[str]) -> int:
-    """`purity-ratio` subcommand shell: parse args, scan, print, exit code."""
-    parser = argparse.ArgumentParser(prog="aspergillus purity-ratio")
-    parser.add_argument("paths", nargs="+", help="files or directories to scan")
-    parser.add_argument(
-        "--min-ratio",
-        type=float,
-        default=DEFAULT_MIN_PURE_RATIO,
-        help=f"purity floor as a ratio; default {DEFAULT_MIN_PURE_RATIO}",
-    )
-    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
-    ns = parser.parse_args(argv)
-
-    files = _iter_python_files(ns.paths)
-    purities, parse_errors = _gather_purities(files)
-    for err in parse_errors:
-        print(f"purity-ratio: skipping unreadable file {err}", file=sys.stderr)
-
-    report = summarize(purities, ns.min_ratio)
-    if ns.json:
-        json.dump(
-            {
-                "total": report.total,
-                "pure": report.pure,
-                "impure": report.impure,
-                "ratio": report.ratio,
-                "min_ratio": report.min_ratio,
-                "meets_target": report.meets_target,
-                "worst": [{"path": p, "impure": c} for p, c in report.worst],
-            },
-            sys.stdout,
-        )
-        print(file=sys.stdout)
-    else:
-        print(format_purity_report(report), end="")
-
-    return 0 if report.meets_target else 1
-
-
 def _gather_census(files: list[Path]) -> tuple[Census, list[str]]:
     """Read + scan each file into one corpus census (IO shell)."""
     parts: list[tuple[int, list[EffectSite]]] = []
@@ -284,9 +214,6 @@ def main(argv: list[str] | None = None) -> int:
     if args and args[0] == "check-duplicates":
         return _check_duplicates_main(args[1:])
 
-    if args and args[0] == "purity-ratio":
-        return _purity_ratio_main(args[1:])
-
     if args and args[0] == "io-census":
         return _io_census_main(args[1:])
 
@@ -294,10 +221,6 @@ def main(argv: list[str] | None = None) -> int:
         print("Usage: python -m aspergillus <filepath>", file=sys.stderr)
         print(
             "       python -m aspergillus check-duplicates <path>... [--min-lines N]",
-            file=sys.stderr,
-        )
-        print(
-            "       python -m aspergillus purity-ratio <path>... [--min-ratio R]",
             file=sys.stderr,
         )
         print(
