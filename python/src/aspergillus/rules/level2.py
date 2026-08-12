@@ -2,17 +2,93 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import partial
 
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
 
+_PositionOf = Callable[[cst.CSTNode], cst.metadata.CodeRange]
+
+
+def positions_of(rule: LintRule) -> _PositionOf:
+    """``rule``'s ``PositionProvider`` lookup, as a plain position function.
+
+    Lets the line-counting helpers below stay pure functions of a node
+    plus a position oracle — unit-testable without a fixit rule instance —
+    while each rule binds its own metadata resolver once per visit.
+    """
+    return partial(rule.get_metadata, cst.metadata.PositionProvider)
+
+
+def _noncode_line_numbers(node: cst.CSTNode, position_of: _PositionOf) -> set[int]:
+    """Physical line numbers inside ``node``'s span that carry no code.
+
+    Blank lines and comment-only lines are ``EmptyLine`` nodes in libcst;
+    a trailing comment on a code line is ``TrailingWhitespace`` and is
+    deliberately NOT one, so an annotated statement still counts as code.
+    A docstring — any bare string-expression statement, at any depth in
+    the span — is prose that happens to be a string EXPRESSION, so every
+    physical line it occupies is excluded as well.
+    """
+    span = position_of(node)
+    skip: set[int] = set()
+    for descendant in _iter_all_nodes(node):
+        if isinstance(descendant, cst.EmptyLine):
+            skip.add(position_of(descendant).start.line)
+        elif isinstance(descendant, cst.SimpleStatementLine) and len(descendant.body) == 1:
+            item = descendant.body[0]
+            if isinstance(item, cst.Expr) and isinstance(item.value, cst.BaseString):
+                string_span = position_of(item.value)
+                skip.update(range(string_span.start.line, string_span.end.line + 1))
+    return {line for line in skip if span.start.line <= line <= span.end.line}
+
+
+def _iter_all_nodes(node: cst.CSTNode) -> list[cst.CSTNode]:
+    """``node`` and every descendant, nested functions included."""
+    found: list[cst.CSTNode] = [node]
+    for child in node.children:
+        if isinstance(child, cst.CSTNode):
+            found.extend(_iter_all_nodes(child))
+    return found
+
+
+def code_line_count(node: cst.CSTNode, position_of: _PositionOf) -> int:
+    """Physical lines in ``node``'s span that carry code.
+
+    The length measure for ASP201 and for ASP202's triviality exemption.
+    It is the same measure ``duplicates.n_code_lines`` already applies to
+    a function's span, and for the same reason recorded there: a raw span
+    makes the verdict depend on how a function is DOCUMENTED rather than
+    on what it does, so relocating a docstring or deleting an explanatory
+    comment moves a length verdict without changing one line of behaviour.
+    A gate that shortens a function by deleting its explanation has the
+    incentive backwards.
+    """
+    span = position_of(node)
+    return (span.end.line - span.start.line + 1) - len(_noncode_line_numbers(node, position_of))
+
 
 class FunctionTooLong(LintRule):
-    """ASP201: Functions must fit on one page (<=60 lines).
+    """ASP201: Functions must fit on one page (<=60 CODE lines).
 
     NASA Power of 10 Rule #4: Functions should fit on a single
     printed page. This improves readability and testability.
+
+    The measure is CODE lines — the span minus its blank lines,
+    comment-only lines and docstrings (``code_line_count``) — not the
+    raw physical span. ``duplicates.n_code_lines`` already made exactly
+    this correction for the duplicate-group floor, with the argument
+    that a span "counts the docstring, which made the verdict depend on
+    how a function is DOCUMENTED, not on what it does"; ASP201 measures
+    the same property of the same node and owes the same answer.
+
+    Measured on exophial's src + tests, which documents in the literate
+    style: 24 functions exceeded 60 raw span lines, 3 exceeded 60 code
+    lines. ``Dispatcher.__init__`` spans 139 lines of which 53 are code;
+    ``ops.intake.generate_spec`` spans 125 of which 59 are code. Under
+    the raw span the only way to pass is to delete the explanation,
+    which is the incentive backwards.
     """
 
     MESSAGE = "ASP201: Function has {actual} lines (max {max_lines})"
@@ -25,6 +101,21 @@ class FunctionTooLong(LintRule):
         ),
         Valid("def one_liner(): pass"),
         Valid("class Foo:\n    def method(self):\n        pass\n"),
+        # 40 code lines carrying 40 lines of explanation: documenting a
+        # function is not lengthening it.
+        Valid(
+            "def documented():\n"
+            + "".join(f"    # explain x{i}\n    x{i} = {i}\n" for i in range(40))
+            + "    return x0\n"
+        ),
+        # A long docstring does not make a two-statement function long.
+        Valid(
+            "def prose():\n"
+            + '    """\n'
+            + "".join(f"    line {i}\n" for i in range(80))
+            + '    """\n'
+            + "    return 1\n"
+        ),
     ]
     INVALID = [
         Invalid(
@@ -32,11 +123,16 @@ class FunctionTooLong(LintRule):
             + "".join(f"    x{i} = {i}\n" for i in range(61))
             + "    return x0\n"
         ),
+        # Comments do not rescue a function that is genuinely too long.
+        Invalid(
+            "def too_long_documented():\n"
+            + "".join(f"    # explain x{i}\n    x{i} = {i}\n" for i in range(61))
+            + "    return x0\n"
+        ),
     ]
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
-        pos = self.get_metadata(cst.metadata.PositionProvider, node)
-        line_count = pos.end.line - pos.start.line + 1
+        line_count = code_line_count(node, positions_of(self))
         if line_count > self.MAX_LINES:
             self.report(
                 node,
@@ -271,6 +367,20 @@ class LowAssertionDensity(LintRule):
             "    shifted = scaled - count\n"
             "    return shifted\n"
         ),
+        # Triviality is measured in CODE lines: a two-statement boundary
+        # reader stays exempt however long its docstring is. Under the
+        # raw span it lost the exemption for being documented, and its
+        # only passing form was to delete the prose.
+        Valid(
+            "def read_config(path: str) -> str:\n"
+            '    """Read the config file.\n'
+            "\n"
+            "    Long-form prose about where this file comes from, who\n"
+            "    writes it, and why the read is unguarded here.\n"
+            '    """\n'
+            "    with open(path) as handle:\n"
+            "        return handle.read()\n"
+        ),
     ]
     INVALID = [
         # --- FC/IS predicate (asp-da5): imperative shell IS in scope ---
@@ -331,9 +441,11 @@ class LowAssertionDensity(LintRule):
         if _has_decorator_in(node, self.VALIDATION_DECORATORS):
             return
 
-        pos = self.get_metadata(cst.metadata.PositionProvider, node)
-        line_count = pos.end.line - pos.start.line + 1
-        if line_count <= self.MIN_LINES_FOR_RULE:
+        # Triviality exemption measured in CODE lines, the same measure
+        # ASP201 uses: a two-statement reader with a ten-line docstring
+        # is trivial, and a raw span made it lose this exemption for
+        # being documented.
+        if code_line_count(node, positions_of(self)) <= self.MIN_LINES_FOR_RULE:
             return
 
         # FC/IS predicate: ASP202 is the imperative-shell mechanism. A
@@ -777,7 +889,32 @@ def _resolve_call_name(node: cst.BaseExpression) -> str | None:
 
 
 def _find_io_calls(body: cst.BaseSuite) -> set[str]:
-    """Find calls to known I/O functions in a function body."""
+    """Find calls to known I/O functions in a function's OWN body.
+
+    The unit of analysis is one function, not one function plus every
+    function nested inside it. ``_count_assertions`` already states that
+    convention ("not descending into nested function/lambda bodies —
+    those are visited as their own units"), and every rule reached from
+    here — ASP202's shell predicate, ASP205, ASP206 — reports per
+    ``visit_FunctionDef``, which fires for the nested def in its own
+    right.
+
+    Descending made a factory impure for the I/O its product performs::
+
+        def make_logger(prefix: str) -> Callable[[str], None]:
+            def emit(line: str) -> None:
+                print(prefix, line)
+            return emit
+
+    ``make_logger`` prints nothing when called, yet was reported as
+    calling ``print`` — and ``emit`` was reported for the same ``print``,
+    so one I/O site produced two findings. Its only passing form was to
+    lift ``emit`` to module scope, which a closure over ``prefix``
+    forbids: a finding with no legal passing form. ASP206 was
+    incoherent for the same reason — it sourced ``io_calls`` from any
+    depth while counting logic statements only at the outer body's top
+    level, so its two halves measured different functions.
+    """
     from aspergillus.io_blocklist import IO_FUNCTIONS, IO_METHOD_NAMES
 
     found: set[str] = set()
@@ -831,7 +968,11 @@ def _walk_for_io_calls(
     io_functions: frozenset[str],
     io_method_names: frozenset[str],
 ) -> None:
-    """Recursively walk CST looking for Call nodes to I/O functions."""
+    """Recursively walk CST looking for Call nodes to I/O functions.
+
+    Stops at a nested ``FunctionDef`` / ``Lambda``: that body belongs to
+    its own function, which is visited separately (see ``_find_io_calls``).
+    """
     if isinstance(node, cst.Call):
         name = _resolve_call_name(node.func)
         if name and name in io_functions:
@@ -847,6 +988,8 @@ def _walk_for_io_calls(
             ):
                 found.add(method_name)
     for child in node.children:
+        if isinstance(child, cst.FunctionDef | cst.Lambda):
+            continue
         if isinstance(child, cst.CSTNode):
             _walk_for_io_calls(child, found, io_functions, io_method_names)
 
@@ -886,6 +1029,10 @@ class ImpureFunction(LintRule):
             "    spread = (a - b).rename('spread')\n"
             "    return spread\n"
         ),
+        # A factory whose PRODUCT does I/O performs none itself: calling
+        # `make_printer(...)` prints nothing. The I/O belongs to the
+        # lambda, and a nested `def` is reported in its own right.
+        Valid("def make_printer(prefix: str):\n    return lambda line: print(prefix, line)\n"),
     ]
     INVALID = [
         Invalid(
@@ -951,6 +1098,15 @@ class MixedIOAndLogic(LintRule):
             "    total = sum(items)\n"
             "    avg = total / len(items)\n"
             "    return int(avg)\n"
+        ),
+        # Same unit-of-analysis rule as ASP205: the enclosing factory is
+        # not mixing I/O with logic — its product does the I/O.
+        Valid(
+            "def make_writer(prefix: str):\n"
+            "    tag = prefix.strip()\n"
+            "    upper = tag.upper()\n"
+            "    width = len(upper)\n"
+            "    return lambda line: print(upper, width, line)\n"
         ),
     ]
     INVALID = [
