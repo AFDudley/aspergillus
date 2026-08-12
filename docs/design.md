@@ -414,8 +414,7 @@ grouping facts across the whole corpus.
   normalized node, and reports any hash bucket with >1 member whose span is at
   least `--min-lines` (default 5) and whose hash is not in the `--allowlist`.
   The allowlist is a config file of accepted `normalized_hash` values, one per
-  line with `#` citing comments (mirrors exophial's `vulture_whitelist.py`
-  pattern). Core logic is pure (`duplicates.py`); `__main__.py` is the
+  line with `#` citing comments. Core logic is pure (`duplicates.py`); `__main__.py` is the
   imperative shell. Proven against exophial's pre/post-exo-c3a test tree (the
   22 duplicated `_git()` helpers). Pebble: asp-21d.
 

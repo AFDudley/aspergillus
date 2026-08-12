@@ -355,8 +355,8 @@ def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
 def parse_allowlist(text: str) -> frozenset[str]:
     """Parse an allowlist file body into the set of accepted hashes.
 
-    Format mirrors exophial's ``scripts/vulture_whitelist.py`` intent — a
-    config file of accepted false positives, each with a citing comment.
+    Format is a config file of accepted false positives, each with a citing
+    comment.
     Here each non-comment, non-blank line is one accepted ``normalized_hash``
     (the value ``check-duplicates`` prints for every reported group, so a
     reviewer copies it in with a ``#`` comment explaining WHY the structural
