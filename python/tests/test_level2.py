@@ -81,8 +81,12 @@ def test_find_io_calls_separates_a_pandas_rename_from_a_filesystem_rename() -> N
     retirement. `_is_pandas_rename` is still reached from ASP202 and
     ASP206, so the discrimination is asserted on the mechanism itself.
     """
-    pandas_kwarg = "def normalize(df: object) -> object:\n    return df.rename(columns={'a': 'b'})\n"
-    pandas_computed = "def spread(a: object, b: object) -> object:\n    return (a - b).rename('s')\n"
+    pandas_kwarg = (
+        "def normalize(df: object) -> object:\n    return df.rename(columns={'a': 'b'})\n"
+    )
+    pandas_computed = (
+        "def spread(a: object, b: object) -> object:\n    return (a - b).rename('s')\n"
+    )
     filesystem = "def move(p: object, q: object) -> None:\n    p.rename(q)\n"
     assert _io_calls_of(pandas_kwarg) == set()
     assert _io_calls_of(pandas_computed) == set()

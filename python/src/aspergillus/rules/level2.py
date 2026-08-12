@@ -1263,14 +1263,49 @@ class MixedIOAndLogic(LintRule):
       ``fcntl.LOCK_EX | fcntl.LOCK_NB`` are arithmetic in syntax and
       POSIX flag words in meaning.
 
-    It is also not Command-Query Separation. CQS forbids a command from
-    RETURNING a value; this rule REQUIRES that, because threading the
-    effect's result out is how a shell function is useful.
+    - Bernhardt's own shell is not conditional-free. In the talk, at
+      29:36: "The only conditional in the shell is the case statement
+      that we saw that was choosing between keys." His screencast page
+      says the design "leads to an imperative shell with FEW
+      conditionals" — few, and as a consequence, not none as a
+      constraint.
+
+    IT IS ALSO NOT COMMAND-QUERY SEPARATION, and it must not borrow
+    CQS's authority. CQS says a value-returning function has no effect
+    (Meyer, ADFOCS 2003 Lecture 1, slide 26: "This principle excludes
+    many common schemes, such as using functions for input (e.g. C's
+    ``getint`` or equivalent)"; ECMA-367 2nd ed. 2006 §8.5.11, Meyer
+    editing: "A command is a procedure"). This rule PERMITS an effectful
+    function to return a value, because threading the effect's result
+    out is how a shell function is useful. That is the exact construct
+    Meyer excludes, so the rule takes the side CQS's critics defended.
+    The usual ``stack.pop()`` objection to CQS therefore does not apply
+    here: this rule already concedes what that objection demands.
+    Eiffel's own CQS lint rule, CA004, likewise constrains only what a
+    value-returning function may CALL, never whether it may branch.
+
+    The closest NAMED relative is the Humble Object pattern (Feathers,
+    "The Humble Dialog Box", Object Mentor, 2002; Meszaros, "Humble
+    Object", xunitpatterns.com), whose criterion is "so simple that we
+    often don't bother writing tests for it". That is testability, not
+    syntax, and Feathers' own untested humble dialog contains a ``for``
+    loop. Treat this rule as a decidable proxy for the Humble Object
+    property, not as a statement any of these authors made.
+
+    WHY THE THRESHOLD IS 3. It is anchored, not tuned. Cockburn's
+    published adapter, ``MockRateRepository.getRate``, has exactly three
+    ``if`` statements and is presented as the pattern with no caveat, so
+    three is the largest count the cited exemplar requires to pass. A
+    fourth logic statement is past every published example of a boundary
+    in this tradition.
 
     ``_is_imperative_shell`` is deliberately NOT consulted here. It
     returns ``True`` whenever ``_find_io_calls`` is non-empty, which is
     already this rule's gate, so the call would be a no-op — the same
-    circularity that makes it useless to ASP205.
+    circularity that made it useless to ASP205. It earns its keep in
+    ASP202 alone, where the ``_has_untrusted_param`` disjunct reaches a
+    population ``_find_io_calls`` does not: measured on exophial's src,
+    393 functions are in ASP202's scope against 298 I/O-bearing ones.
     """
 
     MESSAGE = (
