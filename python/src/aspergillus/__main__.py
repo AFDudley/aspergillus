@@ -23,6 +23,13 @@ Two invocations:
       retirement note in ``rules/level2.py``). Exit 0 = the corpus meets the
       floor, 1 = below it, 2 = input error. Pure logic lives in
       ``purity.py``.
+
+  python -m aspergillus io-census <path>... [--json]
+      Whole-project enumeration of every function that performs an effect,
+      with its module. The standing enumeration the retired ASP205 produced
+      beside its verdict. It states no floor and reaches no verdict, and it
+      ALWAYS exits 0 — it is an instrument, not a gate. Exit 2 = input
+      error. Pure logic lives in ``census.py``.
 """
 
 from __future__ import annotations
@@ -37,6 +44,13 @@ from fixit.api import fixit_bytes
 from fixit.ftypes import Config, QualifiedRule
 from libcst import ParserSyntaxError
 
+from aspergillus.census import (
+    Census,
+    EffectSite,
+    census_of_module,
+    format_census,
+    merge_censuses,
+)
 from aspergillus.duplicates import (
     FunctionRecord,
     extract_function_records,
@@ -204,6 +218,65 @@ def _purity_ratio_main(argv: list[str]) -> int:
     return 0 if report.meets_target else 1
 
 
+def _gather_census(files: list[Path]) -> tuple[Census, list[str]]:
+    """Read + scan each file into one corpus census (IO shell)."""
+    parts: list[tuple[int, list[EffectSite]]] = []
+    parse_errors: list[str] = []
+    for path in files:
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            parse_errors.append(f"{path}: {exc}")
+            continue
+        try:
+            parts.append(census_of_module(str(path), source))
+        except ParserSyntaxError as exc:
+            parse_errors.append(f"{path}: {exc}")
+    return merge_censuses(parts), parse_errors
+
+
+def _io_census_main(argv: list[str]) -> int:
+    """`io-census` subcommand shell: parse args, scan, print.
+
+    The exit code is 0 whatever the census reports. An empty tree, a
+    tree that is all effect and every tree between them exit 0. The
+    per-function verdict is exactly what merge de33d712 removed, and
+    re-attaching one to this enumeration would rebuild ASP205.
+    """
+    parser = argparse.ArgumentParser(prog="aspergillus io-census")
+    parser.add_argument("paths", nargs="+", help="files or directories to scan")
+    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    ns = parser.parse_args(argv)
+
+    census, parse_errors = _gather_census(_iter_python_files(ns.paths))
+    for err in parse_errors:
+        print(f"io-census: skipping unreadable file {err}", file=sys.stderr)
+
+    if ns.json:
+        json.dump(
+            {
+                "scanned": census.scanned,
+                "effect_bearing": len(census.sites),
+                "modules": list(census.modules),
+                "sites": [
+                    {
+                        "path": site.path,
+                        "line": site.line,
+                        "qualname": site.qualname,
+                        "io_calls": list(site.io_calls),
+                    }
+                    for site in census.sites
+                ],
+            },
+            sys.stdout,
+        )
+        print(file=sys.stdout)
+    else:
+        print(format_census(census), end="")
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Dispatch to a subcommand or run single-file lint (default)."""
     args = argv if argv is not None else sys.argv[1:]
@@ -214,6 +287,9 @@ def main(argv: list[str] | None = None) -> int:
     if args and args[0] == "purity-ratio":
         return _purity_ratio_main(args[1:])
 
+    if args and args[0] == "io-census":
+        return _io_census_main(args[1:])
+
     if len(args) != 1:
         print("Usage: python -m aspergillus <filepath>", file=sys.stderr)
         print(
@@ -222,6 +298,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "       python -m aspergillus purity-ratio <path>... [--min-ratio R]",
+            file=sys.stderr,
+        )
+        print(
+            "       python -m aspergillus io-census <path>...",
             file=sys.stderr,
         )
         return 2
