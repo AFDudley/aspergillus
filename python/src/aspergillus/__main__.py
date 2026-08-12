@@ -23,6 +23,12 @@ Two invocations:
       beside its verdict. It states no floor and reaches no verdict, and it
       ALWAYS exits 0 — it is an instrument, not a gate. Exit 2 = input
       error. Pure logic lives in ``census.py``.
+
+  python -m aspergillus unmix <path>... [--apply] [--json]
+      Lift the logic out of every function ASP206 reports where the lift is
+      mechanical, and NAME the rest with the decision each one needs. Reports
+      without writing unless ``--apply`` is given. Exit 0 = ran, 2 = input
+      error. Pure logic lives in ``codemods/unmix.py``.
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ from aspergillus.census import (
     format_census,
     merge_censuses,
 )
+from aspergillus.codemods.unmix import UnmixResult, effect_closure, unmix_source
 from aspergillus.duplicates import (
     FunctionRecord,
     extract_function_records,
@@ -207,6 +214,76 @@ def _io_census_main(argv: list[str]) -> int:
     return 0
 
 
+def _read_sources(files: list[Path]) -> tuple[dict[str, str], list[str]]:
+    """Read every file into a path -> source map (IO shell)."""
+    sources: dict[str, str] = {}
+    errors: list[str] = []
+    for path in files:
+        try:
+            sources[str(path)] = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            errors.append(f"{path}: {exc}")
+    return sources, errors
+
+
+def _unmix_main(argv: list[str]) -> int:
+    """`unmix` subcommand shell: read, split, print, and write on --apply."""
+    parser = argparse.ArgumentParser(prog="aspergillus unmix")
+    parser.add_argument("paths", nargs="+", help="files or directories to rewrite")
+    parser.add_argument("--apply", action="store_true", help="write the rewrites to disk")
+    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    ns = parser.parse_args(argv)
+
+    sources, errors = _read_sources(_iter_python_files(ns.paths))
+    for err in errors:
+        print(f"unmix: skipping unreadable file {err}", file=sys.stderr)
+    closure = effect_closure(sources)
+
+    results: dict[str, UnmixResult] = {}
+    for path, source in sources.items():
+        try:
+            outcome = unmix_source(source, closure)
+        except ParserSyntaxError as exc:
+            print(f"unmix: skipping unparseable file {path}: {exc}", file=sys.stderr)
+            continue
+        if outcome.lifts or outcome.refusals:
+            results[path] = outcome
+    if ns.apply:
+        for path, outcome in results.items():
+            if outcome.lifts:
+                Path(path).write_text(outcome.source, encoding="utf-8")
+    _report_unmix(results, ns.json)
+    return 0
+
+
+def _report_unmix(results: dict[str, UnmixResult], as_json: bool) -> None:
+    """Print what was lifted and what each refusal needs decided."""
+    if as_json:
+        json.dump(
+            {
+                path: {
+                    "lifts": [vars(lift) for lift in outcome.lifts],
+                    "refusals": [vars(refusal) for refusal in outcome.refusals],
+                }
+                for path, outcome in results.items()
+            },
+            sys.stdout,
+            default=list,
+        )
+        print(file=sys.stdout)
+        return
+    lifted = refused = 0
+    for path, outcome in sorted(results.items()):
+        for lift in outcome.lifts:
+            lifted += 1
+            params = ", ".join(lift.params)
+            print(f"{path}: lifted {lift.name} -> {lift.core_name}({params}) [{lift.form}]")
+        for refusal in outcome.refusals:
+            refused += 1
+            print(f"{path}: REFUSED {refusal.name} — {refusal.reason}")
+    print(f"unmix: {lifted} function(s) lifted, {refused} needing a decision")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Dispatch to a subcommand or run single-file lint (default)."""
     args = argv if argv is not None else sys.argv[1:]
@@ -217,6 +294,9 @@ def main(argv: list[str] | None = None) -> int:
     if args and args[0] == "io-census":
         return _io_census_main(args[1:])
 
+    if args and args[0] == "unmix":
+        return _unmix_main(args[1:])
+
     if len(args) != 1:
         print("Usage: python -m aspergillus <filepath>", file=sys.stderr)
         print(
@@ -225,6 +305,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "       python -m aspergillus io-census <path>...",
+            file=sys.stderr,
+        )
+        print(
+            "       python -m aspergillus unmix <path>... [--apply]",
             file=sys.stderr,
         )
         return 2

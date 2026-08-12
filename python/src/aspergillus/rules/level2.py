@@ -1389,7 +1389,9 @@ class MixedIOAndLogic(LintRule):
         ),
     ]
     INVALID = [
-        # REAL CODE, src/exophial/odc.py:151 `read_odc_close` (abridged to the
+        # REAL CODE, src/exophial/odc.py `read_odc_close` (SPLIT at exo-d80 —
+        # the codemod lifted the scan into `_read_odc_close_core`, so the
+        # shape below is what the function looked like when it fired) (abridged to the
         # shape that fires; the real body is 36 lines). It shells out to `pb`,
         # then scans every comment for the last ODC marker and reshapes it.
         # The scan is a pure fold over a list the effect already returned, so
@@ -1415,8 +1417,9 @@ class MixedIOAndLogic(LintRule):
             "        fields = {str(k): str(v) for k, v in json.loads(body).items()}\n"
             "    return fields\n"
         ),
-        # REAL CODE, src/exophial/generators/generate_domain_types.py:203
-        # `load_declarations` (abridged). Read-then-parse-then-classify is the
+        # REAL CODE, src/exophial/generators/generate_domain_types.py
+        # `load_declarations` (abridged; SPLIT at exo-d80 — the codemod lifted
+        # the ordering fold into `_load_declarations_core`). Read-then-parse-then-classify is the
         # largest class of mixed function in this corpus: the glob and the
         # `read_text` are the effect, and the discriminator that decides which
         # declaration is a machine is a pure fold over the parsed values.
