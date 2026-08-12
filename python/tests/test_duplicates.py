@@ -558,22 +558,38 @@ class TestTotalDispatchersKeepTheirDiscriminants:
         assert len(groups) == 1
         assert groups[0].n_lines >= 7
 
-    def test_a_match_without_assert_never_is_not_exempt(self) -> None:
-        """The shape is total dispatch, not the ``match`` keyword."""
+    def test_the_rule_is_selectors_not_the_match_keyword(self) -> None:
+        """A partial match separates on selectors too; ``assert_never`` is not the rule."""
         partial = (
-            "def pick(cell):\n"
-            "    match cell.a:\n"
-            '        case "x":\n'
-            "            return One.A\n"
-            "        case _:\n"
-            "            return None\n"
+            "def pick(cell):\n    match cell.a:\n"
+            '        case "x":\n            return One.A\n'
+            "        case _:\n            return None\n"
         )
         other = (
-            "def choose(cell):\n"
-            "    match cell.b:\n"
-            '        case "y":\n'
-            "            return Two.B\n"
-            "        case _:\n"
-            "            return None\n"
+            "def choose(cell):\n    match cell.b:\n"
+            '        case "y":\n            return Two.B\n'
+            "        case _:\n            return None\n"
         )
-        assert len(self._groups(partial, other)) == 1
+        assert self._groups(partial, other) == []
+        assert len(self._groups(partial, partial.replace("pick", "pick_again"))) == 1
+
+    def test_a_selector_only_difference_separates_two_projections(self) -> None:
+        """exo-314, third layer: keys, keywords and constructed types are selectors."""
+        one = (
+            "def parse_list_all(raw):\n"
+            "    return _map(raw, lambda item: PebbleRecord(\n"
+            '        id=PebbleId(str(item["id"])),\n'
+            '        status=str(item.get("status", "")),\n'
+            '        priority=str(item.get("priority", "")),\n'
+            "    ))\n"
+        )
+        two = (
+            "def parse_all_goals(raw):\n"
+            "    return _map(raw, lambda item: GoalRecord(\n"
+            '        id=PebbleId(str(item["id"])),\n'
+            '        title=str(item.get("title", "")),\n'
+            '        description=str(item.get("description", "")),\n'
+            "    ))\n"
+        )
+        assert self._groups(one, two) == []
+        assert len(self._groups(one, one.replace("parse_list_all", "parse_again"))) == 1

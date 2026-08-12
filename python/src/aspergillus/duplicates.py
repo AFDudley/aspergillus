@@ -119,6 +119,25 @@ class DuplicateGroup:
     members: tuple[FunctionRecord, ...]
 
 
+#: Methods whose first string argument NAMES a key rather than carrying a value.
+_LOOKUP_METHODS = frozenset({"get", "pop", "setdefault", "getattr"})
+
+
+def _is_lookup(func: cst.BaseExpression) -> bool:
+    """Whether ``func`` is a lookup whose first string argument is a key."""
+    if isinstance(func, cst.Attribute):
+        return func.attr.value in _LOOKUP_METHODS
+    return isinstance(func, cst.Name) and func.value in _LOOKUP_METHODS
+
+
+def _has_literal_index(node: cst.Subscript) -> bool:
+    """Whether ``node`` is subscripted by a single string literal."""
+    if len(node.slice) != 1:
+        return False
+    index = node.slice[0].slice
+    return isinstance(index, cst.Index) and isinstance(index.value, cst.SimpleString)
+
+
 class _Normalizer(cst.CSTTransformer):
     """Collapse identifiers to a placeholder and literal VALUES to type markers.
 
@@ -183,6 +202,63 @@ class _Normalizer(cst.CSTTransformer):
     ) -> cst.Imaginary:
         return updated_node.with_changes(value=_IMAGINARY_MARKER)
 
+    # --- SELECTOR POSITIONS -------------------------------------------------
+    #
+    # A name in SELECTOR position is STRUCTURAL, not a value, so it survives
+    # normalization. Type-2 equivalence is identity under CONSISTENT RENAMING
+    # of identifiers, and a selector is not an identifier: you cannot rename
+    # ``item.get("status")`` to ``item.get("title")``, or ``status=`` to
+    # ``title=``, without binding to a different field of a different
+    # producer's output. Renaming a selector changes what the program DOES.
+    #
+    # Same argument as an f-string's interpolations being code rather than
+    # value, one step further in. It also SUBSUMES the total-dispatcher rule: a
+    # match subject is an attribute, its case patterns are literals in selector
+    # position, and each returned enum member is an attribute on a type name.
+
+    def leave_Attribute(
+        self, original_node: cst.Attribute, updated_node: cst.Attribute
+    ) -> cst.Attribute:
+        """``x.status`` selects a field; the name after the dot is structural."""
+        return updated_node.with_changes(attr=original_node.attr)
+
+    def leave_Arg(self, original_node: cst.Arg, updated_node: cst.Arg) -> cst.Arg:
+        """``status=`` binds a declared field; the keyword is structural."""
+        if original_node.keyword is None:
+            return updated_node
+        return updated_node.with_changes(keyword=original_node.keyword)
+
+    def leave_Call(self, original_node: cst.Call, updated_node: cst.Call) -> cst.BaseExpression:
+        """Keep the callee name and any string key handed to a lookup method.
+
+        ``PebbleRecord(...)`` and ``GoalRecord(...)`` construct different types,
+        and ``item.get("status")`` and ``item.get("title")`` read different
+        keys. Neither pair is a renaming of the other.
+        """
+        keep_func = isinstance(original_node.func, cst.Name)
+        node = updated_node.with_changes(func=original_node.func) if keep_func else updated_node
+        if not _is_lookup(original_node.func) or not original_node.args:
+            return node
+        if not isinstance(original_node.args[0].value, cst.SimpleString):
+            return node
+        args = list(node.args)
+        args[0] = args[0].with_changes(value=original_node.args[0].value)
+        return node.with_changes(args=args)
+
+    def leave_Subscript(
+        self, original_node: cst.Subscript, updated_node: cst.Subscript
+    ) -> cst.Subscript:
+        """``item["id"]`` selects a key; a literal index is structural."""
+        if not _has_literal_index(original_node):
+            return updated_node
+        return updated_node.with_changes(slice=original_node.slice)
+
+    def leave_MatchValue(
+        self, original_node: cst.MatchValue, updated_node: cst.MatchValue
+    ) -> cst.MatchValue:
+        """``case "dirty":`` selects an arm; the pattern is structural."""
+        return updated_node.with_changes(value=original_node.value)
+
 
 class _FunctionCollector(cst.CSTVisitor):
     """Collect every ``FunctionDef`` with its span and its docstring's span."""
@@ -242,100 +318,14 @@ def _leading_docstring(func: cst.FunctionDef) -> cst.BaseString | None:
     return None
 
 
-def _calls_assert_never(node: cst.CSTNode) -> bool:
-    """Whether ``assert_never`` is called anywhere inside ``node``."""
-
-    class _Finder(cst.CSTVisitor):
-        found = False
-
-        def visit_Call(self, call: cst.Call) -> None:
-            callee = call.func
-            named = isinstance(callee, cst.Name) and callee.value == "assert_never"
-            attribute = isinstance(callee, cst.Attribute) and callee.attr.value == "assert_never"
-            if named or attribute:
-                self.found = True
-
-    finder = _Finder()
-    node.visit(finder)
-    return finder.found
-
-
-def _exhaustive_dispatch(func: cst.FunctionDef) -> cst.Match | None:
-    """The ``match`` of a TOTAL dispatcher, or ``None`` when ``func`` is not one.
-
-    A total dispatcher's whole body, after an optional docstring, is one
-    ``match`` whose wildcard arm calls ``assert_never``. That shape is what
-    makes mypy --strict reject a newly added variant, which is why folding two
-    of them behind a generic helper is not available: the helper leaves mypy
-    silent and lets an unknown value fall through instead of raising.
-    """
-    body = func.body
-    if not isinstance(body, cst.IndentedBlock):
-        return None
-    statements = list(body.body)
-    if statements and _leading_docstring(func) is not None:
-        statements = statements[1:]
-    if len(statements) != 1 or not isinstance(statements[0], cst.Match):
-        return None
-    match_node = statements[0]
-    return match_node if _calls_assert_never(match_node) else None
-
-
-def _dispatch_discriminants(module: cst.Module, func: cst.FunctionDef) -> list[str]:
-    """A total dispatcher's identity: its subject, patterns and returned values.
-
-    Type-2 normalization erases identifiers and literal values, which for a
-    total dispatcher erases everything the function says. Nine band checks in
-    exophial read nine different aspects against nine different flagged values
-    and return members of three different enums; normalized to one token they
-    became one duplicate group that must never be folded (exo-314).
-
-    This is NOT an exemption — nothing is suppressed. For this shape, and only
-    this shape, the subject, the case patterns and each arm's returned
-    expression are carried VERBATIM into the hash, so the hash stops discarding
-    the part that differs. Two dispatchers that discriminate differently then
-    hash differently, and a genuine copy-paste of one still hashes the same as
-    its original. It is the same argument as an f-string's interpolations being
-    code rather than value: in a total dispatcher, what it matches on IS the
-    function.
-
-    All THREE parts are needed. ``situation._check_main_checkout`` and
-    ``integrate_lane_situation._check_main_checkout`` read the same attribute
-    against the same flagged value and differ only in the member they return,
-    declared in different contracts and consumed by disjoint machinery.
-
-    Only the RETURNED expression of each arm is taken, never the whole arm; an
-    arm that does anything else contributes nothing here and is still covered
-    by the structural token stream.
-    """
-    match_node = _exhaustive_dispatch(func)
-    if match_node is None:
-        return []
-    parts = [module.code_for_node(match_node.subject).strip()]
-    for case in match_node.cases:
-        parts.append(module.code_for_node(case.pattern).strip())
-        body = case.body
-        statements = body.body if isinstance(body, cst.IndentedBlock) else ()
-        for statement in statements:
-            if not isinstance(statement, cst.SimpleStatementLine):
-                continue
-            for small in statement.body:
-                if isinstance(small, cst.Return) and small.value is not None:
-                    parts.append(module.code_for_node(small.value).strip())
-    return parts
-
-
-def _hash_function(module: cst.Module, func: cst.FunctionDef) -> str:
+def _hash_function(func: cst.FunctionDef) -> str:
     """Normalize ``func`` under type-2 rules and return its structural sha256."""
     normalized = func.visit(_Normalizer())
     # _Normalizer only rewrites leaf values; it never removes the root node,
     # so visiting a FunctionDef always yields a FunctionDef. Narrow for mypy.
     assert isinstance(normalized, cst.FunctionDef)
-    parts = list(_structural_tokens(normalized))
-    discriminants = _dispatch_discriminants(module, func)
-    if discriminants:
-        parts += ["#total-dispatch", *discriminants]
-    return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
+    signature = "\x00".join(_structural_tokens(normalized))
+    return hashlib.sha256(signature.encode("utf-8")).hexdigest()
 
 
 def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
@@ -356,7 +346,7 @@ def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
             line=start,
             n_lines=end - start + 1,
             n_code_lines=end - start + 1 - docstring_lines,
-            normalized_hash=_hash_function(module, node),
+            normalized_hash=_hash_function(node),
         )
         for node, start, end, docstring_lines in collector.functions
     ]
