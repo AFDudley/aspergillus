@@ -778,6 +778,9 @@ class UnboundedLoop(LintRule):
         Valid("for i in range(10):\n    print(i)\n"),
         Valid("while True:\n    data = read()\n    if not data:\n        break\n"),
         Valid("count = 0\nwhile count < 100:\n    count += 1\n"),
+        # The counter drives the condition through a call. Same loop as
+        # `while parts != PurePosixPath('.')`, same exemption.
+        Valid('while str(parts) != ".":\n    parts = parts.parent\n'),
     ]
     INVALID = [
         Invalid("while True:\n    process()\n"),
@@ -849,7 +852,15 @@ def _find_break_in_stmts(stmts: Sequence[cst.BaseStatement]) -> bool:
 
 
 def _extract_names(node: cst.BaseExpression) -> set[str]:
-    """Extract all Name references from an expression."""
+    """Extract all Name references from an expression.
+
+    Recurses through a ``Call``'s arguments: ``while str(parts) != "."`` is
+    the same loop as ``while parts != PurePosixPath(".")`` and the same
+    ``parts`` drives it, but without this the argument was invisible, the
+    name set came back empty, and ASP204's counter-pattern exemption
+    short-circuited to "unbounded" for a loop whose counter it was looking
+    straight at.
+    """
     names: set[str] = set()
     if isinstance(node, cst.Name):
         names.add(node.value)
@@ -862,6 +873,9 @@ def _extract_names(node: cst.BaseExpression) -> set[str]:
         names.update(_extract_names(node.right))
     elif isinstance(node, cst.UnaryOperation):
         names.update(_extract_names(node.expression))
+    elif isinstance(node, cst.Call):
+        for arg in node.args:
+            names.update(_extract_names(arg.value))
     return names
 
 
