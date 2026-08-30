@@ -217,6 +217,19 @@ discovery (see `python/src/aspergillus/rules/__init__.py`). Most recent:
   hatch. Detection-only (Tier 2, no autofix): introducing the stronger
   type is a judgment call the rule cannot make mechanically.
 
+- **ASP417 `FsmShotgunParse`** — warns when a function commits a side
+  effect (a call to a method in a small effect set, a `subprocess`/
+  `open`/`print` call, or an assignment to a parameter's attribute or
+  subscript), then later rejects its input with a `raise` or a
+  refusal/`None` `return`. The action already ran before the whole
+  input was proven valid: shotgun parsing (Momot, Bratus, Hallberg, and
+  Patterson, "The Seven Turrets of Babel", 2016). "Preceded" is lexical
+  order over the function body, not full control-flow reachability.
+  Silenced by a `# asp-fsm: boundary-parse` marker comment, matching
+  ASP414's and ASP416's escape hatch. Detection-only (Tier 2, no
+  autofix): reordering checks ahead of actions is a judgment call the
+  rule cannot make mechanically.
+
 ### Levels 4–5 — Planned, not implemented
 
 Contracts, property-based tests (L4), and formal verification (L5). See
@@ -233,22 +246,23 @@ seam that makes a catalog rule actually run). All ship at `warn`
 (severity-graduation workflow above); Tier 1 rules autofix, Tier 2
 rules are detection-only.
 
-| Rule   | Class                                 | Tier   | Move                                                          |
-| ------ | ------------------------------------- | ------ | ------------------------------------------------------------- |
-| ASP401 | `MapFusion`                           | 1      | `map(f).map(g)` → composed `map`                              |
-| ASP402 | `FilterFusion`                        | 1      | `filter(p).filter(q)` → composed `filter`                     |
-| ASP403 | `EtaReduce`                           | 1      | `lambda x: f(x)` → `f`                                        |
-| ASP404 | `RedundantConditionalBoolAnd`/`...Or` | 1      | `True if X else Y` / `Y if X else False` → `or`/`and`         |
-| ASP406 | `Tupling`                             | 2      | fused multi-pass aggregation over one iterable                |
-| ASP407 | `WorkerWrapper`                       | 2      | trivial pass-through wrapper                                  |
-| ASP408 | `AntiSpecialCasing`                   | 2      | hardcoded-answer / env-branching gaming detector              |
-| ASP409 | `ShellToSelf`                         | 2      | invoking your own package via subprocess                      |
-| ASP410 | `InProcessE2E`                        | 2      | in-process SUT construction masquerading as an e2e            |
-| ASP411 | `FsmRedundantBranches`                | 2      | likely redundant states in an enum `match`/if-elif dispatch   |
-| ASP412 | `FsmEdgeDuration`                     | reject | FSM transition body must not embed unbounded work             |
-| ASP413 | `FsmEnumDispatchExhaustive`           | reject | if/elif enum dispatch must be exhaustiveness-checkable        |
-| ASP414 | `FsmStringlyDispatch`                 | 2      | if/elif or match dispatch shadows a same-module Enum's values |
-| ASP416 | `FsmValidateNotParse`                 | 2      | return-type union includes an arm equal to a parameter's type |
+| Rule   | Class                                 | Tier   | Move                                                           |
+| ------ | ------------------------------------- | ------ | -------------------------------------------------------------- |
+| ASP401 | `MapFusion`                           | 1      | `map(f).map(g)` → composed `map`                               |
+| ASP402 | `FilterFusion`                        | 1      | `filter(p).filter(q)` → composed `filter`                      |
+| ASP403 | `EtaReduce`                           | 1      | `lambda x: f(x)` → `f`                                         |
+| ASP404 | `RedundantConditionalBoolAnd`/`...Or` | 1      | `True if X else Y` / `Y if X else False` → `or`/`and`          |
+| ASP406 | `Tupling`                             | 2      | fused multi-pass aggregation over one iterable                 |
+| ASP407 | `WorkerWrapper`                       | 2      | trivial pass-through wrapper                                   |
+| ASP408 | `AntiSpecialCasing`                   | 2      | hardcoded-answer / env-branching gaming detector               |
+| ASP409 | `ShellToSelf`                         | 2      | invoking your own package via subprocess                       |
+| ASP410 | `InProcessE2E`                        | 2      | in-process SUT construction masquerading as an e2e             |
+| ASP411 | `FsmRedundantBranches`                | 2      | likely redundant states in an enum `match`/if-elif dispatch    |
+| ASP412 | `FsmEdgeDuration`                     | reject | FSM transition body must not embed unbounded work              |
+| ASP413 | `FsmEnumDispatchExhaustive`           | reject | if/elif enum dispatch must be exhaustiveness-checkable         |
+| ASP414 | `FsmStringlyDispatch`                 | 2      | if/elif or match dispatch shadows a same-module Enum's values  |
+| ASP416 | `FsmValidateNotParse`                 | 2      | return-type union includes an arm equal to a parameter's type  |
+| ASP417 | `FsmShotgunParse`                     | 2      | a side effect precedes a later input rejection in one function |
 
 ASP405 is deliberately unassigned for Python — see
 `catalog/__init__.py`'s "Why no ASP405 redundant-await-return" for the
@@ -448,11 +462,11 @@ Two families:
 - **ASP401–407** — FP refactoring-catalog moves (map-fusion,
   filter-fusion, eta-reduce, boolean-conditional collapse, tupling,
   worker/wrapper). Citations in `docs/refactoring-catalog.md`.
-- ASP408–414 — verification-integrity and FSM-safety rules:
+- ASP408–417 — verification-integrity and FSM-safety rules:
   - ASP408 `AntiSpecialCasing`, ASP409 `ShellToSelf`, ASP410 `InProcessE2E`,
     ASP411 `FsmRedundantBranches`, ASP413 `FsmEnumDispatchExhaustive`,
-    ASP414 `FsmStringlyDispatch`, and ASP416 `FsmValidateNotParse` — see
-    the table below for the full rundown.
+    ASP414 `FsmStringlyDispatch`, ASP416 `FsmValidateNotParse`, and
+    ASP417 `FsmShotgunParse` — see the table below for the full rundown.
   - **ASP412 `FsmEdgeDuration`** — an FSM transition ("edge") body must not
     embed unbounded work (a direct LLM/subprocess call, a call into another
     state machine's run/drive entrypoint, or an unbounded retry loop)
@@ -472,7 +486,7 @@ One-rule-per-file Fixit/LibCST rules under
 rule discovery does not recurse into sub-packages). Tier semantics
 (autofix vs. detection-only vs. reject) are documented in
 `python/src/aspergillus/rules/catalog/__init__.py`. Verification-integrity
-family (ASP408–414): a static/structural line of defense against gaming
+family (ASP408–417): a static/structural line of defense against gaming
 or unsound-by-construction shapes, sibling to the L2/L3 tables above.
 | Rule | Description | Severity |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
@@ -484,6 +498,7 @@ or unsound-by-construction shapes, sibling to the L2/L3 tables above.
 | ASP413 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix |
 | ASP414 | `FsmStringlyDispatch` — if/elif or match dispatch shadows a same-module Enum's values via string literals | Tier 2, detection-only, warn |
 | ASP416 | `FsmValidateNotParse` — return-type union includes an arm equal to a parameter's annotation | Tier 2, detection-only, warn |
+| ASP417 | `FsmShotgunParse` — a side effect precedes a later input rejection in one function (shotgun parsing) | Tier 2, detection-only, warn |
 
 ASP413 ports the standalone ASP-FSM-EXHAUSTIVE probe (pebble asp-26e)
 into the rule pack so the check runs under the real `fixit lint` gate

@@ -109,6 +109,14 @@ Plus the FSM-safety family:
   type that proves the check succeeded (Alexis King, "Parse, don't
   validate", 2019). Escape hatch: a `# asp-fsm: boundary-parse` comment
   on a genuine parse boundary.
+- **ASP417 — `FsmShotgunParse`.** Warns when a function commits a side
+  effect (an `append`/`write`/`send`/`commit`-style call, a
+  `subprocess`/`open`/`print` call, or an assignment to a parameter's
+  attribute or subscript), then later rejects its input with a `raise`
+  or a refusal/`None` `return` — the action already ran before the
+  whole input was proven valid (Momot, Bratus, Hallberg, and Patterson,
+  "The Seven Turrets of Babel", 2016). Escape hatch: a
+  `# asp-fsm: boundary-parse` comment on a genuine boundary parser.
 
 See `docs/design.md` § "Python catalog moves — ASP4xx" for the full table.
 
