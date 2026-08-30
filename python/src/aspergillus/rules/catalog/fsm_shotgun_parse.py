@@ -45,6 +45,18 @@ then act — never trips this rule: the rejection came first, so no effect
 lexically precedes it. A pure function with no effect and no rejection
 never trips it either.
 
+Result-check exemption
+----------------------
+A rejection does NOT count, even with an earlier effect, when its
+nearest guarding `if` test reads only names bound from that effect's own
+result: the call's own return value (`result = subprocess.run(...)`), a
+method call's receiver (`cursor` in `cursor.execute(...)`), or a name
+assigned from either (`out = result.stdout`, `position =
+cursor.lastrowid`). Checking an operation's own outcome is not shotgun
+parsing. Only a rejection whose condition reads the function's input --
+a parameter, or a value derived from one -- after an effect on that same
+input trips the rule.
+
 Escape hatch
 ------------
 A function carrying a `# asp-fsm: boundary-parse` comment anywhere in its
@@ -117,27 +129,14 @@ _SCOPE_BOUNDARY_TYPES = (cst.FunctionDef, cst.ClassDef, cst.Lambda)
 
 _MESSAGE = (
     "ASP417: shotgun parsing — this function commits a side effect, then "
-    "later rejects its input (a `raise`, or a refusal/`None` `return`). "
-    "The action already ran before the whole input was proven valid "
-    "(Momot, Bratus, Hallberg, and Patterson, 'The Seven Turrets of "
+    "later rejects its input on a condition testing the input itself, "
+    "not the effect's own result (a `raise`, or a refusal/`None` "
+    "`return`). The action already ran before the whole input was proven "
+    "valid (Momot, Bratus, Hallberg, and Patterson, 'The Seven Turrets of "
     "Babel', 2016). Validate all of the input before acting on any of it, "
     "or add '# asp-fsm: boundary-parse' if this is a genuine boundary "
     "parser."
 )
-
-
-def _own_scope_nodes(root: cst.CSTNode) -> list[cst.CSTNode]:
-    """Pure: `root` plus all descendants, in source order, not descending
-    into nested function/class/lambda bodies -- composition through a
-    helper is invisible to this scan by design (indirection defeats
-    detection)."""
-    result: list[cst.CSTNode] = [root]
-    for child in root.children:
-        result.append(child)
-        if isinstance(child, _SCOPE_BOUNDARY_TYPES):
-            continue
-        result.extend(_own_scope_nodes(child)[1:])
-    return result
 
 
 def _param_names(node: cst.FunctionDef) -> frozenset[str]:
@@ -205,29 +204,125 @@ def _is_refusal_return(node: cst.Return) -> bool:
     return node.value is None or (isinstance(node.value, cst.Name) and node.value.value == "None")
 
 
+_LITERAL_NAMES: frozenset[str] = frozenset({"None", "True", "False"})
+
+
+def _referenced_base_names(node: cst.CSTNode) -> frozenset[str]:
+    """Pure: the base name of every value `node` reads -- the root `Name`
+    of each `Name`/`Attribute`/`Call` chain, skipping attribute-name and
+    keyword-argument leaves (never loads) and the `None`/`True`/`False`
+    literals. Used to test what a rejection's guarding `if` test actually
+    depends on."""
+    names: set[str] = set()
+    _referenced_base_names_into(node, names)
+    return frozenset(names)
+
+
+def _referenced_base_names_into(node: cst.CSTNode, names: set[str]) -> None:
+    """Pure (mutates only the passed-in accumulator): see
+    `_referenced_base_names`."""
+    if isinstance(node, cst.Name):
+        if node.value not in _LITERAL_NAMES:
+            names.add(node.value)
+        return
+    if isinstance(node, cst.Attribute):
+        _referenced_base_names_into(node.value, names)
+        return
+    if isinstance(node, cst.Call):
+        _referenced_base_names_into(node.func, names)
+        for arg in node.args:
+            _referenced_base_names_into(arg.value, names)
+        return
+    for child in node.children:
+        _referenced_base_names_into(child, names)
+
+
+def _rhs_is_effect_derived(rhs: cst.BaseExpression, effect_names: set[str]) -> bool:
+    """Pure: True iff `rhs` is itself a side-effecting call, or an
+    attribute/subscript chain rooted at a name already bound from one --
+    the shape `out = result.stdout` after `result = subprocess.run(...)`,
+    or `position = cursor.lastrowid` after `cursor.execute(...)`."""
+    if isinstance(rhs, cst.Call) and _is_effect_call(rhs):
+        return True
+    base = _base_name(rhs)
+    return base is not None and base in effect_names
+
+
 def _scan_shotgun_violations(func: cst.FunctionDef) -> list[cst.CSTNode]:
     """Pure: every rejection node (`raise`, or a refusal/`None` `return`)
-    in `func`'s own scope that is lexically preceded by a side-effecting
-    statement earlier in the same scan."""
+    in `func`'s own scope that follows a side-effecting statement earlier
+    in the same scan, EXCEPT one whose nearest guarding `if` test reads
+    only names bound from that effect's own result -- the call's return
+    value, a method call's receiver, or a name derived from either.
+    Checking an operation's own outcome isn't shotgun parsing; only a
+    rejection that tests the function's input after an effect on that
+    input is."""
     param_names = _param_names(func)
     violations: list[cst.CSTNode] = []
-    effect_seen = False
-    for node in _own_scope_nodes(func):
-        if node is func:
-            continue
-        if isinstance(node, cst.Call) and _is_effect_call(node):
-            effect_seen = True
-            continue
-        if isinstance(node, (cst.Assign, cst.AugAssign, cst.AnnAssign)) and _is_param_mutation(
-            node, param_names
-        ):
-            effect_seen = True
-            continue
-        if effect_seen and isinstance(node, cst.Raise):
-            violations.append(node)
-        elif effect_seen and isinstance(node, cst.Return) and _is_refusal_return(node):
-            violations.append(node)
+    effect_names: set[str] = set()
+    effect_seen = [False]
+    _scan_shotgun_violations_into(
+        func.body, param_names, effect_names, effect_seen, frozenset(), violations
+    )
     return violations
+
+
+def _scan_shotgun_violations_into(
+    node: cst.CSTNode,
+    param_names: frozenset[str],
+    effect_names: set[str],
+    effect_seen: list[bool],
+    guard_names: frozenset[str],
+    violations: list[cst.CSTNode],
+) -> None:
+    """Pure (mutates only `effect_names`, `effect_seen`, and `violations`):
+    the recursive own-scope walk behind `_scan_shotgun_violations`, in
+    source order -- composition through a nested function/class/lambda
+    stays invisible by design (indirection defeats detection, matching
+    ASP412's own-scope walk). `guard_names` is the base names read by the
+    nearest enclosing `if`'s test: the condition a rejection directly
+    beneath it is checking."""
+    if isinstance(node, _SCOPE_BOUNDARY_TYPES):
+        return
+    if isinstance(node, cst.Call) and _is_effect_call(node):
+        effect_seen[0] = True
+        if isinstance(node.func, cst.Attribute):
+            receiver = _base_name(node.func.value)
+            if receiver is not None:
+                effect_names.add(receiver)
+    elif isinstance(node, (cst.Assign, cst.AugAssign, cst.AnnAssign)) and _is_param_mutation(
+        node, param_names
+    ):
+        effect_seen[0] = True
+    elif isinstance(node, cst.Assign) and _rhs_is_effect_derived(node.value, effect_names):
+        for target in _assignment_targets(node):
+            if isinstance(target, cst.Name):
+                effect_names.add(target.value)
+    elif effect_seen[0] and isinstance(node, cst.Raise):
+        if not (guard_names and guard_names <= effect_names):
+            violations.append(node)
+    elif effect_seen[0] and isinstance(node, cst.Return) and _is_refusal_return(node):
+        if not (guard_names and guard_names <= effect_names):
+            violations.append(node)
+
+    if isinstance(node, cst.If):
+        test_names = _referenced_base_names(node.test)
+        _scan_shotgun_violations_into(
+            node.test, param_names, effect_names, effect_seen, guard_names, violations
+        )
+        _scan_shotgun_violations_into(
+            node.body, param_names, effect_names, effect_seen, test_names, violations
+        )
+        if node.orelse is not None:
+            _scan_shotgun_violations_into(
+                node.orelse, param_names, effect_names, effect_seen, test_names, violations
+            )
+        return
+
+    for child in node.children:
+        _scan_shotgun_violations_into(
+            child, param_names, effect_names, effect_seen, guard_names, violations
+        )
 
 
 class FsmShotgunParse(LintRule):
@@ -274,6 +369,36 @@ class FsmShotgunParse(LintRule):
             "        if item < 0:\n"
             '            raise ValueError("negative item")\n'
         ),
+        # Result-check exemption: the rejection tests the effect's own
+        # bound return value (a SQLite cursor's `lastrowid`), not the
+        # input.
+        Valid(
+            "def insert_row(cursor, row):\n"
+            '    cursor.execute("INSERT INTO t VALUES (?)", (row,))\n'
+            "    position = cursor.lastrowid\n"
+            "    if position is None:\n"
+            '        raise MalformedRow("insert did not return a rowid")\n'
+            "    return position\n"
+        ),
+        # Result-check exemption: the rejection tests the effect's own
+        # exit-code result.
+        Valid(
+            "def run_tool(args):\n"
+            "    result = subprocess.run(args)\n"
+            "    if result.returncode != 0:\n"
+            "        return None\n"
+            "    return result\n"
+        ),
+        # Result-check exemption: the rejection tests a value derived from
+        # the effect's own result (the subprocess's stdout).
+        Valid(
+            "def run_ape(ape, args):\n"
+            "    result = subprocess.run([ape, *args])\n"
+            "    out = result.stdout\n"
+            "    if 'error' in out or not out.strip():\n"
+            '        raise AceRefused("ape refused the input")\n'
+            "    return out\n"
+        ),
     ]
     INVALID = [
         # The motivating shape: append to a sink inside a loop, then raise
@@ -292,6 +417,15 @@ class FsmShotgunParse(LintRule):
             "    config.value = value\n"
             "    if value is None:\n"
             "        return None\n"
+        ),
+        # Real shotgun parse: the effect acts on one input value, the
+        # rejection tests a different input value -- not the effect's
+        # own result.
+        Invalid(
+            "def process(items, other, sink):\n"
+            "    sink.append(items[0])\n"
+            "    if other < 0:\n"
+            '        raise ValueError("bad other")\n'
         ),
     ]
 
