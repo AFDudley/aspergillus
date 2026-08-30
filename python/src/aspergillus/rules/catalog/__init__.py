@@ -59,6 +59,7 @@ from aspergillus.rules.catalog.fsm_edge_duration import FsmEdgeDuration
 from aspergillus.rules.catalog.fsm_enum_dispatch_exhaustive import FsmEnumDispatchExhaustive
 from aspergillus.rules.catalog.fsm_redundant_branches import FsmRedundantBranches
 from aspergillus.rules.catalog.fsm_stringly_dispatch import FsmStringlyDispatch
+from aspergillus.rules.catalog.fsm_validate_not_parse import FsmValidateNotParse
 from aspergillus.rules.catalog.in_process_e2e import InProcessE2E
 from aspergillus.rules.catalog.map_fusion import MapFusion
 from aspergillus.rules.catalog.reducer_reachability import ReducerReachability
@@ -78,6 +79,7 @@ __all__ = [
     "FsmEnumDispatchExhaustive",
     "FsmRedundantBranches",
     "FsmStringlyDispatch",
+    "FsmValidateNotParse",
     "InProcessE2E",
     "MapFusion",
     "RedundantConditionalBoolAnd",

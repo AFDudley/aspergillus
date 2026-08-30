@@ -207,6 +207,16 @@ discovery (see `python/src/aspergillus/rules/__init__.py`). Most recent:
   that also claimed that number (see the `FsmRedundantBranches` entry
   below); resolved by renumbering this rule to ASP414 (pebble asp-fd1.5).
 
+- **ASP416 `FsmValidateNotParse`** — warns when a function's return
+  annotation is a union with an arm type-equal to one of its parameter
+  annotations: the function can reject its input, but on success it
+  hands back the exact type it received, discarding the proof that the
+  check succeeded. Encodes Alexis King's "Parse, don't validate" (2019)
+  as a signature-only, decidable trigger. Silenced by a
+  `# asp-fsm: boundary-parse` marker comment, matching ASP414's escape
+  hatch. Detection-only (Tier 2, no autofix): introducing the stronger
+  type is a judgment call the rule cannot make mechanically.
+
 ### Levels 4–5 — Planned, not implemented
 
 Contracts, property-based tests (L4), and formal verification (L5). See
@@ -238,6 +248,7 @@ rules are detection-only.
 | ASP412 | `FsmEdgeDuration`                     | reject | FSM transition body must not embed unbounded work             |
 | ASP413 | `FsmEnumDispatchExhaustive`           | reject | if/elif enum dispatch must be exhaustiveness-checkable        |
 | ASP414 | `FsmStringlyDispatch`                 | 2      | if/elif or match dispatch shadows a same-module Enum's values |
+| ASP416 | `FsmValidateNotParse`                 | 2      | return-type union includes an arm equal to a parameter's type |
 
 ASP405 is deliberately unassigned for Python — see
 `catalog/__init__.py`'s "Why no ASP405 redundant-await-return" for the
@@ -439,8 +450,9 @@ Two families:
   worker/wrapper). Citations in `docs/refactoring-catalog.md`.
 - ASP408–414 — verification-integrity and FSM-safety rules:
   - ASP408 `AntiSpecialCasing`, ASP409 `ShellToSelf`, ASP410 `InProcessE2E`,
-    ASP411 `FsmRedundantBranches`, ASP413 `FsmEnumDispatchExhaustive`, and
-    ASP414 `FsmStringlyDispatch` — see the table below for the full rundown.
+    ASP411 `FsmRedundantBranches`, ASP413 `FsmEnumDispatchExhaustive`,
+    ASP414 `FsmStringlyDispatch`, and ASP416 `FsmValidateNotParse` — see
+    the table below for the full rundown.
   - **ASP412 `FsmEdgeDuration`** — an FSM transition ("edge") body must not
     embed unbounded work (a direct LLM/subprocess call, a call into another
     state machine's run/drive entrypoint, or an unbounded retry loop)
@@ -471,6 +483,7 @@ or unsound-by-construction shapes, sibling to the L2/L3 tables above.
 | ASP412 | `FsmEdgeDuration` — FSM transition body must not embed unbounded work | Reject, no autofix |
 | ASP413 | `FsmEnumDispatchExhaustive` — if/elif enum dispatch must be exhaustiveness-checkable (`match`, or `else: assert_never(subject)`) | Reject, no autofix |
 | ASP414 | `FsmStringlyDispatch` — if/elif or match dispatch shadows a same-module Enum's values via string literals | Tier 2, detection-only, warn |
+| ASP416 | `FsmValidateNotParse` — return-type union includes an arm equal to a parameter's annotation | Tier 2, detection-only, warn |
 
 ASP413 ports the standalone ASP-FSM-EXHAUSTIVE probe (pebble asp-26e)
 into the rule pack so the check runs under the real `fixit lint` gate
