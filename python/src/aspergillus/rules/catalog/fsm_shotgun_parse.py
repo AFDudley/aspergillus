@@ -249,14 +249,16 @@ def _rhs_is_effect_derived(rhs: cst.BaseExpression, effect_names: set[str]) -> b
 
 
 def _scan_shotgun_violations(func: cst.FunctionDef) -> list[cst.CSTNode]:
-    """Pure: every rejection node (`raise`, or a refusal/`None` `return`)
-    in `func`'s own scope that follows a side-effecting statement earlier
-    in the same scan, EXCEPT one whose nearest guarding `if` test reads
-    only names bound from that effect's own result -- the call's return
-    value, a method call's receiver, or a name derived from either.
-    Checking an operation's own outcome isn't shotgun parsing; only a
-    rejection that tests the function's input after an effect on that
-    input is."""
+    """Pure: every rejection node (`raise EXPR`, or a refusal/`None`
+    `return`) in `func`'s own scope that follows a side-effecting
+    statement earlier in the same scan, EXCEPT one whose nearest guarding
+    `if` test reads only names bound from that effect's own result -- the
+    call's return value, a method call's receiver, or a name derived from
+    either. Checking an operation's own outcome isn't shotgun parsing;
+    only a rejection that tests the function's input after an effect on
+    that input is. A bare `raise` (no exception expression) never counts:
+    it re-raises the exception an `except` handler is already handling,
+    not a rejection of the function's input."""
     param_names = _param_names(func)
     violations: list[cst.CSTNode] = []
     effect_names: set[str] = set()
@@ -299,7 +301,7 @@ def _scan_shotgun_violations_into(
             if isinstance(target, cst.Name):
                 effect_names.add(target.value)
     elif effect_seen[0] and isinstance(node, cst.Raise):
-        if not (guard_names and guard_names <= effect_names):
+        if node.exc is not None and not (guard_names and guard_names <= effect_names):
             violations.append(node)
     elif effect_seen[0] and isinstance(node, cst.Return) and _is_refusal_return(node):
         if not (guard_names and guard_names <= effect_names):
@@ -398,6 +400,21 @@ class FsmShotgunParse(LintRule):
             "    if 'error' in out or not out.strip():\n"
             '        raise AceRefused("ape refused the input")\n'
             "    return out\n"
+        ),
+        # Bare-re-raise exemption: the `except` handler runs a cleanup
+        # effect (the rollback), then a bare `raise` re-propagates the
+        # exception already being handled. A bare `raise` never rejects
+        # the function's input, so it never counts as a rejection.
+        Valid(
+            "def append(cursor, record):\n"
+            '    cursor.execute("BEGIN")\n'
+            "    try:\n"
+            "        cursor.execute(INSERT, record)\n"
+            '        cursor.execute("COMMIT")\n'
+            "    except BaseException:\n"
+            '        cursor.execute("ROLLBACK")\n'
+            "        raise\n"
+            "    return record\n"
         ),
     ]
     INVALID = [

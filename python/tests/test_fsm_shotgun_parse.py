@@ -12,6 +12,9 @@ properties directly, independent of the generated cases:
 - a parse-then-act function (every rejection precedes every effect) stays
   silent;
 - a pure function with no effect and no rejection stays silent;
+- an `except` handler's cleanup effect followed by a bare `raise` stays
+  silent: a bare `raise` re-propagates the handled exception, it never
+  rejects the function's input;
 - the ``# asp-fsm: boundary-parse`` escape hatch silences a function that
   would otherwise be flagged, matching ASP414's and ASP416's escape hatch
   exactly;
