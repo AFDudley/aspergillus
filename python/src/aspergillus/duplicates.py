@@ -85,6 +85,14 @@ class _Normalizer(cst.CSTTransformer):
     def leave_Name(self, original_node: cst.Name, updated_node: cst.Name) -> cst.Name:
         return updated_node.with_changes(value=_NAME_PLACEHOLDER)
 
+    def visit_MatchSingleton(self, node: cst.MatchSingleton) -> bool:
+        # A MatchSingleton's value must stay exactly `True`, `False`, or
+        # `None` -- libcst rejects any other Name there. It is a keyword,
+        # not an identifier to normalize, and `case True` / `case False`
+        # are distinct patterns that must keep distinct hashes. Returning
+        # False skips this subtree so leave_Name never sees its value.
+        return False
+
     def leave_SimpleString(
         self, original_node: cst.SimpleString, updated_node: cst.SimpleString
     ) -> cst.SimpleString:

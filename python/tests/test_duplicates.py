@@ -123,3 +123,58 @@ class TestFormatReport:
         assert "b.py:2" in report
         assert "fetch" in report
         assert "allowlist with:" in report
+
+
+_MATCH_NONE = """
+def handle_none(x):
+    match x:
+        case None:
+            return 1
+        case _:
+            return 0
+"""
+_MATCH_TRUE = """
+def handle_true(x):
+    match x:
+        case True:
+            return 1
+        case _:
+            return 0
+"""
+_MATCH_FALSE = """
+def handle_false(x):
+    match x:
+        case False:
+            return 1
+        case _:
+            return 0
+"""
+
+
+class TestMatchSingletonNormalization:
+    """A ``case True``/``case False``/``case None`` pattern keeps its keyword.
+
+    ``cst.MatchSingleton`` accepts only the literal ``True``, ``False``, or
+    ``None`` as its value. The normalizer must not rewrite that ``Name`` to
+    the identifier placeholder, or LibCST's own validation rejects the
+    rewritten tree. Pebble: asp-63a.
+    """
+
+    def test_case_none_does_not_raise(self) -> None:
+        extract_function_records(_MATCH_NONE, "none.py")
+
+    def test_case_true_does_not_raise(self) -> None:
+        extract_function_records(_MATCH_TRUE, "true.py")
+
+    def test_case_false_does_not_raise(self) -> None:
+        extract_function_records(_MATCH_FALSE, "false.py")
+
+    def test_case_true_and_case_false_hash_differently(self) -> None:
+        true_records = extract_function_records(_MATCH_TRUE, "true.py")
+        false_records = extract_function_records(_MATCH_FALSE, "false.py")
+        assert true_records[0].normalized_hash != false_records[0].normalized_hash
+
+    def test_case_none_and_case_true_hash_differently(self) -> None:
+        none_records = extract_function_records(_MATCH_NONE, "none.py")
+        true_records = extract_function_records(_MATCH_TRUE, "true.py")
+        assert none_records[0].normalized_hash != true_records[0].normalized_hash
