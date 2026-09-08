@@ -178,3 +178,65 @@ class TestMatchSingletonNormalization:
         none_records = extract_function_records(_MATCH_NONE, "none.py")
         true_records = extract_function_records(_MATCH_TRUE, "true.py")
         assert none_records[0].normalized_hash != true_records[0].normalized_hash
+
+
+# Two distinct functions that differ only in a long docstring and a one-line
+# body. Their code is not duplicated in any meaningful amount, so the docstring
+# must not inflate them over the size floor.
+_DOCSTRING_HEAVY_A = '''
+def plural_of(noun):
+    """The regular plural of a noun.
+
+    Every derived noun needs one. A long rationale sits here across several
+    lines, but the body below is a single delegating call.
+    """
+    return _inflected(noun, _plural)
+'''
+_DOCSTRING_HEAVY_B = '''
+def third_person_of(verb):
+    """The third-person singular of a verb.
+
+    A different rationale entirely, also several lines long, explaining why the
+    verb case shares the one regular rule.
+    """
+    return _inflected(verb, _plural)
+'''
+
+# A genuine multi-statement clone: five lines of real code, no docstring.
+_BIG_A = '''
+def a(xs, ys):
+    total = 0
+    for item in xs:
+        if item in ys:
+            total += item
+    return total
+'''
+_BIG_B = '''
+def b(ps, qs):
+    total = 0
+    for element in ps:
+        if element in qs:
+            total += element
+    return total
+'''
+
+
+class TestDocstringDoesNotInflateCloneSize:
+    """A long docstring must not push a one-line-body function over min_lines."""
+
+    def test_n_lines_is_the_code_span_not_the_docstring_span(self) -> None:
+        (record,) = extract_function_records(_DOCSTRING_HEAVY_A, "a.py")
+        assert record.n_lines < 5
+
+    def test_docstring_heavy_clones_are_detected_but_below_the_code_floor(self) -> None:
+        records = extract_function_records(_DOCSTRING_HEAVY_A, "a.py") + extract_function_records(
+            _DOCSTRING_HEAVY_B, "b.py"
+        )
+        assert len(find_duplicate_groups(records, min_lines=1, allowlist=frozenset())) == 1
+        assert find_duplicate_groups(records, min_lines=5, allowlist=frozenset()) == []
+
+    def test_a_genuine_multiline_clone_still_clears_the_floor(self) -> None:
+        records = extract_function_records(_BIG_A, "a.py") + extract_function_records(
+            _BIG_B, "b.py"
+        )
+        assert len(find_duplicate_groups(records, min_lines=5, allowlist=frozenset())) == 1

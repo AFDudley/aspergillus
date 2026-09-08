@@ -52,8 +52,9 @@ class FunctionRecord:
     """One function/method, with its type-2-normalized structural hash.
 
     ``normalized_hash`` is equal for two functions that are identical up to
-    identifier renaming and literal values; ``n_lines`` is the source span
-    (end line - start line + 1) used for the ``min_lines`` size floor.
+    identifier renaming and literal values; ``n_lines`` is the CODE-line span —
+    the function span minus a leading docstring — used for the ``min_lines``
+    size floor, so prose never inflates a clone's measured size.
     """
 
     path: str
@@ -120,8 +121,23 @@ class _Normalizer(cst.CSTTransformer):
         return updated_node.with_changes(value=_IMAGINARY_MARKER)
 
 
+def _is_docstring(statement: cst.BaseStatement) -> bool:
+    """Whether ``statement`` is a lone string expression — a docstring."""
+    if not isinstance(statement, cst.SimpleStatementLine) or len(statement.body) != 1:
+        return False
+    expr = statement.body[0]
+    return isinstance(expr, cst.Expr) and isinstance(
+        expr.value, (cst.SimpleString, cst.ConcatenatedString)
+    )
+
+
 class _FunctionCollector(cst.CSTVisitor):
-    """Collect every ``FunctionDef`` with its source-span start/end lines."""
+    """Collect every ``FunctionDef`` with its start line and CODE-line span.
+
+    The span excludes a leading docstring: two distinct functions that differ
+    only in their docstring and share a one-line body are not real code
+    duplication, so their prose must not push them over the ``min_lines`` floor.
+    """
 
     METADATA_DEPENDENCIES = (PositionProvider,)
 
@@ -130,7 +146,18 @@ class _FunctionCollector(cst.CSTVisitor):
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
         pos = self.get_metadata(PositionProvider, node)
-        self.functions.append((node, pos.start.line, pos.end.line))
+        span = pos.end.line - pos.start.line + 1
+        self.functions.append((node, pos.start.line, span - self._docstring_lines(node)))
+
+    def _docstring_lines(self, node: cst.FunctionDef) -> int:
+        block = node.body
+        if not isinstance(block, cst.IndentedBlock) or not block.body:
+            return 0
+        first = block.body[0]
+        if not _is_docstring(first):
+            return 0
+        pos = self.get_metadata(PositionProvider, first)
+        return pos.end.line - pos.start.line + 1
 
 
 def _hash_function(module: cst.Module, func: cst.FunctionDef) -> str:
@@ -159,10 +186,10 @@ def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
             path=path,
             name=node.name.value,
             line=start,
-            n_lines=end - start + 1,
+            n_lines=code_lines,
             normalized_hash=_hash_function(module, node),
         )
-        for node, start, end in collector.functions
+        for node, start, code_lines in collector.functions
     ]
 
 
