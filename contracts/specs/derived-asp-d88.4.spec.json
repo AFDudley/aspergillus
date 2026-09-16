@@ -1,0 +1,288 @@
+{
+  "id": "derived-asp-d88.4",
+  "original_statement": "What did you do? List the exact steps to reproduce, in order. Run aspergillus's check-duplicates against a codebase containing near-miss or semantic duplicates (type-3/type-4 clones): two functions that share a substantial copied spine \u2014 a verbatim-identical inner closure plus an identical call, and duplicated statement sequences \u2014 embedded in two structurally different functions. (Originally observed in exophial3 on src/e_new_model/shell/drive.py:drive vs src/e_new_model/shell/driver.py:put.)\nWhat did you expect to happen? check-duplicates flags (a) type-3 near-miss/gapped clones (copied fragments inside differently-shaped functions with added/removed/changed statements) and (b) type-4 semantic clones (functionally equivalent, syntactically different code) \u2014 or at minimum states in its own docs that its scope is type-2-only.\nWhat actually happened? Include the exact error text or output. The detector at python/src/aspergillus/duplicates.py normalizes each function body (identifiers -> _ID, literals -> type markers; _Normalizer), renders the whole normalized body, sha256-hashes it (_hash_function), and groups only functions whose ENTIRE normalized body hashes identically (find_duplicate_groups). Fragment-level near-miss (type-3) and semantically-equivalent-but-syntactically-different (type-4) matches never produce a hit, on any input, by construction of the whole-body-hash comparison; a substantial duplicated spine embedded in two differently-shaped functions yields 'no duplicate functions found'. duplicates.py's own docstring self-declares 'This is what makes the hash a type-2 clone signature'.\nWhich surface or component? (e.g. gateway route, mobile screen, CLI verb) aspergillus check-duplicates (python/src/aspergillus/duplicates.py: _Normalizer, _hash_function, find_duplicate_groups)\nWhat environment and version? (OS, app/gateway build or commit, network) aspergillus repo, Python rule pack (python/)\nIs it reproducible? (always / intermittently / once) \u2014 and how often. always\nWhat is the impact / severity? Who is blocked and how badly? The duplication gate is scoped to type-2 (renamed whole-function) clones only. Type-3 near-miss/gapped clones and type-4 semantic clones pass the gate uncaught. Standard type-1..4 clone taxonomy (Roy & Cordy clone-detection survey; Bellon et al. clone-tool comparison).\nWhat activity was underway when this was found? (ODC Activity \u2014 e.g. testing, code review, normal usage, reproduction attempt) design review\nWhat condition or event exposed the defect? (ODC Trigger \u2014 e.g. a config change, concurrent access, a boundary/edge-case input, an unusual workload) design conformance\nWhich quality/capability dimension does this affect? (ODC Impact \u2014 e.g. reliability, usability, capability, performance, security, maintainability, standards, requirements \u2014 distinct from the severity/who's-blocked question above) maintainability\n\nDecomposed child: Add type-4 (semantic, functionally-equivalent-but-syntactically-different) clone detection to aspergillus's check-duplicates (python/src/aspergillus/duplicates.py), using a PDG/metrics-based signal (Komondoor & Horwitz PDG subgraph matching, or a normalized metrics/behavioral vector). Report type-4 hits as a distinct LOWER-CONFIDENCE 'candidate' tier, separate from the type-1/2/3 tiers, and do not fail or block the gate solely on a type-4 candidate hit, since type-4 recall is inherently limited. Each report carries its clone type ('type-4-candidate') and a similarity score, and excludes boilerplate (trivial dunders/getters/pass-only bodies). Build a pytest suite including fixtures from the Roy & Cordy (2007) editing-scenario taxonomy for type-4 edits and BigCloneBench (Svajlenko et al. 2014) pairs labeled T4, asserting the detector assigns the correct candidate tier to each labeled pair.",
+  "restatement": "Aspergillus's duplicate-code checker (python/src/aspergillus/duplicates.py) today finds type-1, type-2, and type-3 clones: exact or near-exact code copies. This request adds a separate, new capability: finding type-4 clones, pairs of functions that do the same job but are written in completely different code. Because this kind of match is much harder to prove correct, every type-4 match must be reported as a 'candidate' in its own tier, lower-confidence than the existing tiers, and a type-4 candidate must never by itself make the duplicate-check gate fail. The detector must build its judgment from a fixed, repeatable set of numbers computed for each function from the code's existing LibCST parse tree: how many times each function or method is called, which operators appear, how many literals of each type appear, and how many control-flow blocks (if, for, while, and so on) appear. It must not use a program-dependence-graph library or any other new external dependency. Two functions are reported as a type-4 candidate pair when their numbers are similar enough to cross a fixed threshold, and each reported pair carries the label 'type-4-candidate' and a similarity score strictly between 0 and 1. To prove the detector works, the repository must contain a Python example pair that does the same job in two different ways (for example an iterative loop that adds up a list against a call to the built-in sum(), or an iterative factorial against a recursive factorial), and running the detector on that pair must report it as a type-4 candidate. The repository must also contain a pair of clearly unrelated functions, and running the detector on that pair must not report it as a type-4 candidate. All example fixtures are written in Python inside this repository; none may come from BigCloneBench or from Java source, because BigCloneBench is a Java-only corpus and this detector only understands Python. Finding type-1, type-2, and type-3 clones is unchanged by this work; those tiers keep behaving exactly as they do today.",
+  "restatement_clauses": [
+    {
+      "id": "c1",
+      "text": "The type-4-candidate tier must be reported separately from the type-2 and type-3 tiers, and a type-4-candidate finding must never by itself make the duplicate-check gate fail or block."
+    },
+    {
+      "id": "c2",
+      "text": "The comparison the detector uses to find type-4 candidates must be deterministic: computed from the existing LibCST parse of each function, it must give the same similarity score every time it runs on the same pair of functions."
+    },
+    {
+      "id": "c3",
+      "text": "The detector must not use a PDG (program-dependence-graph) library or any other new external dependency; it must be built only on the existing LibCST parse."
+    },
+    {
+      "id": "c4",
+      "text": "Each reported type-4 candidate must carry the clone type 'type-4-candidate' and a similarity score strictly between 0 and 1."
+    },
+    {
+      "id": "c5",
+      "text": "The repository must contain an in-repo Python fixture pair that is functionally equivalent but syntactically different, for example an iterative for-loop sum versus the built-in sum(), or an iterative factorial versus a recursive factorial, and running the detector on this pair must report it as a type-4 candidate."
+    },
+    {
+      "id": "c6",
+      "text": "The repository must contain a clearly-unrelated Python function pair, and running the detector on this pair must not report it as a type-4 candidate."
+    },
+    {
+      "id": "c7",
+      "text": "No BigCloneBench or Java-derived fixtures may be used; all fixtures used to prove this feature are authored in Python inside this repository."
+    },
+    {
+      "id": "c8",
+      "text": "Type-1, type-2, and type-3 clone detection are out of scope for this change and must keep behaving exactly as they do before this change."
+    }
+  ],
+  "goal": "Add a non-blocking type-4 semantic clone candidate tier to aspergillus's duplicate checker, built from a deterministic LibCST-derived feature vector, and prove it with in-repo Python fixtures.",
+  "acceptance_criteria": [
+    "When the duplicate checker is run over a file that only contains the type-4 example pair, the checker does not fail or block, even though it flags the pair as a type-4 candidate.",
+    "Running the type-4 comparison on the same pair of functions twice gives the same similarity score both times.",
+    "The project's Python dependency files do not add a program-dependence-graph library or any other new graph-analysis library.",
+    "The type-4 example pair the checker flags carries the label 'type-4-candidate' and a similarity score strictly between 0 and 1.",
+    "The checker flags the functionally-equivalent-but-differently-written example pair as a type-4 candidate.",
+    "The checker does not flag a pair of clearly unrelated functions as a type-4 candidate.",
+    "None of the new type-4 example files or the checker's own source mention BigCloneBench or its Java corpus.",
+    "The existing checks for type-2 and type-3 duplicate code still pass after this change."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "When the duplicate checker is run over a file that only contains the type-4 example pair, the checker does not fail or block, even though it flags the pair as a type-4 candidate."
+    },
+    {
+      "id": "c2",
+      "text": "Running the type-4 comparison on the same pair of functions twice gives the same similarity score both times."
+    },
+    {
+      "id": "c3",
+      "text": "The project's Python dependency files do not add a program-dependence-graph library or any other new graph-analysis library."
+    },
+    {
+      "id": "c4",
+      "text": "The type-4 example pair the checker flags carries the label 'type-4-candidate' and a similarity score strictly between 0 and 1."
+    },
+    {
+      "id": "c5",
+      "text": "The checker flags the functionally-equivalent-but-differently-written example pair as a type-4 candidate."
+    },
+    {
+      "id": "c6",
+      "text": "The checker does not flag a pair of clearly unrelated functions as a type-4 candidate."
+    },
+    {
+      "id": "c7",
+      "text": "None of the new type-4 example files or the checker's own source mention BigCloneBench or its Java corpus."
+    },
+    {
+      "id": "c8",
+      "text": "The existing checks for type-2 and type-3 duplicate code still pass after this change."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "description": "When the duplicate checker is run over a file that only contains the type-4 example pair, the checker does not fail or block, even though it flags the pair as a type-4 candidate.",
+      "proves": "A type-4-candidate finding, on its own, does not block the duplicate-check gate, and it is kept in its own tier separate from type-2 and type-3.",
+      "restatement_clause_id": "c1",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type4_gate_nonblocking.py",
+        "args": [
+          "python/tests/fixtures/type4_candidates/positive_pair.py"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "gate_failed",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "observe": "stdout_json",
+          "field": "reported_as_type4_candidate",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "description": "Running the type-4 comparison on the same pair of functions twice gives the same similarity score both times.",
+      "proves": "The semantic feature vector comparison the detector uses is deterministic.",
+      "restatement_clause_id": "c2",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type4_determinism.py",
+        "args": [
+          "python/tests/fixtures/type4_candidates/positive_pair.py"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "scores_match",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep_absent",
+      "description": "The project's Python dependency files do not add a program-dependence-graph library or any other new graph-analysis library.",
+      "proves": "The detector adds no PDG library or other new external dependency.",
+      "restatement_clause_id": "c3",
+      "pattern": "networkx",
+      "files": [
+        "python/pyproject.toml",
+        "python/uv.lock"
+      ],
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "description": "The type-4 example pair the checker flags carries the label 'type-4-candidate' and a similarity score strictly between 0 and 1.",
+      "proves": "Each type-4 candidate report carries the required clone type label and a score in the required range.",
+      "restatement_clause_id": "c4",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type4_fields.py",
+        "args": [
+          "python/tests/fixtures/type4_candidates/positive_pair.py"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "clone_type",
+          "op": "eq",
+          "value": "type-4-candidate"
+        },
+        {
+          "observe": "stdout_json",
+          "field": "similarity_score",
+          "op": "gt",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "similarity_score",
+          "op": "lt",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "description": "The checker flags the functionally-equivalent-but-differently-written example pair as a type-4 candidate.",
+      "proves": "The detector correctly finds the documented positive example of a type-4 clone.",
+      "restatement_clause_id": "c5",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type4_positive.py",
+        "args": [
+          "python/tests/fixtures/type4_candidates/positive_pair.py"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "detected_as_type4_candidate",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "The checker does not flag a pair of clearly unrelated functions as a type-4 candidate.",
+      "proves": "The detector does not produce a false positive on an unrelated pair of functions.",
+      "restatement_clause_id": "c6",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type4_negative.py",
+        "args": [
+          "python/tests/fixtures/type4_candidates/negative_pair.py"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "detected_as_type4_candidate",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 30,
+      "clause_id": "c6"
+    },
+    {
+      "type": "grep_absent",
+      "description": "None of the new type-4 example files or the checker's own source mention BigCloneBench or its Java corpus.",
+      "proves": "No BigCloneBench or Java-derived material is used as a fixture for this feature.",
+      "restatement_clause_id": "c7",
+      "pattern": "BigCloneBench",
+      "additional_patterns": [
+        "IJaDataset"
+      ],
+      "files": [
+        "python/tests/fixtures/type4_candidates/positive_pair.py",
+        "python/tests/fixtures/type4_candidates/negative_pair.py",
+        "python/src/aspergillus/duplicates.py"
+      ],
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "description": "The existing checks for type-2 and type-3 duplicate code still pass after this change.",
+      "proves": "Type-1, type-2, and type-3 clone detection are unaffected by adding type-4 candidate detection.",
+      "restatement_clause_id": "c8",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type123_regression.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "existing_tests_passed",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c8"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/oracle_type123_regression.py",
+    "scripts/oracle_type4_determinism.py",
+    "scripts/oracle_type4_fields.py",
+    "scripts/oracle_type4_gate_nonblocking.py",
+    "scripts/oracle_type4_negative.py",
+    "scripts/oracle_type4_positive.py"
+  ]
+}
