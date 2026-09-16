@@ -1,0 +1,30 @@
+# Root uv project — EXISTS SO EXOPHIAL'S ACCEPTANCE-ORACLE HARNESS WORKS.
+#
+# exophial grades a pebble's stdout_json oracle scripts in a hermetic child
+# environment whose PATH leads with `<graded-tree-root>/.venv/bin` ONLY when the
+# graded-tree ROOT is a uv project — `spec_oracle._is_uv_project(root)` is
+# literally `(root / "pyproject.toml").is_file()`, and `_materialize_project_env`
+# then runs `uv sync --locked` at that root before any oracle runs
+# (spec_oracle.py). This repo's Python package lives in the `python/` SUBDIR, so
+# without a root manifest the harness never materializes a venv, and any oracle
+# that imports `aspergillus` (-> `libcst`) dies with ModuleNotFoundError under
+# the bare interpreter before a single behaviour is checked.
+#
+# This root project depends on the `python/` package via an editable path source
+# (NOT a uv workspace), so `uv sync` here builds a repo-root `.venv` carrying
+# `aspergillus` + its runtime deps (`libcst`, `fixit`). `python/` stays a
+# standalone project: `uv run --directory python ...` (the commit gate) still
+# resolves against `python/`'s own environment, unaffected by this file.
+[project]
+name = "aspergillus-oracle-env"
+version = "0.0.0"
+description = "Repo-root uv env so exophial's oracle harness (spec_oracle._is_uv_project) materializes a .venv with the aspergillus package and its deps. Not published."
+requires-python = ">=3.10"
+dependencies = ["aspergillus"]
+
+[tool.uv]
+# The root is an environment, not a distributable package — do not try to build it.
+package = false
+
+[tool.uv.sources]
+aspergillus = { path = "python", editable = true }
