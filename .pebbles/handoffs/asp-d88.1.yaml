@@ -1,0 +1,76 @@
+status: completed
+pebble_id: asp-d88.1
+branch: worker/asp-d88-1
+commits:
+  - "f33947929fbb9e444eda7afdd5a071a6b8d2db9b"
+summary: >
+  This change adds type-1 (exact) clone detection to check-duplicates.
+  The old detector only found type-2 clones: bodies equal after
+  identifier and literal normalization. The new detector hashes
+  ast.dump of each function body. The ast module strips comments and
+  whitespace on parse. It keeps identifier names and literal values
+  exact. This hash is the Roy and Cordy (2007) type-1 signature. A new
+  predicate excludes boilerplate: trivial dunders, one-line getters,
+  and pass-only bodies. Each type-1 group carries a clone_type label
+  and a similarity score, in both the CLI text report and the CLI JSON
+  output. The change is wired into the real check-duplicates CLI, not
+  only into the internal duplicates.py functions. A new test file,
+  python/tests/test_type1_clones.py, holds 13 tests. It names both
+  required sources: Roy and Cordy (2007) and Bellon and colleagues
+  (2007). I verified the change four ways. First, I ran the full
+  project test suite: 293 passed, 1 skipped. Second, I ran mypy and
+  ruff against the changed source files: both clean. Third, I ran
+  pre-commit on the changed files: all hooks passed. Fourth, I wrote
+  and ran four standalone oracle scripts under scripts/, one per
+  acceptance clause. Each script drives the real detector through
+  `uv run --directory python python3`, since the detector needs the
+  installed libcst dependency. Each script's stdout_json output
+  matched the spec's expected values exactly, for all four behavior
+  clauses (c1, c2, c3, c7).
+cost: "~90k tokens"
+verify_transcript:
+  hooks:
+    - name: claude-md-coverage
+      outcome: passed
+      duration_s: 0.08
+    - name: trailing-whitespace
+      outcome: passed
+      duration_s: 0.02
+    - name: end-of-file-fixer
+      outcome: passed
+      duration_s: 0.02
+    - name: check-yaml
+      outcome: skipped
+      duration_s: 0
+    - name: check-added-large-files
+      outcome: passed
+      duration_s: 0.02
+    - name: check-merge-conflict
+      outcome: passed
+      duration_s: 0.02
+    - name: check-case-conflict
+      outcome: passed
+      duration_s: 0.03
+    - name: mixed-line-ending
+      outcome: passed
+      duration_s: 0.02
+    - name: eslint
+      outcome: skipped
+      duration_s: 0
+    - name: prettier
+      outcome: passed
+      duration_s: 0.1
+e2e_gate:
+  spec: contracts/specs/derived-asp-d88.1.spec.json
+  command: >-
+    python3 scripts/oracle_type1_semantics.py < stdin_c1.json &&
+    python3 scripts/oracle_type1_report_fields.py < stdin_c2.json &&
+    python3 scripts/oracle_type1_boilerplate_exclusion.py < stdin_c3.json &&
+    python3 scripts/oracle_type1_editing_scenarios.py < stdin_c7.json
+    (stdin files hold the exact `when.stdin` JSON from each acceptance test
+    in contracts/specs/derived-asp-d88.1.spec.json); each script drives
+    `uv run --directory python python3` internally against the real
+    aspergillus.duplicates module.
+  result: passed
+  ran_at_sha: "f33947929fbb9e444eda7afdd5a071a6b8d2db9b"
+  mocks_in_path: false
