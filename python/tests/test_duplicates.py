@@ -203,22 +203,22 @@ def third_person_of(verb):
 '''
 
 # A genuine multi-statement clone: five lines of real code, no docstring.
-_BIG_A = '''
+_BIG_A = """
 def a(xs, ys):
     total = 0
     for item in xs:
         if item in ys:
             total += item
     return total
-'''
-_BIG_B = '''
+"""
+_BIG_B = """
 def b(ps, qs):
     total = 0
     for element in ps:
         if element in qs:
             total += element
     return total
-'''
+"""
 
 
 class TestDocstringDoesNotInflateCloneSize:

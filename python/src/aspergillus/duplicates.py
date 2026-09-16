@@ -212,7 +212,7 @@ def _is_docstring(statement: cst.BaseStatement) -> bool:
         return False
     expr = statement.body[0]
     return isinstance(expr, cst.Expr) and isinstance(
-        expr.value, (cst.SimpleString, cst.ConcatenatedString)
+        expr.value, cst.SimpleString | cst.ConcatenatedString
     )
 
 
@@ -230,7 +230,7 @@ def _is_simple_getter(statement: cst.BaseStatement) -> bool:
     small = statement.body[0]
     if not isinstance(small, cst.Return) or small.value is None:
         return False
-    return isinstance(small.value, (cst.Name, cst.Attribute))
+    return isinstance(small.value, cst.Name | cst.Attribute)
 
 
 def _is_dunder(name: str) -> bool:
