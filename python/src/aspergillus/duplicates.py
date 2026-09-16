@@ -10,17 +10,28 @@ is a cross-file fact a per-file CST rule structurally cannot see. LibCST
 is just the parser here; the grouping happens across the whole corpus.
 Pebble: asp-21d.
 
-Approach (standard type-2 clone normalization):
+Approach (type-2 clone normalization, two granularities):
 
 1. Parse each file with LibCST (``extract_function_records``).
 2. For every ``FunctionDef`` (including methods and nested functions),
    normalize the node: every identifier (``Name``) collapses to a single
    placeholder and every literal collapses to a type-only marker, so
    functions that differ ONLY by naming / literal values hash the same.
-3. Hash the rendered normalized node; group records by hash across ALL
-   files (``find_duplicate_groups``).
-4. Report any hash bucket with >1 member whose function span is at least
-   ``min_lines`` and whose hash is not allow-listed.
+3. Whole-body matching (``find_duplicate_groups``): hash the rendered
+   normalized node; group records by hash across ALL files. This catches a
+   clone only when the ENTIRE normalized body matches — a renamed copy of
+   one whole function.
+4. Fragment matching (``find_fragment_duplicates``): also render each body
+   statement individually and slide a window of normalized statements
+   across each function, hashing each window. This catches a copied
+   statement spine (e.g. an identical inner closure plus an identical call)
+   embedded inside two otherwise differently-shaped functions — the case
+   whole-body hashing cannot see by construction, because the surrounding
+   code makes the whole-body hashes differ. Pebble: asp-d88.2.
+5. ``find_all_duplicate_groups`` combines both, each pair carrying a
+   clone-type label and a similarity score. Boilerplate bodies (trivial
+   dunders, one-line getters, pass-only bodies) are excluded from both, even
+   when they match verbatim — they are scaffolding, not duplication.
 
 All functions in this module are pure: they take source strings / records
 and return records / groups / formatted text. Filesystem reads, argument
@@ -31,6 +42,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import libcst as cst
@@ -46,6 +58,31 @@ _INT_MARKER = "0"
 _FLOAT_MARKER = "0.0"
 _IMAGINARY_MARKER = "0j"
 
+# Clone-type labels a reported DuplicateGroup carries. Both are type-2 (exact
+# after identifier/literal normalization) — they differ only in whether the
+# match spans a whole function body or a statement fragment within one.
+CLONE_TYPE_WHOLE = "type-2-whole"
+CLONE_TYPE_FRAGMENT = "type-2-fragment"
+
+# Separator joined between per-statement normalized texts before hashing a
+# window. Chosen to never appear in rendered Python source.
+_FRAGMENT_SEPARATOR = "\x00"
+
+
+@dataclass(frozen=True)
+class NormalizedStatement:
+    """One body statement of a function, rendered under type-2 normalization.
+
+    ``text`` is the statement's own rendered code (nested blocks render as
+    part of their parent statement's text, so a compound statement like an
+    ``if`` or ``for`` is one entry). ``start_line``/``end_line`` come from the
+    UNNORMALIZED source and are used only to size a matched window in lines.
+    """
+
+    text: str
+    start_line: int
+    end_line: int
+
 
 @dataclass(frozen=True)
 class FunctionRecord:
@@ -54,7 +91,12 @@ class FunctionRecord:
     ``normalized_hash`` is equal for two functions that are identical up to
     identifier renaming and literal values; ``n_lines`` is the CODE-line span —
     the function span minus a leading docstring — used for the ``min_lines``
-    size floor, so prose never inflates a clone's measured size.
+    size floor, so prose never inflates a clone's measured size. ``statements``
+    is the same body, minus a leading docstring, as individually normalized
+    statements — the unit fragment matching slides its window over.
+    ``is_boilerplate`` marks trivial scaffolding (pass-only bodies, one-line
+    getters, dunder methods with a single-statement body) that must never be
+    reported as a duplicate even when it matches verbatim.
     """
 
     path: str
@@ -62,15 +104,24 @@ class FunctionRecord:
     line: int
     n_lines: int
     normalized_hash: str
+    is_boilerplate: bool
+    statements: tuple[NormalizedStatement, ...]
 
 
 @dataclass(frozen=True)
 class DuplicateGroup:
-    """A hash bucket with more than one member — a duplicate cluster."""
+    """A cluster of functions sharing a type-2 clone, whole-body or fragment.
+
+    ``similarity`` is the fraction of the largest member's statements the
+    match covers: 1.0 for a whole-body match, less than 1.0 for a fragment
+    embedded in a larger, differently-shaped function.
+    """
 
     normalized_hash: str
     n_lines: int
     members: tuple[FunctionRecord, ...]
+    clone_type: str
+    similarity: float
 
 
 class _Normalizer(cst.CSTTransformer):
@@ -131,23 +182,82 @@ def _is_docstring(statement: cst.BaseStatement) -> bool:
     )
 
 
-class _FunctionCollector(cst.CSTVisitor):
-    """Collect every ``FunctionDef`` with its start line and CODE-line span.
+def _is_pass_only(statement: cst.BaseStatement) -> bool:
+    """Whether ``statement`` is a bare ``pass``."""
+    return isinstance(statement, cst.SimpleStatementLine) and any(
+        isinstance(small, cst.Pass) for small in statement.body
+    )
 
-    The span excludes a leading docstring: two distinct functions that differ
-    only in their docstring and share a one-line body are not real code
-    duplication, so their prose must not push them over the ``min_lines`` floor.
+
+def _is_simple_getter(statement: cst.BaseStatement) -> bool:
+    """Whether ``statement`` is a single ``return <name-or-attribute>``."""
+    if not isinstance(statement, cst.SimpleStatementLine) or len(statement.body) != 1:
+        return False
+    small = statement.body[0]
+    if not isinstance(small, cst.Return) or small.value is None:
+        return False
+    return isinstance(small.value, (cst.Name, cst.Attribute))
+
+
+def _is_dunder(name: str) -> bool:
+    """Whether ``name`` is a dunder method name (``__init__``, ``__eq__``, ...)."""
+    return name.startswith("__") and name.endswith("__") and len(name) > 4
+
+
+def _is_boilerplate(node: cst.FunctionDef, code_statements: Sequence[cst.BaseStatement]) -> bool:
+    """Whether ``node`` is trivial scaffolding, never worth flagging as a clone.
+
+    Boilerplate is a single-statement CODE body (docstring already excluded)
+    that is a bare ``pass``, a one-line getter (``return`` of a name or
+    attribute), or any dunder method — these compare identical after type-2
+    normalization BY CONSTRUCTION (``pass`` is always ``pass``, every
+    name/attribute collapses to the same placeholder), so without this
+    exclusion any two unrelated trivial methods would falsely report as
+    a clone.
+    """
+    if len(code_statements) != 1:
+        return False
+    (statement,) = code_statements
+    return _is_pass_only(statement) or _is_simple_getter(statement) or _is_dunder(node.name.value)
+
+
+class _FunctionCollector(cst.CSTVisitor):
+    """Collect every ``FunctionDef`` with its span and its CODE body statements.
+
+    The span, and the collected statements, exclude a leading docstring: two
+    distinct functions that differ only in their docstring and share a
+    one-line body are not real code duplication, so their prose must not
+    push them over the ``min_lines`` floor or seed a spurious fragment match.
     """
 
     METADATA_DEPENDENCIES = (PositionProvider,)
 
     def __init__(self) -> None:
-        self.functions: list[tuple[cst.FunctionDef, int, int]] = []
+        self.functions: list[
+            tuple[cst.FunctionDef, int, int, tuple[tuple[cst.BaseStatement, int, int], ...]]
+        ] = []
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
         pos = self.get_metadata(PositionProvider, node)
         span = pos.end.line - pos.start.line + 1
-        self.functions.append((node, pos.start.line, span - self._docstring_lines(node)))
+        code_statements = self._code_statements(node)
+        docstring_lines = self._docstring_lines(node)
+        self.functions.append((node, pos.start.line, span - docstring_lines, code_statements))
+
+    def _code_statements(
+        self, node: cst.FunctionDef
+    ) -> tuple[tuple[cst.BaseStatement, int, int], ...]:
+        block = node.body
+        if not isinstance(block, cst.IndentedBlock) or not block.body:
+            return ()
+        statements = block.body
+        if _is_docstring(statements[0]):
+            statements = statements[1:]
+        result = []
+        for statement in statements:
+            pos = self.get_metadata(PositionProvider, statement)
+            result.append((statement, pos.start.line, pos.end.line))
+        return tuple(result)
 
     def _docstring_lines(self, node: cst.FunctionDef) -> int:
         block = node.body
@@ -170,6 +280,37 @@ def _hash_function(module: cst.Module, func: cst.FunctionDef) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
+def _normalize_statements(
+    module: cst.Module,
+    func: cst.FunctionDef,
+    code_statements: tuple[tuple[cst.BaseStatement, int, int], ...],
+) -> tuple[NormalizedStatement, ...]:
+    """Render each of ``func``'s CODE body statements under type-2 normalization.
+
+    ``code_statements`` pairs each body statement (docstring already
+    excluded) with its (start_line, end_line) span from the UNNORMALIZED
+    tree. ``_Normalizer`` only rewrites leaf values, so it never adds, drops,
+    or reorders statements — the same index lines up in both trees, offset by
+    however many leading statements (0 or 1: the docstring) were dropped.
+    """
+    if not code_statements:
+        return ()
+    normalized = func.visit(_Normalizer())
+    assert isinstance(normalized, cst.FunctionDef)
+    assert isinstance(normalized.body, cst.IndentedBlock)
+    normalized_statements = normalized.body.body
+    offset = len(normalized_statements) - len(code_statements)
+    assert offset in (0, 1)
+    return tuple(
+        NormalizedStatement(
+            text=module.code_for_node(normalized_statements[offset + i]),
+            start_line=start,
+            end_line=end,
+        )
+        for i, (_, start, end) in enumerate(code_statements)
+    )
+
+
 def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
     """Parse ``source`` and return a normalized record per function it defines.
 
@@ -188,8 +329,10 @@ def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
             line=start,
             n_lines=code_lines,
             normalized_hash=_hash_function(module, node),
+            is_boilerplate=_is_boilerplate(node, [s for s, _, _ in code_statements]),
+            statements=_normalize_statements(module, node, code_statements),
         )
-        for node, start, code_lines in collector.functions
+        for node, start, code_lines, code_statements in collector.functions
     ]
 
 
@@ -213,14 +356,17 @@ def find_duplicate_groups(
     min_lines: int,
     allowlist: frozenset[str],
 ) -> list[DuplicateGroup]:
-    """Group records by hash; return buckets that are real duplicate clusters.
+    """Group records by whole-body hash; return buckets that are real clusters.
 
-    A bucket qualifies when it has >1 member, its largest member spans at
-    least ``min_lines`` lines, and its hash is not in ``allowlist``. Groups
-    are returned largest-span first (most significant duplication on top).
+    A bucket qualifies when it has >1 non-boilerplate member, its largest
+    member spans at least ``min_lines`` lines, and its hash is not in
+    ``allowlist``. Groups are returned largest-span first (most significant
+    duplication on top).
     """
     buckets: dict[str, list[FunctionRecord]] = defaultdict(list)
     for record in records:
+        if record.is_boilerplate:
+            continue
         buckets[record.normalized_hash].append(record)
 
     groups = [
@@ -228,6 +374,8 @@ def find_duplicate_groups(
             normalized_hash=hash_,
             n_lines=max(member.n_lines for member in members),
             members=tuple(sorted(members, key=lambda member: (member.path, member.line))),
+            clone_type=CLONE_TYPE_WHOLE,
+            similarity=1.0,
         )
         for hash_, members in buckets.items()
         if len(members) > 1
@@ -235,6 +383,167 @@ def find_duplicate_groups(
         and max(member.n_lines for member in members) >= min_lines
     ]
     return sorted(groups, key=lambda group: (-group.n_lines, group.normalized_hash))
+
+
+def _fragment_hash(statements: Sequence[NormalizedStatement]) -> str:
+    """Sha256 hex of a window of normalized statements, joined unambiguously."""
+    joined = _FRAGMENT_SEPARATOR.join(statement.text for statement in statements)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def _window_n_lines(statements: Sequence[NormalizedStatement]) -> int:
+    """Line span, in the UNNORMALIZED source, covered by a statement window."""
+    return statements[-1].end_line - statements[0].start_line + 1
+
+
+def _is_window_covered(covered: list[tuple[int, int]], start: int, end: int) -> bool:
+    """Whether ``[start, end)`` sits entirely inside an already-found window."""
+    return any(lo <= start and end <= hi for lo, hi in covered)
+
+
+def _bucket_windows_at_length(
+    candidates: list[FunctionRecord],
+    length: int,
+    covered: dict[tuple[str, str, int], list[tuple[int, int]]],
+) -> dict[str, list[tuple[FunctionRecord, int]]]:
+    """Group every not-yet-``covered`` window of ``length`` statements by hash."""
+    buckets: dict[str, list[tuple[FunctionRecord, int]]] = defaultdict(list)
+    for record in candidates:
+        n_statements = len(record.statements)
+        if n_statements < length:
+            continue
+        key = (record.path, record.name, record.line)
+        for start in range(0, n_statements - length + 1):
+            if _is_window_covered(covered[key], start, start + length):
+                continue
+            window = record.statements[start : start + length]
+            buckets[_fragment_hash(window)].append((record, start))
+    return buckets
+
+
+def _groups_from_bucket(
+    hash_: str,
+    occurrences: list[tuple[FunctionRecord, int]],
+    length: int,
+    min_lines: int,
+) -> list[tuple[DuplicateGroup, list[tuple[FunctionRecord, int]]]]:
+    """The fragment match from a hash bucket, as a zero-or-one-element list.
+
+    Empty when it doesn't qualify — no Optional-as-sentinel (ASP302): a list
+    already expresses "found" (one element) or "not found" (none) without a
+    separate null case. One occurrence per function: a function matching
+    itself twice (a genuinely repeated internal block) is a different
+    defect, out of scope here.
+    """
+    by_function = {
+        (record.path, record.name, record.line): (record, start) for record, start in occurrences
+    }
+    if len(by_function) < 2:
+        return []
+    members_and_starts = list(by_function.values())
+    n_lines = max(
+        _window_n_lines(record.statements[start : start + length])
+        for record, start in members_and_starts
+    )
+    if n_lines < min_lines:
+        return []
+    members = tuple(
+        sorted(
+            (record for record, _ in members_and_starts),
+            key=lambda member: (member.path, member.line),
+        )
+    )
+    similarity = length / max(len(member.statements) for member in members)
+    group = DuplicateGroup(
+        normalized_hash=hash_,
+        n_lines=n_lines,
+        members=members,
+        clone_type=CLONE_TYPE_FRAGMENT,
+        similarity=similarity,
+    )
+    return [(group, members_and_starts)]
+
+
+def find_fragment_duplicates(
+    records: list[FunctionRecord],
+    min_lines: int,
+    min_statements: int,
+    allowlist: frozenset[str],
+) -> list[DuplicateGroup]:
+    """Find a duplicated statement SPINE embedded inside differently-shaped
+    functions, via sliding windows of normalized statement sequences.
+
+    Unlike ``find_duplicate_groups`` (which requires an ENTIRE normalized
+    body to match), this catches a copied run of statements that sits inside
+    a larger function alongside unrelated surrounding code — the case a
+    whole-body hash cannot see by construction, since the surrounding code
+    makes the whole-body hashes differ. Matches stay exact (type-2: identifier
+    renaming and literal values only), just at fragment instead of whole-body
+    granularity.
+
+    Windows are scanned longest-first per length so a maximal spine is
+    reported once: any shorter window fully inside an already-reported spine,
+    for the SAME function, is skipped — it is a piece of a clone already
+    found, not a separate one.
+    """
+    candidates = [
+        record
+        for record in records
+        if not record.is_boilerplate and len(record.statements) >= min_statements
+    ]
+    if not candidates:
+        return []
+
+    covered: dict[tuple[str, str, int], list[tuple[int, int]]] = defaultdict(list)
+    groups: list[DuplicateGroup] = []
+    max_len = max(len(record.statements) for record in candidates)
+
+    for length in range(max_len, min_statements - 1, -1):
+        buckets = _bucket_windows_at_length(candidates, length, covered)
+        for hash_, occurrences in buckets.items():
+            if hash_ in allowlist:
+                continue
+            for group, members_and_starts in _groups_from_bucket(
+                hash_, occurrences, length, min_lines
+            ):
+                groups.append(group)
+                for record, start in members_and_starts:
+                    key = (record.path, record.name, record.line)
+                    covered[key].append((start, start + length))
+
+    return sorted(groups, key=lambda group: (-group.n_lines, group.normalized_hash))
+
+
+def find_all_duplicate_groups(
+    records: list[FunctionRecord],
+    min_lines: int,
+    allowlist: frozenset[str],
+    min_fragment_statements: int = 2,
+) -> list[DuplicateGroup]:
+    """Whole-body clones plus fragment-embedded clones, combined and sorted.
+
+    A pair already reported as a whole-body match is not repeated as a
+    fragment match covering that same pair in full — fragment detection
+    widens the whole-body hash's blind spot, it does not restate its findings.
+    """
+    whole = find_duplicate_groups(records, min_lines, allowlist)
+    whole_pairs = {
+        frozenset((member.path, member.name, member.line) for member in group.members)
+        for group in whole
+    }
+
+    fragments = [
+        group
+        for group in find_fragment_duplicates(
+            records, min_lines, min_fragment_statements, allowlist
+        )
+        if group.similarity < 1.0
+        or frozenset((member.path, member.name, member.line) for member in group.members)
+        not in whole_pairs
+    ]
+
+    combined = whole + fragments
+    return sorted(combined, key=lambda group: (-group.n_lines, group.normalized_hash))
 
 
 def format_report(groups: list[DuplicateGroup]) -> str:
@@ -248,7 +557,8 @@ def format_report(groups: list[DuplicateGroup]) -> str:
         "\n".join(
             [
                 f"  group {group.normalized_hash[:12]} "
-                f"({len(group.members)} copies, ~{group.n_lines} lines each):",
+                f"({len(group.members)} copies, ~{group.n_lines} lines each, "
+                f"{group.clone_type}, similarity {group.similarity:.2f}):",
                 *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
                 f"    allowlist with: {group.normalized_hash}",
             ]

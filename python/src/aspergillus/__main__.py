@@ -12,10 +12,13 @@ Two invocations:
   python -m aspergillus check-duplicates <path>... [--min-lines N]
                                                     [--allowlist FILE] [--json]
       Whole-project type-2 duplicate-function detector (cross-file — the
-      thing a single-file fixit LintRule structurally cannot do). Exit 0 =
-      clean, 1 = duplicates found, 2 = input error. Pure logic lives in
-      ``duplicates.py``; this module is the imperative shell (argument
-      parsing, filesystem reads, stdout). Pebble: asp-21d.
+      thing a single-file fixit LintRule structurally cannot do). Reports
+      whole-body clones AND a copied statement spine embedded inside a
+      differently-shaped function; each reported pair carries a clone-type
+      label and a similarity score. Exit 0 = clean, 1 = duplicates found,
+      2 = input error. Pure logic lives in ``duplicates.py``; this module is
+      the imperative shell (argument parsing, filesystem reads, stdout).
+      Pebble: asp-21d, asp-d88.2.
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ from libcst import ParserSyntaxError
 from aspergillus.duplicates import (
     FunctionRecord,
     extract_function_records,
-    find_duplicate_groups,
+    find_all_duplicate_groups,
     format_report,
     parse_allowlist,
 )
@@ -115,13 +118,15 @@ def _check_duplicates_main(argv: list[str]) -> int:
         print(f"check-duplicates: skipping unparseable file {err}", file=sys.stderr)
 
     allowlist = _load_allowlist(ns.allowlist)
-    groups = find_duplicate_groups(records, ns.min_lines, allowlist)
+    groups = find_all_duplicate_groups(records, ns.min_lines, allowlist)
 
     if ns.json:
         payload = [
             {
                 "normalized_hash": g.normalized_hash,
                 "n_lines": g.n_lines,
+                "clone_type": g.clone_type,
+                "similarity": g.similarity,
                 "members": [{"path": m.path, "line": m.line, "name": m.name} for m in g.members],
             }
             for g in groups
