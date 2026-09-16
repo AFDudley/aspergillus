@@ -1,33 +1,49 @@
 status: completed
 pebble_id: asp-d88.1
 branch: worker/asp-d88-1
-commits:
-  - "f33947929fbb9e444eda7afdd5a071a6b8d2db9b"
 summary: >
-  This change adds type-1 (exact) clone detection to check-duplicates.
-  The old detector only found type-2 clones: bodies equal after
-  identifier and literal normalization. The new detector hashes
-  ast.dump of each function body. The ast module strips comments and
-  whitespace on parse. It keeps identifier names and literal values
-  exact. This hash is the Roy and Cordy (2007) type-1 signature. A new
-  predicate excludes boilerplate: trivial dunders, one-line getters,
-  and pass-only bodies. Each type-1 group carries a clone_type label
-  and a similarity score, in both the CLI text report and the CLI JSON
-  output. The change is wired into the real check-duplicates CLI, not
-  only into the internal duplicates.py functions. A new test file,
-  python/tests/test_type1_clones.py, holds 13 tests. It names both
-  required sources: Roy and Cordy (2007) and Bellon and colleagues
-  (2007). I verified the change four ways. First, I ran the full
-  project test suite: 293 passed, 1 skipped. Second, I ran mypy and
-  ruff against the changed source files: both clean. Third, I ran
-  pre-commit on the changed files: all hooks passed. Fourth, I wrote
-  and ran four standalone oracle scripts under scripts/, one per
-  acceptance clause. Each script drives the real detector through
-  `uv run --directory python python3`, since the detector needs the
-  installed libcst dependency. Each script's stdout_json output
-  matched the spec's expected values exactly, for all four behavior
-  clauses (c1, c2, c3, c7).
-cost: "~90k tokens"
+  This is a reconciliation pass, not new feature work. asp-d88.1 (type-1
+  exact clone detection) had already passed its own acceptance gate at
+  7b91f9540cd3fbe1ab62e682a6fbf425b363cab9, but automatic reconciliation
+  with current main produced no landable candidate tree. Investigation
+  showed the literal `main` and `integrated` branches are both ancestors
+  of this branch already, so the real conflict was against the sibling
+  epic branch `epic/asp-d88`, which had by then absorbed asp-d88.2
+  (fragment-granular type-2 clone detection) — a sibling sub-pebble that
+  independently edited the same two files, duplicates.py and
+  __main__.py, adding its own FunctionRecord/DuplicateGroup fields and
+  its own find_all_duplicate_groups top-level finder. I merged
+  epic/asp-d88 and hand-resolved both conflicts by keeping every
+  addition from both sides: FunctionRecord now carries type1_hash
+  (asp-d88.1) alongside statements and is_boilerplate (asp-d88.2, reused
+  as-is since both sides defined the same boilerplate criteria — pass-only
+  bodies, one-line getters, dunder methods); find_type1_duplicate_groups
+  and format_type1_report stay a separate pipeline from the type-2
+  find_all_duplicate_groups/find_fragment_duplicates pipeline, sharing
+  one boilerplate exclusion; __main__.py's check-duplicates subcommand
+  now runs both pipelines in the same invocation and reports type-2 and
+  type-1 groups together, in both text and JSON output. A follow-up
+  commit fixed two ruff UP038 findings (tuple-form isinstance -> X | Y)
+  that were already present, unchanged, in the base-accepted commit —
+  confirmed by running the self-check against that commit's own
+  __main__.py before touching it, so this was pre-existing lint debt
+  surfaced by ruff's UP038 rule, not something the merge introduced.
+  Verified: the full project test suite (306 passed, 1 skipped, same
+  count as before the merge plus asp-d88.2's tests); ruff, ruff-format,
+  and mypy clean on every touched Python file; and all 4 behavior
+  acceptance oracles from asp-d88.1's own spec
+  (contracts/specs/derived-asp-d88.1.spec.json, clauses c1/c2/c3/c7)
+  re-run fresh against the final merge commit, each still matching its
+  `then` predicates exactly — proving the reconciliation preserved
+  asp-d88.1's originally-accepted behavior rather than silently losing
+  it during conflict resolution. `python -m aspergillus` against
+  __main__.py still reports the same pre-existing ASP202/205/206
+  findings it reported at the base-accepted commit (unchanged baseline,
+  confirmed by diff), and reports zero violations against duplicates.py.
+cost: "~75k tokens"
+commits:
+  - "9ee020be4cf7f7987b70a3f8fa218bf4efdadf55"
+  - "81abcd3058d0dce92b485c305db1cabe85078ca2"
 verify_transcript:
   hooks:
     - name: claude-md-coverage
@@ -60,6 +76,18 @@ verify_transcript:
     - name: prettier
       outcome: passed
       duration_s: 0.1
+    - name: ruff
+      outcome: passed
+      duration_s: 0.1
+    - name: ruff-format
+      outcome: passed
+      duration_s: 0.05
+    - name: mypy
+      outcome: passed
+      duration_s: 0.15
+    - name: pytest_full_suite
+      outcome: passed
+      duration_s: 3.43
 e2e_gate:
   spec: contracts/specs/derived-asp-d88.1.spec.json
   command: >-
@@ -70,7 +98,8 @@ e2e_gate:
     (stdin files hold the exact `when.stdin` JSON from each acceptance test
     in contracts/specs/derived-asp-d88.1.spec.json); each script drives
     `uv run --directory python python3` internally against the real
-    aspergillus.duplicates module.
+    aspergillus.duplicates module. Re-run fresh at the final merge commit;
+    all 4 clauses' `then` predicates still matched exactly.
   result: passed
-  ran_at_sha: "f33947929fbb9e444eda7afdd5a071a6b8d2db9b"
+  ran_at_sha: "81abcd3058d0dce92b485c305db1cabe85078ca2"
   mocks_in_path: false
