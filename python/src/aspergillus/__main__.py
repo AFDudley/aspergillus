@@ -28,6 +28,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 from fixit.api import fixit_bytes
 from fixit.ftypes import Config, QualifiedRule
@@ -35,11 +36,17 @@ from libcst import ParserSyntaxError
 
 from aspergillus.duplicates import (
     FunctionRecord,
+    SemanticRecord,
     extract_function_records,
+    extract_semantic_records,
     find_all_duplicate_groups,
     find_type1_duplicate_groups,
+    find_type3_duplicate_groups,
+    find_type4_candidates,
     format_report,
     format_type1_report,
+    format_type3_report,
+    format_type4_report,
     parse_allowlist,
 )
 
@@ -89,11 +96,54 @@ def _gather_records(files: list[Path]) -> tuple[list[FunctionRecord], list[str]]
     return records, parse_errors
 
 
+def _gather_semantic(files: list[Path]) -> tuple[list[SemanticRecord], list[str]]:
+    """Read + parse each file into semantic records for type-4 detection (IO).
+
+    Returns (records, parse_errors), mirroring ``_gather_records``: a file that
+    will not parse is reported and skipped, never aborting the scan.
+    """
+    records: list[SemanticRecord] = []
+    parse_errors: list[str] = []
+    for f in files:
+        try:
+            records.extend(extract_semantic_records(f.read_text(encoding="utf-8"), str(f)))
+        except SyntaxError as exc:
+            parse_errors.append(f"{f}: {exc}")
+    return records, parse_errors
+
+
 def _load_allowlist(path: str | None) -> frozenset[str]:
     """Load the accepted-hash allowlist file, or an empty set if none (IO)."""
     if path is None:
         return frozenset()
     return parse_allowlist(Path(path).read_text(encoding="utf-8"))
+
+
+def _reported_pairs(*group_lists: list[Any]) -> frozenset[frozenset[tuple[str, str, int]]]:
+    """Every (path, name, line) member PAIR already reported by the given tiers.
+
+    Fed to ``find_type4_candidates`` as its exclude set, so type-4 surfaces
+    only semantic similarity that type-1/2/3 did not already catch.
+    """
+    pairs: set[frozenset[tuple[str, str, int]]] = set()
+    for groups in group_lists:
+        for group in groups:
+            keys = [(m.path, m.name, m.line) for m in group.members]
+            for i in range(len(keys)):
+                for j in range(i + 1, len(keys)):
+                    pairs.add(frozenset((keys[i], keys[j])))
+    return frozenset(pairs)
+
+
+def _group_json(group: Any, hash_: str) -> dict[str, Any]:
+    """One clone group as a JSON-serializable dict (shared across all tiers)."""
+    return {
+        "normalized_hash": hash_,
+        "clone_type": group.clone_type,
+        "similarity": group.similarity,
+        "n_lines": group.n_lines,
+        "members": [{"path": m.path, "line": m.line, "name": m.name} for m in group.members],
+    }
 
 
 def _check_duplicates_main(argv: list[str]) -> int:
@@ -122,34 +172,35 @@ def _check_duplicates_main(argv: list[str]) -> int:
     allowlist = _load_allowlist(ns.allowlist)
     groups = find_all_duplicate_groups(records, ns.min_lines, allowlist)
     type1_groups = find_type1_duplicate_groups(records, ns.min_lines, allowlist)
+    type3_groups = find_type3_duplicate_groups(records, ns.min_lines, min_statements=2)
+
+    semantic_records, semantic_errors = _gather_semantic(files)
+    for err in semantic_errors:
+        print(f"check-duplicates: skipping unparseable file {err}", file=sys.stderr)
+    # Type-4 is advisory: only surface semantically-similar pairs NOT already
+    # reported by type-1/2/3, so exclude every pair those tiers found.
+    exclude_pairs = _reported_pairs(groups, type1_groups, type3_groups)
+    type4_candidates = find_type4_candidates(
+        semantic_records, ns.min_lines, exclude_pairs=exclude_pairs
+    )
 
     if ns.json:
-        payload = [
-            {
-                "normalized_hash": g.normalized_hash,
-                "n_lines": g.n_lines,
-                "clone_type": g.clone_type,
-                "similarity": g.similarity,
-                "members": [{"path": m.path, "line": m.line, "name": m.name} for m in g.members],
-            }
-            for g in groups
-        ] + [
-            {
-                "normalized_hash": g.type1_hash,
-                "clone_type": g.clone_type,
-                "similarity": g.similarity,
-                "n_lines": g.n_lines,
-                "members": [{"path": m.path, "line": m.line, "name": m.name} for m in g.members],
-            }
-            for g in type1_groups
-        ]
+        payload = (
+            [_group_json(g, g.normalized_hash) for g in groups]
+            + [_group_json(g, g.type1_hash) for g in type1_groups]
+            + [_group_json(g, "") for g in type3_groups]
+            + [_group_json(g, "") for g in type4_candidates]
+        )
         json.dump(payload, sys.stdout)
         print(file=sys.stdout)
     else:
         print(format_report(groups), end="\n")
-        print(format_type1_report(type1_groups), end="")
+        print(format_type1_report(type1_groups), end="\n")
+        print(format_type3_report(type3_groups), end="\n")
+        print(format_type4_report(type4_candidates), end="")
 
-    return 1 if groups or type1_groups else 0
+    # Type-4 candidates are advisory and never on their own set a nonzero exit.
+    return 1 if groups or type1_groups or type3_groups else 0
 
 
 def main(argv: list[str] | None = None) -> int:

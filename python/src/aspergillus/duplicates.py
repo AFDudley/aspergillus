@@ -51,9 +51,11 @@ parsing and stdout writes live in ``__main__.py`` (the imperative shell).
 from __future__ import annotations
 
 import ast
+import difflib
 import hashlib
+import math
 import textwrap
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -78,6 +80,22 @@ _IMAGINARY_MARKER = "0j"
 CLONE_TYPE_WHOLE = "type-2-whole"
 CLONE_TYPE_FRAGMENT = "type-2-fragment"
 TYPE1_LABEL = "type-1"
+
+# Near-miss/gapped (Roy & Cordy 2007 type-3) label: two functions whose
+# normalized statement sequences are similar above a threshold but not
+# identical (statements added, removed, or changed).
+TYPE3_LABEL = "type-3"
+# Semantic (type-4) CANDIDATE label: functionally-equivalent but
+# syntactically-different functions, matched on a semantic feature vector.
+# Advisory, lower-confidence tier — type-4 recall is inherently limited, so a
+# hit is a lead for review, reported separately and never a hard duplicate.
+TYPE4_LABEL = "type-4-candidate"
+
+# Default similarity floors. Type-3 uses a NiCad-style dissimilarity threshold
+# of 0.30 (i.e. >= 0.70 similar); type-4's feature-vector cosine floor is
+# stricter because the semantic signal is coarser.
+DEFAULT_TYPE3_MIN_SIMILARITY = 0.70
+DEFAULT_TYPE4_MIN_SIMILARITY = 0.75
 
 # Separator joined between per-statement normalized texts before hashing a
 # window. Chosen to never appear in rendered Python source.
@@ -156,6 +174,59 @@ class Type1DuplicateGroup:
     similarity: float
     n_lines: int
     members: tuple[FunctionRecord, ...]
+
+
+@dataclass(frozen=True)
+class Type3DuplicateGroup:
+    """A near-miss/gapped (Roy & Cordy 2007 type-3) clone pair.
+
+    The two ``members`` have similar-but-not-identical normalized statement
+    sequences: a copied spine with added, removed, or changed statements, so
+    neither the whole-body hash nor an exact fragment window matches them.
+    ``similarity`` is the difflib sequence ratio over their per-statement
+    type-2-normalized texts, in ``[min_similarity, 1.0)``.
+    """
+
+    members: tuple[FunctionRecord, ...]
+    clone_type: str
+    similarity: float
+    n_lines: int
+
+
+@dataclass(frozen=True)
+class SemanticRecord:
+    """One function's semantic fingerprint, for type-4 candidate detection.
+
+    ``features`` is a sorted ``(key, count)`` fingerprint of what the function
+    DOES rather than how it reads: called-callable names, operator kinds,
+    literal-value types, and control-flow constructs. It abstracts away syntax
+    so two functions that compute a similar thing via different constructs can
+    still score similar.
+    """
+
+    path: str
+    name: str
+    line: int
+    n_lines: int
+    is_boilerplate: bool
+    features: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True)
+class Type4CandidateGroup:
+    """A type-4 (semantic) clone CANDIDATE pair — advisory, never blocking.
+
+    The two ``members`` are syntactically different (not reported by
+    type-1/2/3) yet share a semantic fingerprint above the cosine floor.
+    Type-4 detection is recall-limited by nature, so these are surfaced as
+    candidates for a human to judge, not as confirmed duplicates, and never on
+    their own fail a gate.
+    """
+
+    members: tuple[SemanticRecord, ...]
+    clone_type: str
+    similarity: float
+    n_lines: int
 
 
 class _Normalizer(cst.CSTTransformer):
@@ -633,6 +704,229 @@ def find_all_duplicate_groups(
     return sorted(combined, key=lambda group: (-group.n_lines, group.normalized_hash))
 
 
+def _pair_key(record: FunctionRecord | SemanticRecord) -> tuple[str, str, int]:
+    """The ``(path, name, line)`` identity of a function record, for pairing."""
+    return (record.path, record.name, record.line)
+
+
+def find_type3_duplicate_groups(
+    records: list[FunctionRecord],
+    min_lines: int,
+    min_statements: int,
+    min_similarity: float = DEFAULT_TYPE3_MIN_SIMILARITY,
+) -> list[Type3DuplicateGroup]:
+    """Near-miss/gapped (type-3) clones: pairs whose normalized statement
+    SEQUENCES are similar above ``min_similarity`` but not identical.
+
+    Where ``find_duplicate_groups`` needs an identical whole body and
+    ``find_fragment_duplicates`` needs an identical embedded run, this catches
+    a copied spine that has since diverged — statements added, removed, or
+    changed — so no exact hash matches. Similarity is difflib's sequence ratio
+    over the per-statement type-2-normalized texts (identifier- and
+    literal-insensitive), so only structural edits move the score. Pairs that
+    are exact type-2 whole clones (equal ``normalized_hash``) are left to
+    ``find_duplicate_groups``; only similar-but-not-identical pairs are type-3.
+    """
+    candidates = [
+        record
+        for record in records
+        if not record.is_boilerplate
+        and len(record.statements) >= min_statements
+        and record.n_lines >= min_lines
+    ]
+    groups: list[Type3DuplicateGroup] = []
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            a, b = candidates[i], candidates[j]
+            if a.normalized_hash == b.normalized_hash:
+                continue
+            ratio = difflib.SequenceMatcher(
+                None,
+                [statement.text for statement in a.statements],
+                [statement.text for statement in b.statements],
+                autojunk=False,
+            ).ratio()
+            if min_similarity <= ratio < 1.0:
+                members = tuple(sorted((a, b), key=lambda member: (member.path, member.line)))
+                groups.append(
+                    Type3DuplicateGroup(
+                        members=members,
+                        clone_type=TYPE3_LABEL,
+                        similarity=ratio,
+                        n_lines=max(a.n_lines, b.n_lines),
+                    )
+                )
+    return sorted(groups, key=lambda group: (-group.similarity, -group.n_lines))
+
+
+# Control-flow node kinds counted into a function's type-4 semantic fingerprint.
+_CONTROL_FLOW_NODES = (
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.Try,
+    ast.With,
+    ast.AsyncWith,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+    ast.IfExp,
+    ast.Match,
+)
+
+
+def _callee_name(node: ast.expr) -> str:
+    """The name a call targets (``foo``, ``obj.method`` -> ``method``), else a
+    generic marker for a computed callee."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return "<expr>"
+
+
+def _ast_body_without_docstring(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.stmt]:
+    """``func``'s body with a leading docstring expression dropped."""
+    body = func.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        return body[1:]
+    return body
+
+
+def _ast_code_lines(func: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Code-line span of ``func`` (its body minus a leading docstring)."""
+    body = _ast_body_without_docstring(func)
+    if not body:
+        return 0
+    start = body[0].lineno
+    end = max(getattr(node, "end_lineno", node.lineno) or node.lineno for node in body)
+    return end - start + 1
+
+
+def _ast_is_boilerplate(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Trivial scaffolding never worth a type-4 candidate: pass-only bodies,
+    one-line ``return <name/attr>`` getters, and dunder methods."""
+    if _is_dunder(func.name):
+        return True
+    body = _ast_body_without_docstring(func)
+    if len(body) != 1:
+        return False
+    statement = body[0]
+    if isinstance(statement, ast.Pass):
+        return True
+    return isinstance(statement, ast.Return) and isinstance(
+        statement.value, ast.Name | ast.Attribute
+    )
+
+
+def _semantic_features(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Counter[str]:
+    """Count what ``func`` DOES: calls, operators, literal types, control flow.
+
+    A syntax-abstracting multiset — the type-4 semantic signal. Two functions
+    that reach the same result through the same vocabulary of calls/operators
+    score similar even when their surface syntax differs.
+    """
+    counts: Counter[str] = Counter()
+    for node in ast.walk(func):
+        if isinstance(node, ast.Call):
+            counts["call:" + _callee_name(node.func)] += 1
+        elif isinstance(node, ast.BinOp | ast.UnaryOp | ast.BoolOp):
+            counts["op:" + type(node.op).__name__] += 1
+        elif isinstance(node, ast.Compare):
+            for operator in node.ops:
+                counts["op:" + type(operator).__name__] += 1
+        elif isinstance(node, ast.Constant):
+            counts["lit:" + type(node.value).__name__] += 1
+        elif isinstance(node, _CONTROL_FLOW_NODES):
+            counts["ctrl:" + type(node).__name__] += 1
+    return counts
+
+
+def extract_semantic_records(source: str, path: str) -> list[SemanticRecord]:
+    """Parse ``source`` and return a semantic fingerprint per function (type-4).
+
+    Uses the stdlib ``ast`` — a second, lightweight parse alongside the LibCST
+    one the type-1/2/3 records use — because semantic feature counting is
+    simpler and total over ``ast`` nodes. Raises ``SyntaxError`` on
+    unparseable input; the caller (shell) decides how to handle it.
+    """
+    tree = ast.parse(source)
+    records: list[SemanticRecord] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        records.append(
+            SemanticRecord(
+                path=path,
+                name=node.name,
+                line=node.lineno,
+                n_lines=_ast_code_lines(node),
+                is_boilerplate=_ast_is_boilerplate(node),
+                features=tuple(sorted(_semantic_features(node).items())),
+            )
+        )
+    return records
+
+
+def _cosine_similarity(a: dict[str, int], b: dict[str, int]) -> float:
+    """Cosine similarity of two feature-count vectors; 0.0 when either empty."""
+    dot = sum(count * b.get(key, 0) for key, count in a.items())
+    norm_a = math.sqrt(sum(count * count for count in a.values()))
+    norm_b = math.sqrt(sum(count * count for count in b.values()))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def find_type4_candidates(
+    semantic_records: list[SemanticRecord],
+    min_lines: int,
+    min_similarity: float = DEFAULT_TYPE4_MIN_SIMILARITY,
+    exclude_pairs: frozenset[frozenset[tuple[str, str, int]]] = frozenset(),
+) -> list[Type4CandidateGroup]:
+    """Type-4 (semantic) clone CANDIDATES: syntactically-different function
+    pairs whose semantic fingerprints are similar above ``min_similarity``.
+
+    Advisory only. ``exclude_pairs`` carries the ``(path, name, line)`` pairs
+    already reported as type-1/2/3 clones, so type-4 surfaces ONLY the
+    semantic-similarity-without-syntactic-similarity case it exists for. Cosine
+    over the feature-count vectors is a coarse signal — type-4 recall is
+    inherently limited — so a hit is a lead for review, never a hard duplicate.
+    """
+    candidates = [
+        record
+        for record in semantic_records
+        if not record.is_boilerplate and record.n_lines >= min_lines and record.features
+    ]
+    groups: list[Type4CandidateGroup] = []
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            a, b = candidates[i], candidates[j]
+            if frozenset((_pair_key(a), _pair_key(b))) in exclude_pairs:
+                continue
+            similarity = _cosine_similarity(dict(a.features), dict(b.features))
+            if similarity >= min_similarity:
+                members = tuple(sorted((a, b), key=lambda member: (member.path, member.line)))
+                groups.append(
+                    Type4CandidateGroup(
+                        members=members,
+                        clone_type=TYPE4_LABEL,
+                        similarity=similarity,
+                        n_lines=max(a.n_lines, b.n_lines),
+                    )
+                )
+    return sorted(groups, key=lambda group: (-group.similarity, -group.n_lines))
+
+
 def format_report(groups: list[DuplicateGroup]) -> str:
     """Render duplicate groups as a human-readable report string."""
     if not groups:
@@ -673,6 +967,49 @@ def format_type1_report(groups: list[Type1DuplicateGroup]) -> str:
                 f"({len(group.members)} copies, ~{group.n_lines} lines each):",
                 *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
                 f"    allowlist with: {group.type1_hash}",
+            ]
+        )
+        for group in groups
+    ]
+    return header + "\n\n".join(blocks) + "\n"
+
+
+def format_type3_report(groups: list[Type3DuplicateGroup]) -> str:
+    """Render type-3 near-miss clone pairs as a human-readable report."""
+    if not groups:
+        return "check-duplicates: no type-3 (near-miss) clones found."
+    total = sum(len(group.members) for group in groups)
+    header = (
+        f"check-duplicates: {len(groups)} type-3 near-miss pair(s), {total} function(s) involved.\n"
+    )
+    blocks = [
+        "\n".join(
+            [
+                f"  pair (~{group.n_lines} lines, {group.clone_type}, "
+                f"similarity {group.similarity:.2f}):",
+                *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
+            ]
+        )
+        for group in groups
+    ]
+    return header + "\n\n".join(blocks) + "\n"
+
+
+def format_type4_report(groups: list[Type4CandidateGroup]) -> str:
+    """Render type-4 semantic-clone CANDIDATES as a human-readable report."""
+    if not groups:
+        return "check-duplicates: no type-4 (semantic) candidates found."
+    total = sum(len(group.members) for group in groups)
+    header = (
+        f"check-duplicates: {len(groups)} type-4 semantic candidate(s) "
+        f"(advisory), {total} function(s) involved.\n"
+    )
+    blocks = [
+        "\n".join(
+            [
+                f"  candidate (~{group.n_lines} lines, {group.clone_type}, "
+                f"similarity {group.similarity:.2f}):",
+                *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
             ]
         )
         for group in groups
