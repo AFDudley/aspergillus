@@ -48,14 +48,14 @@ symbol/marker/exemption names (``run_cli_dispatch``; ``daemon.start`` /
 construct+drive shape; ``subprocess.run`` / ``Popen`` whose argv contains a
 dispatch/daemon marker; exempted by ``@requires_container_reducer`` or an
 import of a ``container_harness`` module) so the rule is immediately
-testable and demonstrable. ``WATCHED_PATH_PATTERNS`` defaults to EMPTY,
-which means "no path restriction — every file is in scope" (mirroring
-ASP410's ``E2E_PATH_PATTERN`` default of ``""``, its own "match everything"
-convention) rather than exophial's real ``tests/**`` / ``scripts/**``
-narrowing; a consumer narrows scope by setting it, exactly as exophial's own
-config does. This is the opposite convention from the symbol-set attributes
-below (``REACHABLE_CALLS`` etc.), where empty means "no-op, matches
-nothing" — each field states its own empty-value semantics.
+testable and demonstrable. ``WATCHED_PATH_PATTERNS`` defaults to EMPTY, which
+means "OPT-IN: match NOTHING — the rule fires nowhere until a consumer names
+the paths to watch" (exophial's own value: ``frozenset({"*/tests/*",
+"*/scripts/*"})``). An empty set matching *everything* would fire on
+production entrypoints such as ``dispatcher.main()`` that cannot be routed
+through a container fixture, so empty must match nothing, not everything —
+the same empty-value convention as the symbol-set attributes below
+(``REACHABLE_CALLS`` etc.), where empty means "matches nothing".
 
 Detection shape
 ----------------
@@ -153,8 +153,8 @@ class ReducerReachability(LintRule):
     METADATA_DEPENDENCIES = (FilePathProvider,)
 
     #: ``fnmatch`` globs against the file's POSIX path; a file is in scope if
-    #: it matches ANY entry. Empty (default) = no restriction, every file is
-    #: in scope. A consumer narrows scope by setting this (exophial's own
+    #: it matches ANY entry. Empty (default) = OPT-IN OFF: matches nothing, so
+    #: the rule fires nowhere until a consumer sets this (exophial's own
     #: value: ``frozenset({"*/tests/*", "*/scripts/*"})``).
     WATCHED_PATH_PATTERNS: frozenset[str] = frozenset()
 
@@ -279,7 +279,7 @@ class ReducerReachability(LintRule):
 
     def _path_matches(self, node: cst.Module) -> bool:
         if not self.WATCHED_PATH_PATTERNS:
-            return True
+            return False
         path = self.get_metadata(FilePathProvider, node)
         posix_path = Path(path).as_posix()
         return any(fnmatch.fnmatch(posix_path, pattern) for pattern in self.WATCHED_PATH_PATTERNS)
