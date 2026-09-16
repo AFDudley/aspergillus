@@ -4,6 +4,8 @@ fetch_a and fetch_b are a plain whole-body type-2 clone: identical up to
 identifier renaming, nothing else changed.
 """
 
+from subprocess import run
+
 
 def fetch_a(repo, name):
     result = run(["git", "-C", repo, name], check=True)

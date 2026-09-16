@@ -7,6 +7,10 @@ type-2 clone Bellon's tool comparison catalogued.
 """
 
 
+def parse_widget(cleaned):
+    return cleaned
+
+
 def import_widget(raw, source):
     if raw is None:
         raise ValueError("missing widget")

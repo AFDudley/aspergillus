@@ -7,6 +7,10 @@ copied core so the clone is no longer the whole function body.
 """
 
 
+def log_summary(label, average):
+    pass
+
+
 def summarize_a(rows):
     total = 0
     count = 0

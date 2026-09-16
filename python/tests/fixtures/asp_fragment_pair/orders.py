@@ -26,4 +26,4 @@ def process_items(items, tax_rate):
         name = _clean(item.name)
         total += item.amount
     total *= 1 + tax_rate
-    return total
+    return total, name
