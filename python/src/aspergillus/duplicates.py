@@ -1,4 +1,4 @@
-"""Whole-project type-2 duplicate-function detector (functional core).
+"""Whole-project type-1/type-2 duplicate-function detector (functional core).
 
 This is the pure computation behind the ``aspergillus check-duplicates``
 CLI subcommand (wired in ``__main__.py``). It exists as a SEPARATE
@@ -22,6 +22,17 @@ Approach (standard type-2 clone normalization):
 4. Report any hash bucket with >1 member whose function span is at least
    ``min_lines`` and whose hash is not allow-listed.
 
+A second, stricter category is detected the same way: type-1 (exact)
+clones per the Roy & Cordy (2007) clone taxonomy. Two function bodies are
+a type-1 clone when they are identical once only comments and whitespace
+are stripped — no identifier renaming, no literal normalization
+(``find_type1_duplicate_groups``). Each function's exact-clone signature
+is the sha256 of ``ast.dump`` of its body: the standard ``ast`` module
+already discards comments and layout while preserving identifier names
+and literal values exactly, which is precisely the type-1 equivalence.
+Trivial boilerplate (dunders, one-line getters, pass-only bodies) is
+excluded from type-1 reports (``is_boilerplate``) — pebble asp-d88.1.
+
 All functions in this module are pure: they take source strings / records
 and return records / groups / formatted text. Filesystem reads, argument
 parsing and stdout writes live in ``__main__.py`` (the imperative shell).
@@ -29,12 +40,20 @@ parsing and stdout writes live in ``__main__.py`` (the imperative shell).
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import re
+import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
 
 import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider
+
+# A dunder method name: "__init__", "__repr__", etc.
+_DUNDER_NAME_RE = re.compile(r"^__[A-Za-z0-9_]+__$")
+
+TYPE1_LABEL = "type-1"
 
 # Placeholder every identifier collapses to under type-2 normalization.
 _NAME_PLACEHOLDER = "_ID"
@@ -55,6 +74,11 @@ class FunctionRecord:
     identifier renaming and literal values; ``n_lines`` is the CODE-line span —
     the function span minus a leading docstring — used for the ``min_lines``
     size floor, so prose never inflates a clone's measured size.
+
+    ``type1_hash`` is equal only for functions identical once comments and
+    whitespace are stripped (the Roy & Cordy (2007) type-1/exact clone
+    signature). ``is_boilerplate`` marks a trivial dunder, one-line getter,
+    or pass-only body, excluded from type-1 reports regardless of its hash.
     """
 
     path: str
@@ -62,6 +86,8 @@ class FunctionRecord:
     line: int
     n_lines: int
     normalized_hash: str
+    type1_hash: str
+    is_boilerplate: bool
 
 
 @dataclass(frozen=True)
@@ -69,6 +95,22 @@ class DuplicateGroup:
     """A hash bucket with more than one member — a duplicate cluster."""
 
     normalized_hash: str
+    n_lines: int
+    members: tuple[FunctionRecord, ...]
+
+
+@dataclass(frozen=True)
+class Type1DuplicateGroup:
+    """A cluster of functions that are type-1 (exact) clones of each other.
+
+    ``similarity`` is always 1.0: type-1, by the Roy & Cordy (2007)
+    definition, means identical once comments and whitespace are stripped —
+    there is no partial-match case to score below a perfect clone.
+    """
+
+    type1_hash: str
+    clone_type: str
+    similarity: float
     n_lines: int
     members: tuple[FunctionRecord, ...]
 
@@ -170,6 +212,71 @@ def _hash_function(module: cst.Module, func: cst.FunctionDef) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
+def _hash_function_type1(module: cst.Module, func: cst.FunctionDef) -> str:
+    """Return the sha256 of ``func``'s type-1 (exact) clone signature.
+
+    The signature is ``ast.dump`` of the function's body: the standard
+    ``ast`` module already discards comments and layout on parse, while
+    keeping every identifier name and literal value exactly as written.
+    That is precisely the Roy & Cordy (2007) type-1 equivalence — no
+    normalization beyond stripping comments and whitespace.
+    """
+    code = textwrap.dedent(module.code_for_node(func))
+    dumped = ast.dump(ast.parse(code), annotate_fields=False)
+    return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+
+
+def _non_docstring_statements(func: cst.FunctionDef) -> tuple[cst.BaseStatement, ...]:
+    """The function's body statements, minus a leading docstring line."""
+    block = func.body
+    if not isinstance(block, cst.IndentedBlock):
+        return ()
+    statements = tuple(block.body)
+    if statements and _is_docstring(statements[0]):
+        return statements[1:]
+    return statements
+
+
+def _is_pass_only(statements: tuple[cst.BaseStatement, ...]) -> bool:
+    """Whether ``statements`` is exactly a single ``pass``."""
+    if len(statements) != 1 or not isinstance(statements[0], cst.SimpleStatementLine):
+        return False
+    body = statements[0].body
+    return len(body) == 1 and isinstance(body[0], cst.Pass)
+
+
+def _is_simple_getter_return(statements: tuple[cst.BaseStatement, ...]) -> bool:
+    """Whether ``statements`` is a single ``return <name-or-attribute>``.
+
+    A getter that hands back a stored value with no computation — the
+    Roy & Cordy boilerplate carve-out never intends to hide a real
+    ``return f(x, y)`` behind this check, so only a bare name/attribute
+    qualifies.
+    """
+    if len(statements) != 1 or not isinstance(statements[0], cst.SimpleStatementLine):
+        return False
+    body = statements[0].body
+    if len(body) != 1 or not isinstance(body[0], cst.Return) or body[0].value is None:
+        return False
+    return isinstance(body[0].value, (cst.Name, cst.Attribute))
+
+
+def is_boilerplate(name: str, func: cst.FunctionDef) -> bool:
+    """Whether ``func`` is trivial boilerplate: a pass-only body, a one-line
+    getter, or a single-statement dunder method.
+
+    Boilerplate is excluded from type-1 reports even when it hashes equal —
+    two unrelated classes each defining ``def __repr__(self): return ...``
+    are not the copy-pasted duplication the detector exists to catch.
+    """
+    statements = _non_docstring_statements(func)
+    if _is_pass_only(statements):
+        return True
+    if len(statements) == 1 and _DUNDER_NAME_RE.match(name):
+        return True
+    return _is_simple_getter_return(statements)
+
+
 def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
     """Parse ``source`` and return a normalized record per function it defines.
 
@@ -188,6 +295,8 @@ def extract_function_records(source: str, path: str) -> list[FunctionRecord]:
             line=start,
             n_lines=code_lines,
             normalized_hash=_hash_function(module, node),
+            type1_hash=_hash_function_type1(module, node),
+            is_boilerplate=is_boilerplate(node.name.value, node),
         )
         for node, start, code_lines in collector.functions
     ]
@@ -251,6 +360,66 @@ def format_report(groups: list[DuplicateGroup]) -> str:
                 f"({len(group.members)} copies, ~{group.n_lines} lines each):",
                 *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
                 f"    allowlist with: {group.normalized_hash}",
+            ]
+        )
+        for group in groups
+    ]
+    return header + "\n\n".join(blocks) + "\n"
+
+
+def find_type1_duplicate_groups(
+    records: list[FunctionRecord],
+    min_lines: int,
+    allowlist: frozenset[str],
+) -> list[Type1DuplicateGroup]:
+    """Group records by type-1 (exact) hash; return real duplicate clusters.
+
+    Boilerplate records never enter a bucket, so two unrelated ``__repr__``
+    one-liners never form a group no matter how many files repeat them. A
+    bucket otherwise qualifies exactly as ``find_duplicate_groups`` does:
+    >1 member, largest member at least ``min_lines`` lines, hash not
+    allow-listed. Groups are returned largest-span first.
+    """
+    buckets: dict[str, list[FunctionRecord]] = defaultdict(list)
+    for record in records:
+        if record.is_boilerplate:
+            continue
+        buckets[record.type1_hash].append(record)
+
+    groups = [
+        Type1DuplicateGroup(
+            type1_hash=hash_,
+            clone_type=TYPE1_LABEL,
+            similarity=1.0,
+            n_lines=max(member.n_lines for member in members),
+            members=tuple(sorted(members, key=lambda member: (member.path, member.line))),
+        )
+        for hash_, members in buckets.items()
+        if len(members) > 1
+        and hash_ not in allowlist
+        and max(member.n_lines for member in members) >= min_lines
+    ]
+    return sorted(groups, key=lambda group: (-group.n_lines, group.type1_hash))
+
+
+def format_type1_report(groups: list[Type1DuplicateGroup]) -> str:
+    """Render type-1 duplicate groups as a human-readable report string."""
+    if not groups:
+        return "check-duplicates: no type-1 duplicate functions found."
+
+    total = sum(len(group.members) for group in groups)
+    header = (
+        f"check-duplicates: {len(groups)} type-1 duplicate group(s), "
+        f"{total} function(s) involved.\n"
+    )
+    blocks = [
+        "\n".join(
+            [
+                f"  group {group.type1_hash[:12]} [{group.clone_type}, "
+                f"similarity {group.similarity:.2f}] "
+                f"({len(group.members)} copies, ~{group.n_lines} lines each):",
+                *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
+                f"    allowlist with: {group.type1_hash}",
             ]
         )
         for group in groups

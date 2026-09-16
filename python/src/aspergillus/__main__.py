@@ -34,7 +34,9 @@ from aspergillus.duplicates import (
     FunctionRecord,
     extract_function_records,
     find_duplicate_groups,
+    find_type1_duplicate_groups,
     format_report,
+    format_type1_report,
     parse_allowlist,
 )
 
@@ -116,6 +118,7 @@ def _check_duplicates_main(argv: list[str]) -> int:
 
     allowlist = _load_allowlist(ns.allowlist)
     groups = find_duplicate_groups(records, ns.min_lines, allowlist)
+    type1_groups = find_type1_duplicate_groups(records, ns.min_lines, allowlist)
 
     if ns.json:
         payload = [
@@ -125,13 +128,23 @@ def _check_duplicates_main(argv: list[str]) -> int:
                 "members": [{"path": m.path, "line": m.line, "name": m.name} for m in g.members],
             }
             for g in groups
+        ] + [
+            {
+                "normalized_hash": g.type1_hash,
+                "clone_type": g.clone_type,
+                "similarity": g.similarity,
+                "n_lines": g.n_lines,
+                "members": [{"path": m.path, "line": m.line, "name": m.name} for m in g.members],
+            }
+            for g in type1_groups
         ]
         json.dump(payload, sys.stdout)
         print(file=sys.stdout)
     else:
-        print(format_report(groups), end="")
+        print(format_report(groups), end="\n")
+        print(format_type1_report(type1_groups), end="")
 
-    return 1 if groups else 0
+    return 1 if groups or type1_groups else 0
 
 
 def main(argv: list[str] | None = None) -> int:
