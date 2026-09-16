@@ -26,3 +26,4 @@ node_modules/
 !.exophial/config.yaml
 .worktrees/
 .claude/worktrees/
+.scratch/

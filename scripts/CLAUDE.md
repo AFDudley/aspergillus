@@ -51,3 +51,12 @@ instead of an ad-hoc script no gate invoked (pebble asp-fd1.5).
   consistency probes: confirm README.md / docs/design.md name all four
   ASP-FSM rules next to a distinct rule number, and that no ASP4xx number is
   claimed by more than one rule anywhere in the rule source or docs.
+- `oracle_type1_semantics.py` / `oracle_type1_report_fields.py` /
+  `oracle_type1_boilerplate_exclusion.py` / `oracle_type1_editing_scenarios.py`
+  (pebble asp-d88.1) — behavioral oracle probes for type-1 (exact) clone
+  detection (`python/src/aspergillus/duplicates.py`:
+  `find_type1_duplicate_groups`, `is_boilerplate`). Each reads a JSON
+  object of function-source pairs from stdin, drives a child `python3`
+  inside the project's uv-managed environment (`uv run --directory
+python`) since the real detector needs the installed `libcst`
+  dependency, and emits one `stdout_json` observation.

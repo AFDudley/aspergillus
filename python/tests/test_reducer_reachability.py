@@ -27,16 +27,35 @@ from fixit.engine import LintRunner
 from fixit.ftypes import Config, LintViolation
 from fixit.testing import add_lint_rule_tests_to_module
 
-# Imported under an alias: ``add_lint_rule_tests_to_module`` injects a
-# ``unittest.TestCase`` named after the rule class ("ReducerReachability")
-# into this module's globals, which would otherwise shadow the rule itself.
-from aspergillus.rules.catalog import ReducerReachability as ReducerReachabilityRule
+# The production default is OPT-IN: an empty ``WATCHED_PATH_PATTERNS`` matches
+# NOTHING, so the rule fires nowhere until a consumer configures it. The
+# behavioral tests below exercise the detection logic itself, so they drive the
+# rule through a scoped view that watches every path; path-gating is covered by
+# ``test_watched_path_patterns_gates_by_path``. The scoped class keeps a name
+# distinct from the rule class so ``add_lint_rule_tests_to_module``'s injected
+# ``unittest.TestCase`` does not shadow the binding the tests use.
+from aspergillus.rules.catalog import ReducerReachability as _ReducerReachability
+
+
+class _WatchedEverywhere(_ReducerReachability):
+    WATCHED_PATH_PATTERNS = frozenset({"*"})
+
+
+ReducerReachabilityRule = _WatchedEverywhere
 
 
 def _reports(rule: LintRule, code: str, path: Path | None = None) -> list[LintViolation]:
     file_path = path if path is not None else Path.cwd() / "sample.py"
     runner = LintRunner(file_path, code.encode())
     return list(runner.collect_violations([rule], Config(path=file_path)))
+
+
+def test_empty_default_watched_patterns_fires_nowhere() -> None:
+    """Regression (ASP415): the default empty ``WATCHED_PATH_PATTERNS`` is
+    opt-in and must match NOTHING. An empty set matching *everything* fired on
+    production entrypoints like ``dispatcher.main()``; the real rule (empty
+    default) now reports nothing even on a reachable call."""
+    assert _reports(_ReducerReachability(), "run_cli_dispatch('repo', 'pebble')\n") == []
 
 
 def test_bare_reachable_call_flagged() -> None:
@@ -112,8 +131,8 @@ def test_named_in_docstring_not_flagged() -> None:
 
 def test_watched_path_patterns_gates_by_path() -> None:
     """``WATCHED_PATH_PATTERNS`` restricts the check to matching paths (the
-    default is empty = every path is in scope); a consumer narrows it, and
-    only in-scope files get flagged."""
+    default is empty = the rule is opt-in and matches nothing); a consumer sets
+    it, and only in-scope files get flagged."""
 
     class ScopedReducerReachability(ReducerReachabilityRule):
         WATCHED_PATH_PATTERNS = frozenset({"*/tests/*", "*/scripts/*"})

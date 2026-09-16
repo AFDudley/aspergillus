@@ -1,0 +1,47 @@
+status: completed
+pebble_id: asp-c01
+branch: worker/asp-c01
+summary: >
+  python/src/aspergillus/__init__.py called
+  importlib.metadata.version("aspergillus") with no guard. Under the
+  bare-python3 acceptance-oracle contract (no venv, package not installed),
+  this raised PackageNotFoundError and crashed the import before any
+  package code ran. The fix wraps the call in try/except
+  PackageNotFoundError and falls back to a fixed placeholder version
+  string; the false "never falls back" comment is removed. When the
+  package IS installed, __version__ still comes from the real
+  distribution metadata, so the single source of truth is unchanged.
+  Added scripts/verify_bare_import_version.py, the acceptance probe named
+  by contracts/specs/derived-asp-c01.spec.json, with three arg-dispatched
+  modes (pythonpath, sys_path, installed) that each spawn a real python3
+  subprocess and emit one stdout_json observation. Verified by observing
+  the probe RED against the pre-fix __init__.py (import_ok=false,
+  package_not_found_error=true, via a temporary git stash of the fix,
+  restored afterward) and GREEN after the fix, for all three modes,
+  matching every "then" clause in the linked spec. Also fixed
+  python/uv.lock, which was stale at version 0.2.0 against pyproject.toml's
+  0.3.0; a plain `uv run` in python/ resolved it as a side effect of
+  running the "installed" probe mode.
+cost: "~45k tokens"
+commits:
+  - "0a65b1a"
+verify_transcript:
+  checks:
+    - check: pre_commit_root
+      against: "scripts/verify_bare_import_version.py, python/src/aspergillus/__init__.py, python/uv.lock (root .pre-commit-config.yaml)"
+      reported: "6 passed (claude-md-coverage, trailing-whitespace, end-of-file-fixer, check-added-large-files, check-merge-conflict, check-case-conflict, mixed-line-ending); check-yaml/eslint/prettier skipped, no matching files"
+    - check: pre_commit_python_subproject
+      against: "python/src/aspergillus/__init__.py, python/uv.lock (python/.pre-commit-config.yaml)"
+      reported: "6 passed (trailing-whitespace, end-of-file-fixer, check-added-large-files, ruff, ruff-format, mypy)"
+    - check: pytest_unit
+      against: "uv run --directory python pytest tests -q"
+      reported: "248 passed, 1 skipped in 2.96s"
+    - check: acceptance_probe
+      against: "scripts/verify_bare_import_version.py pythonpath / sys_path / installed, at commit 0a65b1a"
+      reported: "all four behavior clauses (C1-C4) match the spec's then-predicates; C5 grep_absent for 'never falls back' returns 0 matches"
+e2e_gate:
+  spec: contracts/specs/derived-asp-c01.spec.json
+  command: "python3 scripts/verify_bare_import_version.py pythonpath && python3 scripts/verify_bare_import_version.py sys_path && python3 scripts/verify_bare_import_version.py installed"
+  result: passed
+  ran_at_sha: "0a65b1a"
+  mocks_in_path: false

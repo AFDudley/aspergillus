@@ -1,0 +1,242 @@
+{
+  "id": "derived-asp-d88.1",
+  "original_statement": "What did you do? List the exact steps to reproduce, in order. Run aspergillus's check-duplicates against a codebase containing near-miss or semantic duplicates (type-3/type-4 clones): two functions that share a substantial copied spine \u2014 a verbatim-identical inner closure plus an identical call, and duplicated statement sequences \u2014 embedded in two structurally different functions. (Originally observed in exophial3 on src/e_new_model/shell/drive.py:drive vs src/e_new_model/shell/driver.py:put.)\nWhat did you expect to happen? check-duplicates flags (a) type-3 near-miss/gapped clones (copied fragments inside differently-shaped functions with added/removed/changed statements) and (b) type-4 semantic clones (functionally equivalent, syntactically different code) \u2014 or at minimum states in its own docs that its scope is type-2-only.\nWhat actually happened? Include the exact error text or output. The detector at python/src/aspergillus/duplicates.py normalizes each function body (identifiers -> _ID, literals -> type markers; _Normalizer), renders the whole normalized body, sha256-hashes it (_hash_function), and groups only functions whose ENTIRE normalized body hashes identically (find_duplicate_groups). Fragment-level near-miss (type-3) and semantically-equivalent-but-syntactically-different (type-4) matches never produce a hit, on any input, by construction of the whole-body-hash comparison; a substantial duplicated spine embedded in two differently-shaped functions yields 'no duplicate functions found'. duplicates.py's own docstring self-declares 'This is what makes the hash a type-2 clone signature'.\nWhich surface or component? (e.g. gateway route, mobile screen, CLI verb) aspergillus check-duplicates (python/src/aspergillus/duplicates.py: _Normalizer, _hash_function, find_duplicate_groups)\nWhat environment and version? (OS, app/gateway build or commit, network) aspergillus repo, Python rule pack (python/)\nIs it reproducible? (always / intermittently / once) \u2014 and how often. always\nWhat is the impact / severity? Who is blocked and how badly? The duplication gate is scoped to type-2 (renamed whole-function) clones only. Type-3 near-miss/gapped clones and type-4 semantic clones pass the gate uncaught. Standard type-1..4 clone taxonomy (Roy & Cordy clone-detection survey; Bellon et al. clone-tool comparison).\nWhat activity was underway when this was found? (ODC Activity \u2014 e.g. testing, code review, normal usage, reproduction attempt) design review\nWhat condition or event exposed the defect? (ODC Trigger \u2014 e.g. a config change, concurrent access, a boundary/edge-case input, an unusual workload) design conformance\nWhich quality/capability dimension does this affect? (ODC Impact \u2014 e.g. reliability, usability, capability, performance, security, maintainability, standards, requirements \u2014 distinct from the severity/who's-blocked question above) maintainability\n\nDecomposed child: Add type-1 (exact) clone detection to aspergillus's check-duplicates (python/src/aspergillus/duplicates.py), per the Roy & Cordy (2007) clone taxonomy: compare function bodies after stripping comments and whitespace only, with no identifier renaming and no literal normalization applied. Each detected type-1 pair in the report must carry its clone type label and a similarity score. Exclude boilerplate (trivial dunders/getters/pass-only bodies) from reports. Build a pytest suite covering type-1 fixtures drawn from the Roy & Cordy (2007) editing-scenario taxonomy and from Bellon et al. (2007) reference clones, asserting the detector correctly labels type-1 pairs.",
+  "restatement": "Aspergillus's check-duplicates tool currently finds only type-2 clones: function bodies that hash the same after identifiers are collapsed to a placeholder and literals are collapsed to type markers. This request adds a second, stricter clone category: type-1 (exact) clones, defined by the Roy and Cordy (2007) clone taxonomy as function bodies that are identical once only comments and whitespace are stripped away, with no identifier renaming and no literal normalization applied. When the tool finds a type-1 pair, its report must show that pair's clone type label and a similarity score. The tool must not report boilerplate pairs \u2014 trivial dunder methods, one-line getters, or pass-only bodies \u2014 as clones, even when those pairs are identical. A pytest suite must be built and added to the project's test suite. That suite must cover type-1 fixtures drawn from the Roy and Cordy (2007) editing-scenario taxonomy and from the Bellon et al. (2007) reference-clone benchmark, and it must show that the tool labels type-1 pairs correctly.",
+  "restatement_clauses": [
+    {
+      "id": "c1",
+      "text": "The detector must implement type-1 (exact) clone detection per the Roy & Cordy (2007) clone taxonomy: it compares function bodies after stripping comments and whitespace only, with no identifier renaming and no literal normalization applied."
+    },
+    {
+      "id": "c2",
+      "text": "Each detected type-1 clone pair in the report must carry its clone type label and a similarity score."
+    },
+    {
+      "id": "c3",
+      "text": "The detector must exclude boilerplate (trivial dunders, getters, and pass-only bodies) from reports."
+    },
+    {
+      "id": "c4",
+      "text": "A pytest suite must be built covering type-1 fixtures drawn from the Roy & Cordy (2007) editing-scenario taxonomy and from Bellon et al. (2007) reference clones, asserting the detector correctly labels type-1 pairs."
+    }
+  ],
+  "goal": "Add type-1 (exact) clone detection to aspergillus's check-duplicates tool, with a clone type label and similarity score on each reported pair, boilerplate excluded from reports, and a pytest suite grounded in the Roy and Cordy (2007) and Bellon et al. (2007) taxonomies proving it works.",
+  "acceptance_criteria": [
+    "Two functions that differ only by comments and blank lines are marked as a type-1 clone pair. Two functions that differ only by renamed identifiers, and two functions that differ only by a changed literal value, are each NOT marked as a type-1 clone pair.",
+    "For a pair of functions that are identical except for comments and blank lines, the report labels the pair 'type-1' and gives it a similarity score of at least 0.95.",
+    "Two copies of a trivial dunder method, two copies of a one-line getter, and two copies of a pass-only method are never reported as clones. A genuine duplicated function with real logic is still reported.",
+    "A dedicated automated test file for type-1 clone detection exists in the project's test suite.",
+    "The new test file names both sources its fixtures are drawn from: Roy and Cordy's 2007 clone taxonomy paper, and Bellon and colleagues' 2007 reference-clone work.",
+    "The new test file contains at least 6 separate test cases, showing a real suite of fixtures rather than one token test.",
+    "Three separate pairs of functions \u2014 one that differs only by a blank line, one that differs only by an added comment, and one that differs only by spacing around an operator \u2014 are each correctly identified as type-1 clones."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "Two functions that differ only by comments and blank lines are marked as a type-1 clone pair. Two functions that differ only by renamed identifiers, and two functions that differ only by a changed literal value, are each NOT marked as a type-1 clone pair."
+    },
+    {
+      "id": "c2",
+      "text": "For a pair of functions that are identical except for comments and blank lines, the report labels the pair 'type-1' and gives it a similarity score of at least 0.95."
+    },
+    {
+      "id": "c3",
+      "text": "Two copies of a trivial dunder method, two copies of a one-line getter, and two copies of a pass-only method are never reported as clones. A genuine duplicated function with real logic is still reported."
+    },
+    {
+      "id": "c4",
+      "text": "A dedicated automated test file for type-1 clone detection exists in the project's test suite."
+    },
+    {
+      "id": "c5",
+      "text": "The new test file names both sources its fixtures are drawn from: Roy and Cordy's 2007 clone taxonomy paper, and Bellon and colleagues' 2007 reference-clone work."
+    },
+    {
+      "id": "c6",
+      "text": "The new test file contains at least 6 separate test cases, showing a real suite of fixtures rather than one token test."
+    },
+    {
+      "id": "c7",
+      "text": "Three separate pairs of functions \u2014 one that differs only by a blank line, one that differs only by an added comment, and one that differs only by spacing around an operator \u2014 are each correctly identified as type-1 clones."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "description": "Two functions that differ only by comments and blank lines are marked as a type-1 clone pair. Two functions that differ only by renamed identifiers, and two functions that differ only by a changed literal value, are each NOT marked as a type-1 clone pair.",
+      "proves": "Proves the type-1 detector compares function bodies after stripping only comments and whitespace, without normalizing identifiers or literal values, matching the Roy and Cordy (2007) definition of a type-1 (exact) clone.",
+      "restatement_clause_id": "c1",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type1_semantics.py",
+        "args": [],
+        "stdin": "{\"comment_whitespace_pair\": [\"def foo(x):\\n    # add one\\n    return x + 1\\n\", \"def foo(x):\\n\\n    return x+1\\n\"], \"renamed_identifier_pair\": [\"def foo(x):\\n    return x + 1\\n\", \"def bar(y):\\n    return y + 1\\n\"], \"literal_value_pair\": [\"def foo(x):\\n    return x + 1\\n\", \"def foo(x):\\n    return x + 2\\n\"]}"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "comment_whitespace_pair_is_type1",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "observe": "stdout_json",
+          "field": "renamed_identifier_pair_is_type1",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "observe": "stdout_json",
+          "field": "literal_value_pair_is_type1",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "description": "For a pair of functions that are identical except for comments and blank lines, the report labels the pair 'type-1' and gives it a similarity score of at least 0.95.",
+      "proves": "Proves each detected type-1 pair in the report carries a clone type label and a similarity score.",
+      "restatement_clause_id": "c2",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type1_report_fields.py",
+        "args": [],
+        "stdin": "{\"pair\": [\"def foo(x):\\n    # step one\\n    return x + 1\\n\", \"def foo(x):\\n\\n\\n    return x + 1\\n\"]}"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "clone_type_label",
+          "op": "eq",
+          "value": "type-1"
+        },
+        {
+          "observe": "stdout_json",
+          "field": "similarity_score",
+          "op": "ge",
+          "value": 0.95
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "description": "Two copies of a trivial dunder method, two copies of a one-line getter, and two copies of a pass-only method are never reported as clones. A genuine duplicated function with real logic is still reported.",
+      "proves": "Proves the detector excludes boilerplate (trivial dunders, getters, and pass-only bodies) from its type-1 reports, while still detecting real duplication.",
+      "restatement_clause_id": "c3",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type1_boilerplate_exclusion.py",
+        "args": [],
+        "stdin": "{\"boilerplate_pairs\": [[\"def __repr__(self):\\n    return f\\\"<{type(self).__name__}>\\\"\\n\", \"def __repr__(self):\\n    return f\\\"<{type(self).__name__}>\\\"\\n\"], [\"def get_x(self):\\n    return self._x\\n\", \"def get_x(self):\\n    return self._x\\n\"], [\"def noop(self):\\n    pass\\n\", \"def noop(self):\\n    pass\\n\"]], \"real_pair\": [\"def compute_total(items):\\n    total = 0\\n    for item in items:\\n        total += item.price * item.qty\\n    return total\\n\", \"def compute_total(items):\\n\\n    total = 0\\n    for item in items:\\n        total += item.price * item.qty\\n    return total\\n\"]}"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "boilerplate_pairs_reported",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "real_pair_reported",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c3"
+    },
+    {
+      "type": "file_exists",
+      "description": "A dedicated automated test file for type-1 clone detection exists in the project's test suite.",
+      "proves": "Proves a pytest suite for type-1 clone detection was built, as the request requires.",
+      "restatement_clause_id": "c4",
+      "path": "python/tests/test_type1_clones.py",
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep",
+      "description": "The new test file names both sources its fixtures are drawn from: Roy and Cordy's 2007 clone taxonomy paper, and Bellon and colleagues' 2007 reference-clone work.",
+      "proves": "Proves the pytest suite's fixtures are grounded in the two academic sources the request names.",
+      "restatement_clause_id": "c4",
+      "pattern": "Roy.{0,6}Cordy",
+      "additional_patterns": [
+        "Bellon"
+      ],
+      "files": [
+        "python/tests/test_type1_clones.py"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 2
+      },
+      "clause_id": "c5"
+    },
+    {
+      "type": "grep",
+      "description": "The new test file contains at least 6 separate test cases, showing a real suite of fixtures rather than one token test.",
+      "proves": "Proves the pytest suite covers multiple type-1 fixtures, not a single trivial example.",
+      "restatement_clause_id": "c4",
+      "pattern": "def test_",
+      "files": [
+        "python/tests/test_type1_clones.py"
+      ],
+      "count": {
+        "unit": "lines",
+        "op": "ge",
+        "value": 6
+      },
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "description": "Three separate pairs of functions \u2014 one that differs only by a blank line, one that differs only by an added comment, and one that differs only by spacing around an operator \u2014 are each correctly identified as type-1 clones.",
+      "proves": "Proves, independently of the tests built for this feature, that the detector correctly labels type-1 pairs across the kinds of edits the Roy and Cordy (2007) taxonomy describes as type-1.",
+      "restatement_clause_id": "c4",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/oracle_type1_editing_scenarios.py",
+        "args": [],
+        "stdin": "{\"blank_line_pair\": [\"def merge(a, b):\\n    return a + b\\n\", \"def merge(a, b):\\n\\n    return a + b\\n\"], \"comment_insertion_pair\": [\"def merge(a, b):\\n    return a + b\\n\", \"def merge(a, b):\\n    # combine the two values\\n    return a + b\\n\"], \"layout_whitespace_pair\": [\"def merge(a, b):\\n    return a+b\\n\", \"def merge(a, b):\\n    return a + b\\n\"]}"
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "blank_line_pair_is_type1",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "observe": "stdout_json",
+          "field": "comment_insertion_pair_is_type1",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "observe": "stdout_json",
+          "field": "layout_whitespace_pair_is_type1",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c7"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/oracle_type1_boilerplate_exclusion.py",
+    "scripts/oracle_type1_editing_scenarios.py",
+    "scripts/oracle_type1_report_fields.py",
+    "scripts/oracle_type1_semantics.py"
+  ]
+}

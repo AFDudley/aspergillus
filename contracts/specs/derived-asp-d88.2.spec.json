@@ -1,0 +1,335 @@
+{
+  "id": "derived-asp-d88.2",
+  "original_statement": "What did you do? List the exact steps to reproduce, in order. Run aspergillus's check-duplicates against a codebase containing near-miss or semantic duplicates (type-3/type-4 clones): two functions that share a substantial copied spine \u2014 a verbatim-identical inner closure plus an identical call, and duplicated statement sequences \u2014 embedded in two structurally different functions. (Originally observed in exophial3 on src/e_new_model/shell/drive.py:drive vs src/e_new_model/shell/driver.py:put.)\nWhat did you expect to happen? check-duplicates flags (a) type-3 near-miss/gapped clones (copied fragments inside differently-shaped functions with added/removed/changed statements) and (b) type-4 semantic clones (functionally equivalent, syntactically different code) \u2014 or at minimum states in its own docs that its scope is type-2-only.\nWhat actually happened? Include the exact error text or output. The detector at python/src/aspergillus/duplicates.py normalizes each function body (identifiers -> _ID, literals -> type markers; _Normalizer), renders the whole normalized body, sha256-hashes it (_hash_function), and groups only functions whose ENTIRE normalized body hashes identically (find_duplicate_groups). Fragment-level near-miss (type-3) and semantically-equivalent-but-syntactically-different (type-4) matches never produce a hit, on any input, by construction of the whole-body-hash comparison; a substantial duplicated spine embedded in two differently-shaped functions yields 'no duplicate functions found'. duplicates.py's own docstring self-declares 'This is what makes the hash a type-2 clone signature'.\nWhich surface or component? (e.g. gateway route, mobile screen, CLI verb) aspergillus check-duplicates (python/src/aspergillus/duplicates.py: _Normalizer, _hash_function, find_duplicate_groups)\nWhat environment and version? (OS, app/gateway build or commit, network) aspergillus repo, Python rule pack (python/)\nIs it reproducible? (always / intermittently / once) \u2014 and how often. always\nWhat is the impact / severity? Who is blocked and how badly? The duplication gate is scoped to type-2 (renamed whole-function) clones only. Type-3 near-miss/gapped clones and type-4 semantic clones pass the gate uncaught. Standard type-1..4 clone taxonomy (Roy & Cordy clone-detection survey; Bellon et al. clone-tool comparison).\nWhat activity was underway when this was found? (ODC Activity \u2014 e.g. testing, code review, normal usage, reproduction attempt) design review\nWhat condition or event exposed the defect? (ODC Trigger \u2014 e.g. a config change, concurrent access, a boundary/edge-case input, an unusual workload) design conformance\nWhich quality/capability dimension does this affect? (ODC Impact \u2014 e.g. reliability, usability, capability, performance, security, maintainability, standards, requirements \u2014 distinct from the severity/who's-blocked question above) maintainability\n\nDecomposed child: Replace aspergillus's current type-2 clone detector in python/src/aspergillus/duplicates.py \u2014 which normalizes identifiers to _ID and literals to type markers via _Normalizer, sha256-hashes the ENTIRE normalized function body via _hash_function, and groups only functions whose entire normalized body hashes identically via find_duplicate_groups \u2014 with a fragment-granular comparison. Keep the _Normalizer identifier->_ID / literal->type-marker normalization, but compare over SLIDING WINDOWS of normalized statement sequences instead of one whole-body hash, so a copied spine embedded inside a larger, differently-shaped function is caught. This fixes the defect where a copied spine \u2014 a verbatim-identical inner closure plus an identical call, plus duplicated statement sequences \u2014 embedded in two structurally different functions is missed today because the comparison hashes the entire normalized body (duplicates.py's own docstring self-declares the hash is 'a type-2 clone signature' over the whole body). Each detected type-2 pair must carry its clone type label and a similarity score, and boilerplate (trivial dunders/getters/pass-only bodies) must be excluded. Build a pytest suite including: fixtures from the Roy & Cordy (2007) editing-scenario taxonomy for type-2 edits, Bellon et al. (2007) reference clones, BigCloneBench (Svajlenko et al. 2014) pairs labeled T2, and the regression fixture from the original report \u2014 two functions (originally observed in exophial3 as src/e_new_model/shell/drive.py:drive vs src/e_new_model/shell/driver.py:put) sharing a verbatim copied spine embedded in two structurally different bodies, which currently yields 'no duplicate functions found' and must now be flagged.",
+  "restatement": "The duplicate-function detector in python/src/aspergillus/duplicates.py hashes the whole normalized function body. Its function find_duplicate_groups groups two functions only when their whole-body hashes match exactly. This method misses a real defect class. A copied spine \u2014 an identical inner closure, an identical call, and a duplicated statement sequence \u2014 can sit inside two functions that differ elsewhere. The whole-body hashes then differ, so the tool reports no duplicate. The reported case is exophial3's function drive in src/e_new_model/shell/drive.py against exophial3's function put in src/e_new_model/shell/driver.py. These two functions share a verbatim copied spine inside two structurally different bodies. Today check-duplicates reports 'no duplicate functions found' for this pair. The fix keeps the _Normalizer's identifier-to-_ID and literal-to-type-marker normalization unchanged. The fix replaces the single whole-body hash with a sliding-window comparison over sequences of normalized statements. This sliding-window comparison catches a copied spine wherever it sits inside a function, not only when the spine is the whole function. Each reported type-2 clone pair must carry a clone-type label and a numeric similarity score. The detector must never report a boilerplate body as a duplicate. Boilerplate bodies are trivial dunder methods, simple getters, and pass-only bodies. This exclusion applies even when two boilerplate bodies match verbatim. The change ships with a pytest suite. The suite proves the general fragment-detection capability. The suite reproduces the drive/put regression. The suite proves boilerplate exclusion. The suite adds three further fixtures, each labeled for one clone-detection research source: the Roy & Cordy (2007) type-2 editing-scenario taxonomy, the Bellon et al. (2007) reference-clone benchmark, and the BigCloneBench corpus from Svajlenko et al. (2014). The detector must flag each of these three fixtures as a type-2 duplicate.",
+  "restatement_clauses": [
+    {
+      "id": "c1",
+      "text": "The detector replaces the whole-body hash comparison with a sliding-window comparison over normalized statement sequences. This change lets it catch a copied spine embedded inside a larger, differently-shaped function."
+    },
+    {
+      "id": "c2",
+      "text": "The _Normalizer's identifier-to-_ID and literal-to-type-marker normalization stays exactly as it is today."
+    },
+    {
+      "id": "c3",
+      "text": "Every reported type-2 clone pair carries a clone-type label."
+    },
+    {
+      "id": "c4",
+      "text": "Every reported type-2 clone pair carries a numeric similarity score."
+    },
+    {
+      "id": "c5",
+      "text": "The detector excludes boilerplate bodies \u2014 trivial dunder methods, simple getters, and pass-only bodies \u2014 from duplicate reporting, even when two such bodies match verbatim."
+    },
+    {
+      "id": "c6",
+      "text": "The regression fixture \u2014 function drive from exophial3's src/e_new_model/shell/drive.py and function put from exophial3's src/e_new_model/shell/driver.py, sharing a verbatim copied spine inside two structurally different bodies \u2014 is now flagged as a duplicate pair, where it previously produced 'no duplicate functions found'."
+    },
+    {
+      "id": "c7",
+      "text": "The pytest suite includes a fixture labeled for the Roy & Cordy (2007) type-2 editing-scenario taxonomy, and the detector flags it as a duplicate."
+    },
+    {
+      "id": "c8",
+      "text": "The pytest suite includes a fixture labeled for the Bellon et al. (2007) reference-clone benchmark, and the detector flags it as a duplicate."
+    },
+    {
+      "id": "c9",
+      "text": "The pytest suite includes a fixture labeled for the BigCloneBench (Svajlenko et al. 2014) type-2 (T2) clone category, and the detector flags it as a duplicate."
+    }
+  ],
+  "goal": "Make aspergillus's duplicate detector catch a copied statement spine embedded inside two differently-shaped functions, label and score every reported pair, exclude boilerplate, and prove all of this with a pytest suite covering the drive/put regression and three named clone-research fixtures.",
+  "acceptance_criteria": [
+    "A person runs the duplicate checker on two functions with different surrounding code but the same inner helper and the same duplicated block. The checker reports the two functions as a duplicate pair.",
+    "A person runs the normalizer on two functions that differ only in variable names and literal values. The normalizer still marks them as identical, exactly as it does today.",
+    "A person runs the duplicate checker on a known pair of duplicate functions. The reported pair carries a clone-type label.",
+    "A person runs the duplicate checker on a known pair of duplicate functions. The reported pair carries a similarity score above zero.",
+    "A person runs the duplicate checker on two files that share the same trivial pass-only __init__ method and the same one-line getter. The checker does not report them as duplicates.",
+    "A person runs the duplicate checker on the drive/put regression fixture. The checker reports drive and put as a duplicate pair, instead of the old 'no duplicate functions found' result.",
+    "A person runs the duplicate checker on the Roy & Cordy type-2 editing-scenario fixture. The checker reports its two functions as a duplicate pair.",
+    "A person runs the duplicate checker on the Bellon et al. reference-clone fixture. The checker reports its two functions as a duplicate pair.",
+    "A person runs the duplicate checker on the BigCloneBench T2 fixture. The checker reports its two functions as a duplicate pair."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A person runs the duplicate checker on two functions with different surrounding code but the same inner helper and the same duplicated block. The checker reports the two functions as a duplicate pair."
+    },
+    {
+      "id": "c2",
+      "text": "A person runs the normalizer on two functions that differ only in variable names and literal values. The normalizer still marks them as identical, exactly as it does today."
+    },
+    {
+      "id": "c3",
+      "text": "A person runs the duplicate checker on a known pair of duplicate functions. The reported pair carries a clone-type label."
+    },
+    {
+      "id": "c4",
+      "text": "A person runs the duplicate checker on a known pair of duplicate functions. The reported pair carries a similarity score above zero."
+    },
+    {
+      "id": "c5",
+      "text": "A person runs the duplicate checker on two files that share the same trivial pass-only __init__ method and the same one-line getter. The checker does not report them as duplicates."
+    },
+    {
+      "id": "c6",
+      "text": "A person runs the duplicate checker on the drive/put regression fixture. The checker reports drive and put as a duplicate pair, instead of the old 'no duplicate functions found' result."
+    },
+    {
+      "id": "c7",
+      "text": "A person runs the duplicate checker on the Roy & Cordy type-2 editing-scenario fixture. The checker reports its two functions as a duplicate pair."
+    },
+    {
+      "id": "c8",
+      "text": "A person runs the duplicate checker on the Bellon et al. reference-clone fixture. The checker reports its two functions as a duplicate pair."
+    },
+    {
+      "id": "c9",
+      "text": "A person runs the duplicate checker on the BigCloneBench T2 fixture. The checker reports its two functions as a duplicate pair."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c1",
+      "description": "A person runs the duplicate checker on two functions with different surrounding code but the same inner helper and the same duplicated block. The checker reports the two functions as a duplicate pair.",
+      "proves": "The sliding-window comparison catches a copied fragment inside two differently-shaped functions, which the old whole-body hash could not do.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_fragment_pair.py",
+        "args": [
+          "python/tests/fixtures/asp_fragment_pair"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "flagged",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c2",
+      "description": "A person runs the normalizer on two functions that differ only in variable names and literal values. The normalizer still marks them as identical, exactly as it does today.",
+      "proves": "The identifier-to-placeholder and literal-to-type-marker normalization is unchanged by this work.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_normalizer_preserved.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "hashes_equal",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c3",
+      "description": "A person runs the duplicate checker on a known pair of duplicate functions. The reported pair carries a clone-type label.",
+      "proves": "Every reported type-2 clone pair carries a clone-type label.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_clone_type_label.py",
+        "args": [
+          "python/tests/fixtures/asp_known_duplicate"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "has_label",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c4",
+      "description": "A person runs the duplicate checker on a known pair of duplicate functions. The reported pair carries a similarity score above zero.",
+      "proves": "Every reported type-2 clone pair carries a numeric similarity score.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_similarity_score.py",
+        "args": [
+          "python/tests/fixtures/asp_known_duplicate"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "score",
+          "observe": "stdout_json",
+          "op": "gt",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c5",
+      "description": "A person runs the duplicate checker on two files that share the same trivial pass-only __init__ method and the same one-line getter. The checker does not report them as duplicates.",
+      "proves": "Boilerplate bodies are excluded from duplicate reporting even when they match verbatim.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_boilerplate_excluded.py",
+        "args": [
+          "python/tests/fixtures/asp_boilerplate"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "excluded",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c6",
+      "description": "A person runs the duplicate checker on the drive/put regression fixture. The checker reports drive and put as a duplicate pair, instead of the old 'no duplicate functions found' result.",
+      "proves": "The historical regression case \u2014 a copied spine embedded in two structurally different functions \u2014 is now caught.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_regression_drive_put.py",
+        "args": [
+          "python/tests/fixtures/asp_regression_drive_put"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "flagged",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "members_include_drive_and_put",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c7",
+      "description": "A person runs the duplicate checker on the Roy & Cordy type-2 editing-scenario fixture. The checker reports its two functions as a duplicate pair.",
+      "proves": "The pytest suite includes a working fixture drawn from the Roy & Cordy (2007) taxonomy.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_roy_cordy_fixture.py",
+        "args": [
+          "python/tests/fixtures/asp_roy_cordy_type2"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "flagged",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c8",
+      "description": "A person runs the duplicate checker on the Bellon et al. reference-clone fixture. The checker reports its two functions as a duplicate pair.",
+      "proves": "The pytest suite includes a working fixture drawn from the Bellon et al. (2007) reference-clone benchmark.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_bellon_fixture.py",
+        "args": [
+          "python/tests/fixtures/asp_bellon_reference_clone"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "flagged",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c8"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c9",
+      "description": "A person runs the duplicate checker on the BigCloneBench T2 fixture. The checker reports its two functions as a duplicate pair.",
+      "proves": "The pytest suite includes a working fixture drawn from the BigCloneBench (Svajlenko et al. 2014) T2 category.",
+      "when": {
+        "interpreter": "python3",
+        "script": "python/tests/oracle_scripts/check_bigclonebench_fixture.py",
+        "args": [
+          "python/tests/fixtures/asp_bigclonebench_t2"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "field": "flagged",
+          "observe": "stdout_json",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 60,
+      "clause_id": "c9"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "python/tests/oracle_scripts/check_bellon_fixture.py",
+    "python/tests/oracle_scripts/check_bigclonebench_fixture.py",
+    "python/tests/oracle_scripts/check_boilerplate_excluded.py",
+    "python/tests/oracle_scripts/check_clone_type_label.py",
+    "python/tests/oracle_scripts/check_fragment_pair.py",
+    "python/tests/oracle_scripts/check_normalizer_preserved.py",
+    "python/tests/oracle_scripts/check_regression_drive_put.py",
+    "python/tests/oracle_scripts/check_roy_cordy_fixture.py",
+    "python/tests/oracle_scripts/check_similarity_score.py"
+  ]
+}

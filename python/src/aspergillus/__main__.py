@@ -11,24 +11,14 @@ Two invocations:
 
   python -m aspergillus check-duplicates <path>... [--min-lines N]
                                                     [--allowlist FILE] [--json]
-      Whole-project type-2 duplicate-function detector (cross-file — the
-      thing a single-file fixit LintRule structurally cannot do). Exit 0 =
-      clean, 1 = duplicates found, 2 = input error. Pure logic lives in
-      ``duplicates.py``; this module is the imperative shell (argument
-      parsing, filesystem reads, stdout). Pebble: asp-21d.
-
-  python -m aspergillus io-census <path>... [--json]
-      Whole-project enumeration of every function that performs an effect,
-      with its module. The standing enumeration the retired ASP205 produced
-      beside its verdict. It states no floor and reaches no verdict, and it
-      ALWAYS exits 0 — it is an instrument, not a gate. Exit 2 = input
-      error. Pure logic lives in ``census.py``.
-
-  python -m aspergillus unmix <path>... [--apply] [--json]
-      Lift the logic out of every function ASP206 reports where the lift is
-      mechanical, and NAME the rest with the decision each one needs. Reports
-      without writing unless ``--apply`` is given. Exit 0 = ran, 2 = input
-      error. Pure logic lives in ``codemods/unmix.py``.
+      Whole-project type-1/type-2 duplicate-function detector (cross-file —
+      the thing a single-file fixit LintRule structurally cannot do). Reports
+      whole-body clones AND a copied statement spine embedded inside a
+      differently-shaped function; each reported pair carries a clone-type
+      label and a similarity score. Exit 0 = clean, 1 = duplicates found,
+      2 = input error. Pure logic lives in ``duplicates.py``; this module is
+      the imperative shell (argument parsing, filesystem reads, stdout).
+      Pebble: asp-21d, asp-d88.1, asp-d88.2.
 """
 
 from __future__ import annotations
@@ -38,24 +28,25 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 from fixit.api import fixit_bytes
 from fixit.ftypes import Config, QualifiedRule
 from libcst import ParserSyntaxError
 
-from aspergillus.census import (
-    Census,
-    EffectSite,
-    census_of_module,
-    format_census,
-    merge_censuses,
-)
-from aspergillus.codemods.unmix import UnmixResult, effect_closure, unmix_source
 from aspergillus.duplicates import (
     FunctionRecord,
+    SemanticRecord,
     extract_function_records,
-    find_duplicate_groups,
+    extract_semantic_records,
+    find_all_duplicate_groups,
+    find_type1_duplicate_groups,
+    find_type3_duplicate_groups,
+    find_type4_candidates,
     format_report,
+    format_type1_report,
+    format_type3_report,
+    format_type4_report,
     parse_allowlist,
 )
 
@@ -105,11 +96,54 @@ def _gather_records(files: list[Path]) -> tuple[list[FunctionRecord], list[str]]
     return records, parse_errors
 
 
+def _gather_semantic(files: list[Path]) -> tuple[list[SemanticRecord], list[str]]:
+    """Read + parse each file into semantic records for type-4 detection (IO).
+
+    Returns (records, parse_errors), mirroring ``_gather_records``: a file that
+    will not parse is reported and skipped, never aborting the scan.
+    """
+    records: list[SemanticRecord] = []
+    parse_errors: list[str] = []
+    for f in files:
+        try:
+            records.extend(extract_semantic_records(f.read_text(encoding="utf-8"), str(f)))
+        except SyntaxError as exc:
+            parse_errors.append(f"{f}: {exc}")
+    return records, parse_errors
+
+
 def _load_allowlist(path: str | None) -> frozenset[str]:
     """Load the accepted-hash allowlist file, or an empty set if none (IO)."""
     if path is None:
         return frozenset()
     return parse_allowlist(Path(path).read_text(encoding="utf-8"))
+
+
+def _reported_pairs(*group_lists: list[Any]) -> frozenset[frozenset[tuple[str, str, int]]]:
+    """Every (path, name, line) member PAIR already reported by the given tiers.
+
+    Fed to ``find_type4_candidates`` as its exclude set, so type-4 surfaces
+    only semantic similarity that type-1/2/3 did not already catch.
+    """
+    pairs: set[frozenset[tuple[str, str, int]]] = set()
+    for groups in group_lists:
+        for group in groups:
+            keys = [(m.path, m.name, m.line) for m in group.members]
+            for i in range(len(keys)):
+                for j in range(i + 1, len(keys)):
+                    pairs.add(frozenset((keys[i], keys[j])))
+    return frozenset(pairs)
+
+
+def _group_json(group: Any, hash_: str) -> dict[str, Any]:
+    """One clone group as a JSON-serializable dict (shared across all tiers)."""
+    return {
+        "normalized_hash": hash_,
+        "clone_type": group.clone_type,
+        "similarity": group.similarity,
+        "n_lines": group.n_lines,
+        "members": [{"path": m.path, "line": m.line, "name": m.name} for m in group.members],
+    }
 
 
 def _check_duplicates_main(argv: list[str]) -> int:
@@ -136,152 +170,37 @@ def _check_duplicates_main(argv: list[str]) -> int:
         print(f"check-duplicates: skipping unparseable file {err}", file=sys.stderr)
 
     allowlist = _load_allowlist(ns.allowlist)
-    groups = find_duplicate_groups(records, ns.min_lines, allowlist)
+    groups = find_all_duplicate_groups(records, ns.min_lines, allowlist)
+    type1_groups = find_type1_duplicate_groups(records, ns.min_lines, allowlist)
+    type3_groups = find_type3_duplicate_groups(records, ns.min_lines, min_statements=2)
+
+    semantic_records, semantic_errors = _gather_semantic(files)
+    for err in semantic_errors:
+        print(f"check-duplicates: skipping unparseable file {err}", file=sys.stderr)
+    # Type-4 is advisory: only surface semantically-similar pairs NOT already
+    # reported by type-1/2/3, so exclude every pair those tiers found.
+    exclude_pairs = _reported_pairs(groups, type1_groups, type3_groups)
+    type4_candidates = find_type4_candidates(
+        semantic_records, ns.min_lines, exclude_pairs=exclude_pairs
+    )
 
     if ns.json:
-        payload = [
-            {
-                "normalized_hash": g.normalized_hash,
-                "n_lines": g.n_lines,
-                "members": [{"path": m.path, "line": m.line, "name": m.name} for m in g.members],
-            }
-            for g in groups
-        ]
+        payload = (
+            [_group_json(g, g.normalized_hash) for g in groups]
+            + [_group_json(g, g.type1_hash) for g in type1_groups]
+            + [_group_json(g, "") for g in type3_groups]
+            + [_group_json(g, "") for g in type4_candidates]
+        )
         json.dump(payload, sys.stdout)
         print(file=sys.stdout)
     else:
-        print(format_report(groups), end="")
+        print(format_report(groups), end="\n")
+        print(format_type1_report(type1_groups), end="\n")
+        print(format_type3_report(type3_groups), end="\n")
+        print(format_type4_report(type4_candidates), end="")
 
-    return 1 if groups else 0
-
-
-def _gather_census(files: list[Path]) -> tuple[Census, list[str]]:
-    """Read + scan each file into one corpus census (IO shell)."""
-    parts: list[tuple[int, list[EffectSite]]] = []
-    parse_errors: list[str] = []
-    for path in files:
-        try:
-            source = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            parse_errors.append(f"{path}: {exc}")
-            continue
-        try:
-            parts.append(census_of_module(str(path), source))
-        except ParserSyntaxError as exc:
-            parse_errors.append(f"{path}: {exc}")
-    return merge_censuses(parts), parse_errors
-
-
-def _io_census_main(argv: list[str]) -> int:
-    """`io-census` subcommand shell: parse args, scan, print.
-
-    The exit code is 0 whatever the census reports. An empty tree, a
-    tree that is all effect and every tree between them exit 0. The
-    per-function verdict is exactly what merge de33d712 removed, and
-    re-attaching one to this enumeration would rebuild ASP205.
-    """
-    parser = argparse.ArgumentParser(prog="aspergillus io-census")
-    parser.add_argument("paths", nargs="+", help="files or directories to scan")
-    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
-    ns = parser.parse_args(argv)
-
-    census, parse_errors = _gather_census(_iter_python_files(ns.paths))
-    for err in parse_errors:
-        print(f"io-census: skipping unreadable file {err}", file=sys.stderr)
-
-    if ns.json:
-        json.dump(
-            {
-                "scanned": census.scanned,
-                "effect_bearing": len(census.sites),
-                "modules": list(census.modules),
-                "sites": [
-                    {
-                        "path": site.path,
-                        "line": site.line,
-                        "qualname": site.qualname,
-                        "io_calls": list(site.io_calls),
-                    }
-                    for site in census.sites
-                ],
-            },
-            sys.stdout,
-        )
-        print(file=sys.stdout)
-    else:
-        print(format_census(census), end="")
-
-    return 0
-
-
-def _read_sources(files: list[Path]) -> tuple[dict[str, str], list[str]]:
-    """Read every file into a path -> source map (IO shell)."""
-    sources: dict[str, str] = {}
-    errors: list[str] = []
-    for path in files:
-        try:
-            sources[str(path)] = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            errors.append(f"{path}: {exc}")
-    return sources, errors
-
-
-def _unmix_main(argv: list[str]) -> int:
-    """`unmix` subcommand shell: read, split, print, and write on --apply."""
-    parser = argparse.ArgumentParser(prog="aspergillus unmix")
-    parser.add_argument("paths", nargs="+", help="files or directories to rewrite")
-    parser.add_argument("--apply", action="store_true", help="write the rewrites to disk")
-    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
-    ns = parser.parse_args(argv)
-
-    sources, errors = _read_sources(_iter_python_files(ns.paths))
-    for err in errors:
-        print(f"unmix: skipping unreadable file {err}", file=sys.stderr)
-    closure = effect_closure(sources)
-
-    results: dict[str, UnmixResult] = {}
-    for path, source in sources.items():
-        try:
-            outcome = unmix_source(source, closure)
-        except ParserSyntaxError as exc:
-            print(f"unmix: skipping unparseable file {path}: {exc}", file=sys.stderr)
-            continue
-        if outcome.lifts or outcome.refusals:
-            results[path] = outcome
-    if ns.apply:
-        for path, outcome in results.items():
-            if outcome.lifts:
-                Path(path).write_text(outcome.source, encoding="utf-8")
-    _report_unmix(results, ns.json)
-    return 0
-
-
-def _report_unmix(results: dict[str, UnmixResult], as_json: bool) -> None:
-    """Print what was lifted and what each refusal needs decided."""
-    if as_json:
-        json.dump(
-            {
-                path: {
-                    "lifts": [vars(lift) for lift in outcome.lifts],
-                    "refusals": [vars(refusal) for refusal in outcome.refusals],
-                }
-                for path, outcome in results.items()
-            },
-            sys.stdout,
-            default=list,
-        )
-        print(file=sys.stdout)
-        return
-    lifted = refused = 0
-    for path, outcome in sorted(results.items()):
-        for lift in outcome.lifts:
-            lifted += 1
-            params = ", ".join(lift.params)
-            print(f"{path}: lifted {lift.name} -> {lift.core_name}({params}) [{lift.form}]")
-        for refusal in outcome.refusals:
-            refused += 1
-            print(f"{path}: REFUSED {refusal.name} — {refusal.reason}")
-    print(f"unmix: {lifted} function(s) lifted, {refused} needing a decision")
+    # Type-4 candidates are advisory and never on their own set a nonzero exit.
+    return 1 if groups or type1_groups or type3_groups else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -291,24 +210,10 @@ def main(argv: list[str] | None = None) -> int:
     if args and args[0] == "check-duplicates":
         return _check_duplicates_main(args[1:])
 
-    if args and args[0] == "io-census":
-        return _io_census_main(args[1:])
-
-    if args and args[0] == "unmix":
-        return _unmix_main(args[1:])
-
     if len(args) != 1:
         print("Usage: python -m aspergillus <filepath>", file=sys.stderr)
         print(
             "       python -m aspergillus check-duplicates <path>... [--min-lines N]",
-            file=sys.stderr,
-        )
-        print(
-            "       python -m aspergillus io-census <path>...",
-            file=sys.stderr,
-        )
-        print(
-            "       python -m aspergillus unmix <path>... [--apply]",
             file=sys.stderr,
         )
         return 2

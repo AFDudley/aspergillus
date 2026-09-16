@@ -1,0 +1,103 @@
+status: completed
+pebble_id: asp-d88.2
+branch: worker/asp-d88-2
+summary: >
+  check-duplicates' detector (python/src/aspergillus/duplicates.py) only
+  ever hashed a function's ENTIRE normalized body (find_duplicate_groups),
+  so a copied statement spine embedded inside two differently-shaped
+  functions never matched — the whole-body hashes differ once any
+  surrounding code differs, by construction. Added
+  find_fragment_duplicates, which slides a window of normalized statements
+  across each function's body and hashes the window, catching a shared
+  inner helper plus a shared statement block even when the rest of the
+  function differs. find_all_duplicate_groups combines this with the
+  existing whole-body match (deduplicating a pair already found in full) and
+  is now what __main__.py's check-duplicates subcommand calls. Every
+  reported DuplicateGroup carries a new clone_type label
+  ("type-2-whole"/"type-2-fragment") and a numeric similarity score
+  (fraction of the larger member's statements the match covers). Boilerplate
+  bodies (pass-only, one-line getters, single-statement dunders) are now
+  excluded from BOTH whole-body and fragment matching via a new
+  FunctionRecord.is_boilerplate flag, even when they match verbatim — this
+  also fixes a latent false positive in the pre-existing whole-body path
+  (two unrelated pass-only __init__ methods previously hashed equal and
+  would have been reported). The _Normalizer class (identifier ->_ID,
+  literal -> type marker) is untouched.
+
+  Refactored find_fragment_duplicates into three functions
+  (_bucket_windows_at_length, _groups_from_bucket, find_fragment_duplicates)
+  after aspergillus's own ASP201 (function too long, 87 lines) and ASP302
+  (Optional-as-sentinel return) flagged the first draft when run against
+  itself; _groups_from_bucket returns a zero-or-one-element list instead of
+  `X | None`, matching this codebase's established sentinel-free idiom
+  (see anti_special_casing.py's _string_value). Ran
+  `python -m aspergillus` against duplicates.py/__main__.py and against
+  aspergillus's own src/ tree after the change: zero new violations, and
+  check-duplicates found several genuine real fragment clones already
+  living in the rule catalog (e.g. _chain_elif_ids duplicated between
+  fsm_enum_dispatch_exhaustive.py and fsm_redundant_branches.py).
+
+  Added the nine derived-asp-d88.2 acceptance-oracle entrypoints under
+  python/tests/oracle_scripts/ (each an arg-dispatched, judgment-free
+  script emitting one stdout_json observation) plus their fixtures under
+  python/tests/fixtures/asp_*, including the drive/put regression fixture
+  (approximating exophial3's original src/e_new_model/shell/drive.py:drive
+  vs driver.py:put report) and three research-labeled fixtures (Roy &
+  Cordy 2007 type-2 editing scenario, Bellon et al. 2007 reference clone,
+  BigCloneBench/Svajlenko et al. 2014 T2). Verified each oracle script's
+  entrypoint did not exist before this change (find_all_duplicate_groups
+  is new), so their RED state at the recorded base sha is by construction,
+  not simulated. Added python/tests/test_duplicates_fragments.py as the
+  inner-loop pytest suite covering the same ground plus unit-level cases
+  (min_statements floor, boilerplate flag on FunctionRecord, whole-vs-
+  fragment non-double-reporting). All 9 oracle scripts and the full pytest
+  suite pass against the final commit.
+cost: "~140k tokens"
+commits:
+  - "0b52d84"
+  - "47eb53e"
+verify_transcript:
+  checks:
+    - check: pytest_gate
+      against: "scripts/run_python_test_suite.sh (uv run --directory python pytest tests -q)"
+      reported: "293 passed, 1 skipped in 3.12s"
+    - check: mypy
+      against: "python/src/aspergillus/duplicates.py, __main__.py, tests/test_duplicates_fragments.py, tests/oracle_scripts/*.py"
+      reported: "Success: no issues found in 13 source files"
+    - check: ruff_lint_and_format
+      against: "same file set plus the 4 edited fixture files"
+      reported: "All checks passed; already formatted"
+    - check: aspergillus_self_lint
+      against: "python -m aspergillus on duplicates.py and __main__.py"
+      reported: "[] (zero violations) on duplicates.py; __main__.py's pre-existing ASP202/205/206 findings are baseline, unchanged by this diff (confirmed via git diff scope)"
+    - check: pre_commit
+      against: "git commit's own pre-commit run, both commits"
+      reported: "all hooks passed (claude-md-coverage, trailing-whitespace, end-of-file-fixer, check-*, mixed-line-ending; check-yaml/eslint/prettier skipped, no matching files)"
+    - check: acceptance_oracles
+      against: "all 9 python/tests/oracle_scripts/check_*.py against their fixtures, at commit 47eb53e"
+      reported: >
+        check_fragment_pair {"flagged": true}; check_normalizer_preserved
+        {"hashes_equal": true}; check_clone_type_label {"has_label": true};
+        check_similarity_score {"score": 1.0}; check_boilerplate_excluded
+        {"excluded": true}; check_regression_drive_put {"flagged": true,
+        "members_include_drive_and_put": true}; check_roy_cordy_fixture
+        {"flagged": true}; check_bellon_fixture {"flagged": true};
+        check_bigclonebench_fixture {"flagged": true} — every value matches
+        its clause's `then` predicate in contracts/specs/derived-asp-d88.2.spec.json
+    - check: cli_integration
+      against: "uv run python -m aspergillus check-duplicates --json/--text on tests/fixtures/asp_regression_drive_put"
+      reported: >
+        exit 1; JSON payload includes clone_type/similarity fields; drive
+        and put reported as a type-2-fragment pair (similarity 0.71) via
+        the real CLI surface, not just the library function
+e2e_gate:
+  spec: contracts/specs/derived-asp-d88.2.spec.json
+  command: >
+    for s in check_fragment_pair check_normalizer_preserved
+    check_clone_type_label check_similarity_score check_boilerplate_excluded
+    check_regression_drive_put check_roy_cordy_fixture check_bellon_fixture
+    check_bigclonebench_fixture; do python3
+    python/tests/oracle_scripts/$s.py <fixture-arg>; done
+  result: passed
+  ran_at_sha: "47eb53e"
+  mocks_in_path: false
