@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from aspergillus.duplicates import (
     extract_function_records,
+    find_all_duplicate_groups,
     find_duplicate_groups,
     format_report,
     parse_allowlist,
@@ -240,3 +241,64 @@ class TestDocstringDoesNotInflateCloneSize:
             _BIG_B, "b.py"
         )
         assert len(find_duplicate_groups(records, min_lines=5, allowlist=frozenset())) == 1
+
+
+class TestDeterministicPrecision:
+    """The detector errs toward MISSING over false positives: it never flags
+    two functions that merely share a statement skeleton but differ in their
+    literals or in what they call. Regression for the type-2-over-collapse
+    false positive (distinct string renderers reported as similarity-1.00
+    clones because every literal was abstracted to a marker)."""
+
+    def test_distinct_string_renderers_are_not_flagged(self) -> None:
+        src = (
+            "def render_a(x):\n"
+            '    head = "[Unit]"\n'
+            '    body = "Desc=" + x\n'
+            "    return head + body\n"
+            "def render_b(y):\n"
+            '    head = "<plist>"\n'
+            '    body = "Label=" + y\n'
+            "    return head + body\n"
+        )
+        groups = find_all_duplicate_groups(
+            extract_function_records(src, "r.py"), min_lines=1, allowlist=frozenset()
+        )
+        assert groups == [], groups
+
+    def test_rename_only_clone_is_still_flagged(self) -> None:
+        # Identical up to variable renaming (same calls, same literals) -> a
+        # genuine type-2 clone that MUST still be caught.
+        a = (
+            "def a(items):\n"
+            "    total = 0\n"
+            "    for item in items:\n"
+            "        total += score(item)\n"
+            "    return total\n"
+        )
+        b = (
+            "def b(rows):\n"
+            "    acc = 0\n"
+            "    for row in rows:\n"
+            "        acc += score(row)\n"
+            "    return acc\n"
+        )
+        groups = find_all_duplicate_groups(
+            extract_function_records(a, "a.py") + extract_function_records(b, "b.py"),
+            min_lines=1,
+            allowlist=frozenset(),
+        )
+        assert len(groups) == 1, groups
+        assert {member.name for member in groups[0].members} == {"a", "b"}
+
+    def test_same_skeleton_distinct_callees_are_not_flagged(self) -> None:
+        # Same shape, different called function -> different behavior -> not a
+        # clone (callee names are kept exact under type-2 normalization).
+        a = "def a(x):\n    z = transform(x)\n    return z\n"
+        b = "def b(y):\n    z = validate(y)\n    return z\n"
+        groups = find_all_duplicate_groups(
+            extract_function_records(a, "a.py") + extract_function_records(b, "b.py"),
+            min_lines=1,
+            allowlist=frozenset(),
+        )
+        assert groups == [], groups

@@ -14,9 +14,15 @@ Approach (type-2 clone normalization, two granularities):
 
 1. Parse each file with LibCST (``extract_function_records``).
 2. For every ``FunctionDef`` (including methods and nested functions),
-   normalize the node: every identifier (``Name``) collapses to a single
-   placeholder and every literal collapses to a type-only marker, so
-   functions that differ ONLY by naming / literal values hash the same.
+   normalize the node: every VARIABLE-position identifier (``Name``) collapses
+   to a single placeholder, while literal VALUES, called-function names,
+   attribute names, keyword-argument names, and ``True``/``False``/``None``
+   are kept EXACT. Functions that differ only by variable naming hash the
+   same; functions that differ in what they call or the literals they emit do
+   NOT. Detection is deterministic and threshold-free, and deliberately
+   conservative -- it errs toward missing a clone over flagging two genuinely
+   different functions (an earlier version collapsed every literal to a marker
+   too, which made distinct string renderers hash identically).
 3. Whole-body matching (``find_duplicate_groups``): hash the rendered
    normalized node; group records by hash across ALL files. This catches a
    clone only when the ENTIRE normalized body matches — a renamed copy of
@@ -51,26 +57,25 @@ parsing and stdout writes live in ``__main__.py`` (the imperative shell).
 from __future__ import annotations
 
 import ast
-import difflib
 import hashlib
-import math
 import textwrap
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider
 
-# Placeholder every identifier collapses to under type-2 normalization.
+# Type-2 normalization renames every VARIABLE-position identifier to this single
+# placeholder, but keeps every DISTINGUISHING token exact: literal values,
+# called-function names, attribute names, keyword-argument names, and the
+# True/False/None keywords. Abstracting those (an earlier version collapsed all
+# literals to a "_STR" marker) made genuinely different functions -- e.g. two
+# string renderers emitting different text -- hash identically, a false
+# positive. Detection is deterministic and parameter-free (no similarity
+# thresholds); it errs toward MISSING a clone that differs only in literal
+# values over ever flagging two different functions.
 _NAME_PLACEHOLDER = "_ID"
-# Type-only markers literals collapse to (type-2 drops literal VALUES but
-# keeps the token TYPE). Each numeric marker must itself be a syntactically
-# valid literal of that node's kind — libcst validates on construction.
-_STR_MARKER = '"_STR"'
-_INT_MARKER = "0"
-_FLOAT_MARKER = "0.0"
-_IMAGINARY_MARKER = "0j"
 
 # Clone-type labels a reported DuplicateGroup / Type1DuplicateGroup carries.
 # The type-2 pair are exact after identifier/literal normalization — they
@@ -80,22 +85,6 @@ _IMAGINARY_MARKER = "0j"
 CLONE_TYPE_WHOLE = "type-2-whole"
 CLONE_TYPE_FRAGMENT = "type-2-fragment"
 TYPE1_LABEL = "type-1"
-
-# Near-miss/gapped (Roy & Cordy 2007 type-3) label: two functions whose
-# normalized statement sequences are similar above a threshold but not
-# identical (statements added, removed, or changed).
-TYPE3_LABEL = "type-3"
-# Semantic (type-4) CANDIDATE label: functionally-equivalent but
-# syntactically-different functions, matched on a semantic feature vector.
-# Advisory, lower-confidence tier — type-4 recall is inherently limited, so a
-# hit is a lead for review, reported separately and never a hard duplicate.
-TYPE4_LABEL = "type-4-candidate"
-
-# Default similarity floors. Type-3 uses a NiCad-style dissimilarity threshold
-# of 0.30 (i.e. >= 0.70 similar); type-4's feature-vector cosine floor is
-# stricter because the semantic signal is coarser.
-DEFAULT_TYPE3_MIN_SIMILARITY = 0.70
-DEFAULT_TYPE4_MIN_SIMILARITY = 0.75
 
 # Separator joined between per-statement normalized texts before hashing a
 # window. Chosen to never appear in rendered Python source.
@@ -176,105 +165,54 @@ class Type1DuplicateGroup:
     members: tuple[FunctionRecord, ...]
 
 
-@dataclass(frozen=True)
-class Type3DuplicateGroup:
-    """A near-miss/gapped (Roy & Cordy 2007 type-3) clone pair.
-
-    The two ``members`` have similar-but-not-identical normalized statement
-    sequences: a copied spine with added, removed, or changed statements, so
-    neither the whole-body hash nor an exact fragment window matches them.
-    ``similarity`` is the difflib sequence ratio over their per-statement
-    type-2-normalized texts, in ``[min_similarity, 1.0)``.
-    """
-
-    members: tuple[FunctionRecord, ...]
-    clone_type: str
-    similarity: float
-    n_lines: int
-
-
-@dataclass(frozen=True)
-class SemanticRecord:
-    """One function's semantic fingerprint, for type-4 candidate detection.
-
-    ``features`` is a sorted ``(key, count)`` fingerprint of what the function
-    DOES rather than how it reads: called-callable names, operator kinds,
-    literal-value types, and control-flow constructs. It abstracts away syntax
-    so two functions that compute a similar thing via different constructs can
-    still score similar.
-    """
-
-    path: str
-    name: str
-    line: int
-    n_lines: int
-    is_boilerplate: bool
-    features: tuple[tuple[str, int], ...]
-
-
-@dataclass(frozen=True)
-class Type4CandidateGroup:
-    """A type-4 (semantic) clone CANDIDATE pair — advisory, never blocking.
-
-    The two ``members`` are syntactically different (not reported by
-    type-1/2/3) yet share a semantic fingerprint above the cosine floor.
-    Type-4 detection is recall-limited by nature, so these are surfaced as
-    candidates for a human to judge, not as confirmed duplicates, and never on
-    their own fail a gate.
-    """
-
-    members: tuple[SemanticRecord, ...]
-    clone_type: str
-    similarity: float
-    n_lines: int
-
-
 class _Normalizer(cst.CSTTransformer):
-    """Collapse identifiers to a placeholder and literals to type markers.
+    """Type-2 normalization by renaming VARIABLE-position identifiers only.
 
-    This is what makes the hash a *type-2* clone signature: two functions
-    that differ only in the names of their locals/args/attributes or in the
-    concrete values of their literals normalize to the same tree. Operators,
-    call/attribute/statement STRUCTURE and control flow are all preserved, so
-    genuinely different logic keeps a different hash.
+    Every ``Name`` used as a variable/parameter/object collapses to a single
+    placeholder, so two functions that differ only by variable naming
+    normalize identically. Kept EXACT (never abstracted): literal values,
+    called-function names (``foo(...)``), attribute names (``x.attr``),
+    keyword-argument names (``f(key=...)``), and the ``True``/``False``/
+    ``None`` keywords -- these are the tokens that distinguish genuinely
+    different functions, and abstracting them is what collapsed distinct
+    string renderers to one hash. A single placeholder (rather than
+    per-function consistent numbering) keeps a copied statement spine
+    position-independent, so fragment matching still works. Deterministic and
+    threshold-free; conservative by construction.
     """
 
-    def leave_Name(self, original_node: cst.Name, updated_node: cst.Name) -> cst.Name:
-        return updated_node.with_changes(value=_NAME_PLACEHOLDER)
+    def __init__(self) -> None:
+        super().__init__()
+        #: ``id()`` of every ``Name`` node kept exact (callee/attr/kwarg names).
+        self._protected: set[int] = set()
+
+    def visit_Attribute(self, node: cst.Attribute) -> bool:
+        # The attribute NAME (``.attr``) is API surface, kept exact; only the
+        # base object (``.value``) is a variable to rename.
+        self._protected.add(id(node.attr))
+        return True
+
+    def visit_Call(self, node: cst.Call) -> bool:
+        # A bare callee (``foo(...)``) names an API, kept exact.
+        if isinstance(node.func, cst.Name):
+            self._protected.add(id(node.func))
+        return True
+
+    def visit_Arg(self, node: cst.Arg) -> bool:
+        # A keyword-argument name (``f(key=...)``) is API surface, kept exact.
+        if node.keyword is not None:
+            self._protected.add(id(node.keyword))
+        return True
 
     def visit_MatchSingleton(self, node: cst.MatchSingleton) -> bool:
-        # A MatchSingleton's value must stay exactly `True`, `False`, or
-        # `None` -- libcst rejects any other Name there. It is a keyword,
-        # not an identifier to normalize, and `case True` / `case False`
-        # are distinct patterns that must keep distinct hashes. Returning
-        # False skips this subtree so leave_Name never sees its value.
+        # ``case True`` / ``case False`` / ``case None`` must keep distinct,
+        # exact values; skip so leave_Name never renames them.
         return False
 
-    def leave_SimpleString(
-        self, original_node: cst.SimpleString, updated_node: cst.SimpleString
-    ) -> cst.SimpleString:
-        return updated_node.with_changes(value=_STR_MARKER)
-
-    def leave_FormattedString(
-        self, original_node: cst.FormattedString, updated_node: cst.FormattedString
-    ) -> cst.BaseString:
-        return cst.SimpleString(value=_STR_MARKER)
-
-    def leave_ConcatenatedString(
-        self, original_node: cst.ConcatenatedString, updated_node: cst.ConcatenatedString
-    ) -> cst.BaseString:
-        return cst.SimpleString(value=_STR_MARKER)
-
-    def leave_Integer(self, original_node: cst.Integer, updated_node: cst.Integer) -> cst.Integer:
-        return updated_node.with_changes(value=_INT_MARKER)
-
-    def leave_Float(self, original_node: cst.Float, updated_node: cst.Float) -> cst.Float:
-        return updated_node.with_changes(value=_FLOAT_MARKER)
-
-    def leave_Imaginary(
-        self, original_node: cst.Imaginary, updated_node: cst.Imaginary
-    ) -> cst.Imaginary:
-        return updated_node.with_changes(value=_IMAGINARY_MARKER)
+    def leave_Name(self, original_node: cst.Name, updated_node: cst.Name) -> cst.Name:
+        if id(original_node) in self._protected or original_node.value in ("True", "False", "None"):
+            return updated_node
+        return updated_node.with_changes(value=_NAME_PLACEHOLDER)
 
 
 def _is_docstring(statement: cst.BaseStatement) -> bool:
@@ -379,11 +317,20 @@ class _FunctionCollector(cst.CSTVisitor):
 
 
 def _hash_function(module: cst.Module, func: cst.FunctionDef) -> str:
-    """Render ``func`` under type-2 normalization and return its sha256 hex."""
+    """Render ``func`` under type-2 normalization and return its sha256 hex.
+
+    A leading docstring is stripped before hashing: it is prose, not code, so
+    two otherwise-identical functions with different docstrings are still the
+    same type-2 clone. (Literals are kept verbatim now, so leaving the
+    docstring in would wrongly split the hash.)
+    """
     normalized = func.visit(_Normalizer())
     # _Normalizer only rewrites leaf values; it never removes the root node,
     # so visiting a FunctionDef always yields a FunctionDef. Narrow for mypy.
     assert isinstance(normalized, cst.FunctionDef)
+    body = normalized.body
+    if isinstance(body, cst.IndentedBlock) and len(body.body) > 1 and _is_docstring(body.body[0]):
+        normalized = normalized.with_changes(body=body.with_changes(body=body.body[1:]))
     code = module.code_for_node(normalized)
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
@@ -704,229 +651,6 @@ def find_all_duplicate_groups(
     return sorted(combined, key=lambda group: (-group.n_lines, group.normalized_hash))
 
 
-def _pair_key(record: FunctionRecord | SemanticRecord) -> tuple[str, str, int]:
-    """The ``(path, name, line)`` identity of a function record, for pairing."""
-    return (record.path, record.name, record.line)
-
-
-def find_type3_duplicate_groups(
-    records: list[FunctionRecord],
-    min_lines: int,
-    min_statements: int,
-    min_similarity: float = DEFAULT_TYPE3_MIN_SIMILARITY,
-) -> list[Type3DuplicateGroup]:
-    """Near-miss/gapped (type-3) clones: pairs whose normalized statement
-    SEQUENCES are similar above ``min_similarity`` but not identical.
-
-    Where ``find_duplicate_groups`` needs an identical whole body and
-    ``find_fragment_duplicates`` needs an identical embedded run, this catches
-    a copied spine that has since diverged — statements added, removed, or
-    changed — so no exact hash matches. Similarity is difflib's sequence ratio
-    over the per-statement type-2-normalized texts (identifier- and
-    literal-insensitive), so only structural edits move the score. Pairs that
-    are exact type-2 whole clones (equal ``normalized_hash``) are left to
-    ``find_duplicate_groups``; only similar-but-not-identical pairs are type-3.
-    """
-    candidates = [
-        record
-        for record in records
-        if not record.is_boilerplate
-        and len(record.statements) >= min_statements
-        and record.n_lines >= min_lines
-    ]
-    groups: list[Type3DuplicateGroup] = []
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            a, b = candidates[i], candidates[j]
-            if a.normalized_hash == b.normalized_hash:
-                continue
-            ratio = difflib.SequenceMatcher(
-                None,
-                [statement.text for statement in a.statements],
-                [statement.text for statement in b.statements],
-                autojunk=False,
-            ).ratio()
-            if min_similarity <= ratio < 1.0:
-                members = tuple(sorted((a, b), key=lambda member: (member.path, member.line)))
-                groups.append(
-                    Type3DuplicateGroup(
-                        members=members,
-                        clone_type=TYPE3_LABEL,
-                        similarity=ratio,
-                        n_lines=max(a.n_lines, b.n_lines),
-                    )
-                )
-    return sorted(groups, key=lambda group: (-group.similarity, -group.n_lines))
-
-
-# Control-flow node kinds counted into a function's type-4 semantic fingerprint.
-_CONTROL_FLOW_NODES = (
-    ast.If,
-    ast.For,
-    ast.AsyncFor,
-    ast.While,
-    ast.Try,
-    ast.With,
-    ast.AsyncWith,
-    ast.ListComp,
-    ast.SetComp,
-    ast.DictComp,
-    ast.GeneratorExp,
-    ast.IfExp,
-    ast.Match,
-)
-
-
-def _callee_name(node: ast.expr) -> str:
-    """The name a call targets (``foo``, ``obj.method`` -> ``method``), else a
-    generic marker for a computed callee."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return "<expr>"
-
-
-def _ast_body_without_docstring(
-    func: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> list[ast.stmt]:
-    """``func``'s body with a leading docstring expression dropped."""
-    body = func.body
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        return body[1:]
-    return body
-
-
-def _ast_code_lines(func: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Code-line span of ``func`` (its body minus a leading docstring)."""
-    body = _ast_body_without_docstring(func)
-    if not body:
-        return 0
-    start = body[0].lineno
-    end = max(getattr(node, "end_lineno", node.lineno) or node.lineno for node in body)
-    return end - start + 1
-
-
-def _ast_is_boilerplate(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Trivial scaffolding never worth a type-4 candidate: pass-only bodies,
-    one-line ``return <name/attr>`` getters, and dunder methods."""
-    if _is_dunder(func.name):
-        return True
-    body = _ast_body_without_docstring(func)
-    if len(body) != 1:
-        return False
-    statement = body[0]
-    if isinstance(statement, ast.Pass):
-        return True
-    return isinstance(statement, ast.Return) and isinstance(
-        statement.value, ast.Name | ast.Attribute
-    )
-
-
-def _semantic_features(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Counter[str]:
-    """Count what ``func`` DOES: calls, operators, literal types, control flow.
-
-    A syntax-abstracting multiset — the type-4 semantic signal. Two functions
-    that reach the same result through the same vocabulary of calls/operators
-    score similar even when their surface syntax differs.
-    """
-    counts: Counter[str] = Counter()
-    for node in ast.walk(func):
-        if isinstance(node, ast.Call):
-            counts["call:" + _callee_name(node.func)] += 1
-        elif isinstance(node, ast.BinOp | ast.UnaryOp | ast.BoolOp):
-            counts["op:" + type(node.op).__name__] += 1
-        elif isinstance(node, ast.Compare):
-            for operator in node.ops:
-                counts["op:" + type(operator).__name__] += 1
-        elif isinstance(node, ast.Constant):
-            counts["lit:" + type(node.value).__name__] += 1
-        elif isinstance(node, _CONTROL_FLOW_NODES):
-            counts["ctrl:" + type(node).__name__] += 1
-    return counts
-
-
-def extract_semantic_records(source: str, path: str) -> list[SemanticRecord]:
-    """Parse ``source`` and return a semantic fingerprint per function (type-4).
-
-    Uses the stdlib ``ast`` — a second, lightweight parse alongside the LibCST
-    one the type-1/2/3 records use — because semantic feature counting is
-    simpler and total over ``ast`` nodes. Raises ``SyntaxError`` on
-    unparseable input; the caller (shell) decides how to handle it.
-    """
-    tree = ast.parse(source)
-    records: list[SemanticRecord] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            continue
-        records.append(
-            SemanticRecord(
-                path=path,
-                name=node.name,
-                line=node.lineno,
-                n_lines=_ast_code_lines(node),
-                is_boilerplate=_ast_is_boilerplate(node),
-                features=tuple(sorted(_semantic_features(node).items())),
-            )
-        )
-    return records
-
-
-def _cosine_similarity(a: dict[str, int], b: dict[str, int]) -> float:
-    """Cosine similarity of two feature-count vectors; 0.0 when either empty."""
-    dot = sum(count * b.get(key, 0) for key, count in a.items())
-    norm_a = math.sqrt(sum(count * count for count in a.values()))
-    norm_b = math.sqrt(sum(count * count for count in b.values()))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def find_type4_candidates(
-    semantic_records: list[SemanticRecord],
-    min_lines: int,
-    min_similarity: float = DEFAULT_TYPE4_MIN_SIMILARITY,
-    exclude_pairs: frozenset[frozenset[tuple[str, str, int]]] = frozenset(),
-) -> list[Type4CandidateGroup]:
-    """Type-4 (semantic) clone CANDIDATES: syntactically-different function
-    pairs whose semantic fingerprints are similar above ``min_similarity``.
-
-    Advisory only. ``exclude_pairs`` carries the ``(path, name, line)`` pairs
-    already reported as type-1/2/3 clones, so type-4 surfaces ONLY the
-    semantic-similarity-without-syntactic-similarity case it exists for. Cosine
-    over the feature-count vectors is a coarse signal — type-4 recall is
-    inherently limited — so a hit is a lead for review, never a hard duplicate.
-    """
-    candidates = [
-        record
-        for record in semantic_records
-        if not record.is_boilerplate and record.n_lines >= min_lines and record.features
-    ]
-    groups: list[Type4CandidateGroup] = []
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            a, b = candidates[i], candidates[j]
-            if frozenset((_pair_key(a), _pair_key(b))) in exclude_pairs:
-                continue
-            similarity = _cosine_similarity(dict(a.features), dict(b.features))
-            if similarity >= min_similarity:
-                members = tuple(sorted((a, b), key=lambda member: (member.path, member.line)))
-                groups.append(
-                    Type4CandidateGroup(
-                        members=members,
-                        clone_type=TYPE4_LABEL,
-                        similarity=similarity,
-                        n_lines=max(a.n_lines, b.n_lines),
-                    )
-                )
-    return sorted(groups, key=lambda group: (-group.similarity, -group.n_lines))
-
-
 def format_report(groups: list[DuplicateGroup]) -> str:
     """Render duplicate groups as a human-readable report string."""
     if not groups:
@@ -967,49 +691,6 @@ def format_type1_report(groups: list[Type1DuplicateGroup]) -> str:
                 f"({len(group.members)} copies, ~{group.n_lines} lines each):",
                 *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
                 f"    allowlist with: {group.type1_hash}",
-            ]
-        )
-        for group in groups
-    ]
-    return header + "\n\n".join(blocks) + "\n"
-
-
-def format_type3_report(groups: list[Type3DuplicateGroup]) -> str:
-    """Render type-3 near-miss clone pairs as a human-readable report."""
-    if not groups:
-        return "check-duplicates: no type-3 (near-miss) clones found."
-    total = sum(len(group.members) for group in groups)
-    header = (
-        f"check-duplicates: {len(groups)} type-3 near-miss pair(s), {total} function(s) involved.\n"
-    )
-    blocks = [
-        "\n".join(
-            [
-                f"  pair (~{group.n_lines} lines, {group.clone_type}, "
-                f"similarity {group.similarity:.2f}):",
-                *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
-            ]
-        )
-        for group in groups
-    ]
-    return header + "\n\n".join(blocks) + "\n"
-
-
-def format_type4_report(groups: list[Type4CandidateGroup]) -> str:
-    """Render type-4 semantic-clone CANDIDATES as a human-readable report."""
-    if not groups:
-        return "check-duplicates: no type-4 (semantic) candidates found."
-    total = sum(len(group.members) for group in groups)
-    header = (
-        f"check-duplicates: {len(groups)} type-4 semantic candidate(s) "
-        f"(advisory), {total} function(s) involved.\n"
-    )
-    blocks = [
-        "\n".join(
-            [
-                f"  candidate (~{group.n_lines} lines, {group.clone_type}, "
-                f"similarity {group.similarity:.2f}):",
-                *[f"    {member.path}:{member.line}  {member.name}" for member in group.members],
             ]
         )
         for group in groups
