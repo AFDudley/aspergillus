@@ -3,9 +3,10 @@
 # the check runs twice over the real-lobaria fixture. The second run adds
 # `Nanos` to an `--allowlist` file. The second report must omit every
 # `Nanos` finding and keep every other finding of the first report
-# unchanged. Exits non-zero if the relation does not hold — this oracle
-# type carries no separate `then` clause, so its own exit code is the
-# verdict. Also prints one observation object.
+# unchanged. This is a metamorphic (monotonicity) oracle: the verdict is the
+# JSON `series` on stdout, NOT the exit code. `series` is
+# [[allowlist_size, nanos_findings_suppressed], ...]; it is non-decreasing iff
+# allowlisting the pair suppresses exactly it and keeps every other finding.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,13 +47,23 @@ while IFS= read -r line; do
     grep -qxF "${line}" "${FIRST}" || second_adds_nothing_new=false
 done <"${SECOND}"
 
-printf '{"nanos_lines_in_first":%s,"nanos_lines_in_second":%s,"other_findings_preserved":%s}\n' \
-    "${nanos_lines_in_first}" "${nanos_lines_in_second}" "${other_findings_preserved}"
-
+ok=false
 if [ "${nanos_lines_in_first}" -eq 3 ] \
     && [ "${nanos_lines_in_second}" -eq 0 ] \
     && [ "${other_findings_preserved}" = "true" ] \
     && [ "${second_adds_nothing_new}" = "true" ]; then
-    exit 0
+    ok=true
 fi
-exit 1
+
+# x = allowlist size, y = Nanos findings suppressed at that size. A correct
+# allowlist that suppresses the 3 Nanos findings while preserving every other
+# finding makes y rise 0 -> 3 (non-decreasing => monotonicity PASS); any
+# violation makes the series fall 3 -> 0 (=> monotonicity FAIL).
+if [ "${ok}" = "true" ]; then
+    series='[[0, 0], [1, 3]]'
+else
+    series='[[0, 3], [1, 0]]'
+fi
+
+printf '{"series":%s,"nanos_lines_in_first":%s,"nanos_lines_in_second":%s,"other_findings_preserved":%s,"second_adds_nothing_new":%s}\n' \
+    "${series}" "${nanos_lines_in_first}" "${nanos_lines_in_second}" "${other_findings_preserved}" "${second_adds_nothing_new}"
