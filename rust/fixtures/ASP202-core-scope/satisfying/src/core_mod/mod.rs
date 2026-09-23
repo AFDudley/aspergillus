@@ -1,11 +1,11 @@
-// Same low-assertion shape as `violating/src/lib.rs`, but under
-// `src/core_mod/`, the crate's declared functional-core path
-// (`--core 'src/core_mod/**'`), so ASP202 stays silent here.
-pub fn core_transfer(a: i32, b: i32, c: i32) -> i32 {
+// The same low-assertion I/O shape, but under the declared core path
+// `src/core_mod/**`: ASP202 is scoped to the imperative shell, so a core
+// file gets no ASP202 finding (its I/O is an ASP205 concern instead).
+pub fn core_transfer(path: &str, a: i32, b: i32, c: i32) -> i32 {
     let x = a + b;
     let y = x + c;
     let z = y - a;
     let w = z * 2;
-    let v = w - b;
-    v
+    std::fs::write(path, w.to_string()).unwrap();
+    w
 }

@@ -347,22 +347,37 @@ fn last_segment<D: Doc>(node: &Node<'_, D>) -> String {
     }
 }
 
-/// ASP202: a non-test function longer than `MIN_LINES` with fewer than
-/// `MIN_ASSERTS` recognized assertion forms. Mirrors `LowAssertionDensity`.
+/// ASP202: a non-test, I/O-performing function longer than `MIN_LINES` with
+/// fewer than `MIN_ASSERTS` recognized assertion forms. Mirrors
+/// `LowAssertionDensity` as refined by asp-070/asp-da5: the rule applies
+/// ONLY to the imperative shell and EXEMPTS the pure, fully-typed functional
+/// core. Python's shell predicate is "performs I/O OR ingests
+/// dynamically-typed/untrusted data"; Rust's type system constrains every
+/// parameter, so the untrusted-parameter arm has no reliable Rust analogue
+/// and the shell reduces to "performs I/O" — the SAME `io_calls` signal
+/// ASP205/206 use (`FunctionSignal.io_calls`). A pure function earns its
+/// correctness statically from the type system, so demanding two runtime
+/// asserts of it mis-prescribes the shell mechanism onto the core (the
+/// asp-070 residual was 84% pure-core false positives). The gate additionally
+/// runs this only over files outside the declared functional core: an I/O
+/// call inside the core is already an ASP205 finding.
+///
 /// An assertion form is an assert-family macro, the `?` operator, a
 /// `return Err(..)` guard clause, `ok_or`/`ok_or_else`, or a validating
 /// constructor (`try_from`/`try_new`/`from_str`/`parse`) — the Rust
 /// analogues of NASA `assert(cond)` and the Python rule's raise-guards and
-/// `ASSERTION_METHOD_NAMES`. The gate runs this only over the imperative
-/// shell (files outside the declared functional core): a pure, fully-typed
-/// core function earns its correctness statically, so demanding two runtime
-/// asserts there mis-prescribes the shell mechanism onto the core.
+/// `ASSERTION_METHOD_NAMES`.
 pub fn assertion_density_findings(source: &str) -> Vec<(usize, &'static str, bool)> {
     const MIN_LINES: usize = 5;
     const MIN_ASSERTS: usize = 2;
     scan_functions(source)
         .into_iter()
-        .filter(|f| !f.is_test && f.line_count > MIN_LINES && f.assert_count < MIN_ASSERTS)
+        .filter(|f| {
+            !f.is_test
+                && !f.io_calls.is_empty()
+                && f.line_count > MIN_LINES
+                && f.assert_count < MIN_ASSERTS
+        })
         .map(|f| (f.line, "ASP202", true))
         .collect()
 }
@@ -405,33 +420,45 @@ mod tests {
     }
 
     #[test]
-    fn a_long_function_with_no_asserts_is_asp202() {
+    fn a_pure_function_is_exempt_from_asp202_even_when_long_and_unasserted() {
+        // The asp-070/asp-da5 refinement: a pure, fully-typed function is the
+        // functional core and earns its correctness statically. It performs no
+        // I/O, so ASP202 does not apply — this is the false positive the audit
+        // found dominating (84% pure-core) and the fix removes.
         let source = "fn transfer(a: i32, b: i32, c: i32) -> i32 {\n    let x = a + b;\n    let y = x + c;\n    let z = y - a;\n    let w = z * 2;\n    let v = w - b;\n    v\n}\n";
-        let found = assertion_density_findings(source);
-        assert_eq!(found, vec![(1, "ASP202", true)]);
-    }
-
-    #[test]
-    fn two_asserts_satisfy_asp202() {
-        let source = "fn transfer(a: i32, b: i32, c: i32) -> i32 {\n    assert!(a >= 0);\n    assert!(b >= 0);\n    let x = a + b;\n    let y = x + c;\n    let z = y - a;\n    let w = z * 2;\n    w\n}\n";
         assert_eq!(assertion_density_findings(source), Vec::new());
     }
 
     #[test]
-    fn two_question_marks_satisfy_asp202() {
-        let source = "fn parse_two(a: &str, b: &str) -> Result<i32, std::num::ParseIntError> {\n    let x = a.parse::<i32>()?;\n    let y = b.parse::<i32>()?;\n    let z = x + y;\n    let w = z * 2;\n    let v = w - 1;\n    Ok(v)\n}\n";
+    fn an_io_function_with_too_few_asserts_is_asp202() {
+        let source = "fn dump(path: &str, a: i32, b: i32) {\n    let x = a + b;\n    let y = x + 1;\n    let z = y + 1;\n    let w = z + 1;\n    std::fs::write(path, format!(\"{w}\")).unwrap();\n}\n";
+        assert_eq!(
+            assertion_density_findings(source),
+            vec![(1, "ASP202", true)]
+        );
+    }
+
+    #[test]
+    fn an_io_function_with_two_asserts_satisfies_asp202() {
+        let source = "fn dump(path: &str, a: i32, b: i32) {\n    assert!(a >= 0);\n    assert!(b >= 0);\n    let x = a + b;\n    let y = x + 1;\n    std::fs::write(path, format!(\"{y}\")).unwrap();\n}\n";
         assert_eq!(assertion_density_findings(source), Vec::new());
     }
 
     #[test]
-    fn two_return_err_guards_satisfy_asp202() {
-        let source = "fn checked(a: i32, b: i32) -> Result<i32, String> {\n    if a < 0 {\n        return Err(\"a\".to_string());\n    }\n    if b < 0 {\n        return Err(\"b\".to_string());\n    }\n    Ok(a + b)\n}\n";
+    fn an_io_function_with_two_question_marks_satisfies_asp202() {
+        let source = "fn dump(a: &str, b: &str) -> std::io::Result<()> {\n    let x = std::fs::read(a)?;\n    let y = std::fs::read(b)?;\n    let z = x.len() + y.len();\n    let w = z + 1;\n    let _v = w + 1;\n    Ok(())\n}\n";
         assert_eq!(assertion_density_findings(source), Vec::new());
     }
 
     #[test]
-    fn ok_or_and_a_validating_constructor_satisfy_asp202() {
-        let source = "fn build(raw: Option<&str>) -> Result<i32, String> {\n    let text = raw.ok_or(\"missing\")?;\n    let value = i32::from_str(text).map_err(|_| \"bad\")?;\n    let doubled = value * 2;\n    let shifted = doubled - 1;\n    Ok(shifted)\n}\n";
+    fn an_io_function_with_two_return_err_guards_satisfies_asp202() {
+        let source = "fn dump(path: &str, a: i32, b: i32) -> Result<(), String> {\n    if a < 0 {\n        return Err(\"a\".to_string());\n    }\n    if b < 0 {\n        return Err(\"b\".to_string());\n    }\n    std::fs::write(path, \"x\").map_err(|e| e.to_string())\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn an_io_function_with_ok_or_and_a_validating_constructor_satisfies_asp202() {
+        let source = "fn dump(path: &str, raw: Option<&str>) -> Result<(), String> {\n    let text = raw.ok_or(\"missing\")?;\n    let value = i32::from_str(text).map_err(|_| \"bad\")?;\n    std::fs::write(path, value.to_string()).map_err(|e| e.to_string())?;\n    let doubled = value * 2;\n    let _shifted = doubled - 1;\n    Ok(())\n}\n";
         assert_eq!(assertion_density_findings(source), Vec::new());
     }
 
