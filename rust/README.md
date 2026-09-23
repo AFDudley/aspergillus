@@ -25,6 +25,13 @@ A runnable Rust gate, plus reference clippy and Cargo lint configs.
    path), the same way `configs/clippy.toml` is adopted today. The gate
    reads `ast-grep-rules/` from beside its own `Cargo.toml`, so the rules
    travel with it either way.
+
+   The crate's `Cargo.toml` declares an empty `[workspace]` table, so when
+   `rust/` is vendored inside a consumer's own Cargo workspace, cargo treats
+   it as its own workspace root rather than erroring that the package
+   "believes it's in a workspace when it's not". No consumer-side change is
+   needed; run its binaries directly with `--manifest-path rust/Cargo.toml`.
+
 2. Run the gate over the workspace: `cargo run --manifest-path
 rust/Cargo.toml -- path/to/workspace` (default target: `.`). It exits
    0 with no blocking finding, non-zero with at least one.
