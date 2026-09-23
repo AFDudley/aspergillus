@@ -51,6 +51,21 @@ instead of an ad-hoc script no gate invoked (pebble asp-fd1.5).
   consistency probes: confirm README.md / docs/design.md name all four
   ASP-FSM rules next to a distinct rule number, and that no ASP4xx number is
   claimed by more than one rule anywhere in the rule source or docs.
+- `lib_rust_dup_check.sh` (pebble asp-ce6.3) — shared setup sourced by the
+  `asp_rust_dup_*` probes below: builds the `aspergillus-rust-dup-check`
+  binary (`rust/`) and writes throwaway fixture crates. Judges nothing
+  itself.
+- `asp_rust_dup_cross_crate_probe.sh` / `asp_rust_dup_detect_probe.sh` /
+  `asp_rust_dup_clean_probe.sh` / `asp_rust_dup_format_probe.sh` /
+  `asp_rust_dup_readonly_probe.sh` / `asp_rust_dup_cargo_deps_probe.sh` /
+  `asp_rust_dup_no_python_no_node_probe.sh` (pebble asp-ce6.3) — behavioral
+  oracle probes for the Rust whole-workspace duplicate-function check
+  (`rust/src/duplicates.rs`, `rust/src/bin/aspergillus_rust_dup_check.rs`).
+  Each drives the real `cargo build`/`cargo run` and emits one
+  `stdout_json` observation.
+- `asp_python_duplicates_regression_probe.sh` (pebble asp-ce6.3) — confirms
+  the existing `aspergillus check-duplicates` Python CLI still reports a
+  duplicate group, so the new Rust check did not disturb it.
 - `oracle_type1_semantics.py` / `oracle_type1_report_fields.py` /
   `oracle_type1_boilerplate_exclusion.py` / `oracle_type1_editing_scenarios.py`
   (pebble asp-d88.1) — behavioral oracle probes for type-1 (exact) clone
