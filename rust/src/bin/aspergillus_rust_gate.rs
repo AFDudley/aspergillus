@@ -1,0 +1,187 @@
+//! The Aspergillus Rust gate's CLI: the imperative shell.
+//!
+//! Loads the ast-grep rules shipped in this crate's own `ast-grep-rules/`
+//! directory, scans a Cargo workspace's `*.rs` files with them, runs the
+//! reference clippy lints over the same workspace, prints every finding as
+//! `path:line: ASPnnn`, and exits non-zero when a blocking finding exists.
+
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
+use ast_grep_language::SupportLang;
+
+use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
+use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
+
+fn main() -> ExitCode {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let (rules_dir_opt, args) = match take_rules(raw_args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let (exclude_patterns, remaining) = match take_excludes(args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    if remaining.len() > 1 {
+        eprintln!(
+            "usage: aspergillus-rust-gate [WORKSPACE_DIR] [--exclude GLOB]... [--rules DIR]   (default: .)"
+        );
+        return ExitCode::from(2);
+    }
+    let excludes = match build_excludes(&exclude_patterns) {
+        Ok(excludes) => excludes,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let workspace_dir = PathBuf::from(remaining.first().map_or(".", String::as_str));
+
+    // Resolve the rule directory at run time: the `--rules` argument when
+    // given, otherwise `CARGO_MANIFEST_DIR/ast-grep-rules` (cargo sets that
+    // variable for `cargo run`). When neither is available, fail with an
+    // input error naming both. The gate never falls back to a compiled-in
+    // path.
+    let rules_dir: Option<PathBuf> = rules_dir_opt.map(PathBuf::from).or_else(|| {
+        std::env::var("CARGO_MANIFEST_DIR")
+            .ok()
+            .map(|dir| PathBuf::from(dir).join("ast-grep-rules"))
+    });
+    let rules = match rules_dir {
+        Some(dir) => match load_rules(&dir) {
+            Ok(rules) => rules,
+            Err(why) => {
+                eprintln!("aspergillus-rust-gate: input error: {why}");
+                return ExitCode::from(2);
+            }
+        },
+        None => {
+            eprintln!("aspergillus-rust-gate: input error: no --rules argument and no CARGO_MANIFEST_DIR environment variable available");
+            return ExitCode::from(2);
+        }
+    };
+
+    let (mut findings, scanned) = match scan_workspace(&rules, &workspace_dir, &excludes) {
+        Ok(result) => result,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: input error: {why}");
+            return ExitCode::from(2);
+        }
+    };
+
+    match clippy::clippy_findings(&workspace_dir) {
+        Ok(hits) => findings.extend(hits.into_iter().filter(|f| !excludes.is_match(&f.path))),
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: clippy error: {why}");
+            return ExitCode::from(2);
+        }
+    }
+
+    findings.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.line.cmp(&b.line))
+            .then(a.rule_id.cmp(&b.rule_id))
+    });
+    findings.dedup();
+
+    for finding in &findings {
+        println!("{}", finding.render());
+    }
+    eprintln!(
+        "aspergillus-rust-gate: scanned {scanned} source file(s), {} finding(s)",
+        findings.len()
+    );
+    ExitCode::from(exit_status(&findings))
+}
+/// Extract the optional `--rules <dir>` argument from `args`, returning
+/// the rule directory (when present) and the remaining arguments in their
+/// original order. A `--rules` without a value is an input error.
+fn take_rules(args: Vec<String>) -> Result<(Option<String>, Vec<String>), String> {
+    let mut rules_dir: Option<String> = None;
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--rules" {
+            let value = args
+                .get(i + 1)
+                .cloned()
+                .ok_or_else(|| "--rules needs a DIR argument".to_string())?;
+            rules_dir = Some(value);
+            i += 2;
+        } else {
+            rest.push(args[i].clone());
+            i += 1;
+        }
+    }
+    Ok((rules_dir, rest))
+}
+
+/// The ast-grep rules declared by the shipped rule directory's YAML files.
+fn load_rules(dir: &Path) -> Result<Vec<RuleConfig<SupportLang>>, String> {
+    let globals = GlobalRules::default();
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "yml" || x == "yaml"))
+        .collect();
+    files.sort();
+    let mut rules = Vec::new();
+    for path in files {
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let parsed = from_yaml_string::<SupportLang>(&text, &globals)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        rules.extend(parsed);
+    }
+    Ok(rules)
+}
+
+/// Every ast-grep finding across the workspace's Rust source files, and
+/// how many files were scanned.
+fn scan_workspace(
+    rules: &[RuleConfig<SupportLang>],
+    workspace_dir: &Path,
+    excludes: &globset::GlobSet,
+) -> Result<(Vec<Finding>, usize), String> {
+    let files = rust_source_files(workspace_dir, excludes);
+    let mut findings = Vec::new();
+    for path in &files {
+        let source =
+            std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let shown = path
+            .strip_prefix(workspace_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .into_owned();
+        findings.extend(source_findings(rules, &source).into_iter().map(
+            |(line, rule_id, blocking)| Finding {
+                path: shown.clone(),
+                line,
+                rule_id,
+                blocking,
+            },
+        ));
+        for (line, rule_id, blocking) in purity::assertion_density_findings(&source)
+            .into_iter()
+            .chain(purity::impure_function_findings(&source))
+            .chain(purity::mixed_io_logic_findings(&source))
+        {
+            findings.push(Finding {
+                path: shown.clone(),
+                line,
+                rule_id: rule_id.to_string(),
+                blocking,
+            });
+        }
+    }
+    Ok((findings, files.len()))
+}

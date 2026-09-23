@@ -1,38 +1,89 @@
 # Aspergillus — Rust
 
-Reference clippy and Cargo lint configs. No custom dylint rules yet;
-Rust support is placeholder-tier.
+A runnable Rust gate, plus reference clippy and Cargo lint configs.
 
 ## What's here
 
-- `configs/clippy.toml` — clippy thresholds (line count, complexity)
-- `configs/cargo-lints.toml` — snippet to paste into consumer `Cargo.toml`
+- `ast-grep-rules/` — the declarative ast-grep rules the gate runs. Each
+  file names a rule id, a severity, and a `rule:` tree pattern; no file
+  carries a `fix:` block, so the gate reports only and never rewrites code.
+- `src/` — the `aspergillus-rust-gate` crate: loads the rules above with
+  the `ast-grep-core`, `ast-grep-config` and `ast-grep-language` libraries
+  (not the ast-grep CLI), runs the reference clippy lints over the same
+  workspace, and prints every finding as `path:line: ASPnnn`. Also holds
+  the whole-workspace duplicate-function (`ASP501`) and duplicate-type
+  (`ASP502`) checks; see `src/CLAUDE.md`.
+- `configs/clippy.toml` — clippy thresholds (line count, complexity).
+- `configs/cargo-lints.toml` — snippet to paste into consumer `Cargo.toml`.
+- `fixtures/lobaria-a027fb9/` — a verbatim, committed copy of the real
+  `lobaria` files the duplicate-type check's acceptance oracles
+  (`../scripts/oracle/`) run against; see its `PROVENANCE.md`.
 
 ## Adoption
 
-1. Copy `configs/clippy.toml` to the consumer repo root.
-2. Paste `configs/cargo-lints.toml` contents into the consumer's
-   `Cargo.toml` under `[lints.clippy]`.
-3. Run `cargo clippy --all-targets --all-features -- -D warnings`.
-4. For each clippy rule at `warn`, fix violations and flip to `deny` in a
-   dedicated PR. Matches the TypeScript severity-flip workflow.
+1. Copy the `rust/` directory into the consumer repo (or depend on it by
+   path), the same way `configs/clippy.toml` is adopted today. The gate
+   resolves its rule directory at run time — either an explicit `--rules <dir>`
+   argument, or the `CARGO_MANIFEST_DIR` environment variable (set by `cargo
+run`). It never falls back to a compiled-in path, so a binary built from
+   one checkout and run from another reads the right `ast-grep-rules/`
+   directory.
+
+   The crate's `Cargo.toml` declares an empty `[workspace]` table, so when
+   `rust/` is vendored inside a consumer's own Cargo workspace, cargo treats
+   it as its own workspace root rather than erroring that the package
+   "believes it's in a workspace when it's not". No consumer-side change is
+   needed; run its binaries directly with `--manifest-path rust/Cargo.toml`.
+
+2. Run the gate over the workspace: `cargo run --manifest-path
+rust/Cargo.toml -- path/to/workspace [--rules DIR]` (default target: `.`).
+   The gate resolves its rule directory at run time — the `--rules` argument
+   or `CARGO_MANIFEST_DIR` (set by `cargo run`) — never a compiled-in path.
+   It exits 0 with no blocking finding, non-zero with at least one.
+3. Paste `configs/cargo-lints.toml` contents into the consumer's
+   `Cargo.toml` under `[lints.clippy]`, and copy `configs/clippy.toml` to
+   the consumer repo root, so a plain `cargo clippy` run (outside the
+   gate) surfaces the same lints.
 
 ## Mapping
 
-See `../docs/design.md` for the authoritative ASP ID ↔ per-language tool
-mapping. Rust summary:
+See `../docs/rust-rules.md` for the full 27-rule ASP ID ↔ Rust
+disposition table (every Level 2, Level 3 and ASP4xx rule), and
+`../docs/design.md` for the cross-language summary. Checked rules —
+the ones with a committed `../rust/fixtures/<ASPnnn>/{violating,satisfying}/`
+fixture pair:
 
-| ASP | Tooling |
-|-----|---------|
-| 201 | `clippy::too_many_lines` (threshold 60) |
-| 202 | Manual (future: custom dylint rule) |
-| 203 | Language (no safe `static mut`) |
-| 204 | Manual (prefer iterators) |
-| 205 | Module structure (pure `core.rs`, I/O modules separate) |
-| 206 | Module structure |
-| 301 | `clippy::unwrap_used`, `expect_used`, `panic`; `Result<T, E>` |
-| 302 | No null in the language; `Option` used sparingly |
+| ASP    | Tooling                                                                   |
+| ------ | ------------------------------------------------------------------------- |
+| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `deny`                 |
+| ASP202 | `src/purity.rs::assertion_density_findings` (gate check)                  |
+| ASP204 | `ast-grep-rules/asp204-no-infinite-loop.yml` (severity `error`)           |
+| ASP205 | `src/purity.rs::impure_function_findings` (gate check)                    |
+| ASP206 | `src/purity.rs::mixed_io_logic_findings` (gate check)                     |
+| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `deny`             |
+| ASP403 | `clippy::redundant_closure`, forced at `deny`                             |
+| ASP404 | `ast-grep-rules/asp404-redundant-conditional-bool.yml` (severity `error`) |
 
-## Future
+ASP203 (no safe `static mut`), ASP302 (no `null`) and ASP413 (`match`
+exhaustiveness) are language features: the compiler enforces them, so no
+gate check runs. `ast-grep-rules/asp203-no-static-mut.yml` still flags a
+`static mut` declaration as defense in depth.
 
-A custom dylint rule for ASP202 (assertion density) is planned. Not started.
+The two whole-workspace checks run as their own binaries, not the gate:
+
+| ASP    | Tooling                                                                                             |
+| ------ | --------------------------------------------------------------------------------------------------- |
+| ASP501 | `aspergillus-rust-dup-check` — whole-workspace duplicate-function check (`src/duplicates.rs`)       |
+| ASP502 | `aspergillus-rust-dup-type-check` — whole-workspace duplicate-type check (`src/duplicate_types.rs`) |
+
+`cargo run --manifest-path rust/Cargo.toml --bin aspergillus-rust-dup-type-check
+-- path/to/workspace [--allowlist FILE]` (default target: `.`) runs
+ASP502. Its acceptance is verified against the real `lobaria` workspace at
+commit `a027fb9` — see `fixtures/lobaria-a027fb9/PROVENANCE.md` and
+`../scripts/oracle/`.
+
+The gate treats a finding as blocking exactly when the underlying tool
+reports it at `error` level: an ast-grep rule with `severity: error`, a
+clippy lint the gate forces to `deny`, or a gate check that returns
+`blocking: true`. Every Aspergillus Rust rule reports as blocking, so a
+gate run with any finding exits non-zero.

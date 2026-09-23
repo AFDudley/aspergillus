@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "statechart",
+    "pump-strategy",
+    "hold-time-curve",
+    "chart",
+    "shell",
+    "backtest",
+]
+resolver = "2"
