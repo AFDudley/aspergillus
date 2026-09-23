@@ -15,7 +15,7 @@ use aspergillus_rust_gate::core_declaration::{
     default_core_config_path, resolve_core_declaration, CoreDeclaration,
 };
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
-use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
+use aspergillus_rust_gate::{clippy, exit_status, loops, purity, source_findings, Finding};
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
@@ -241,6 +241,17 @@ fn scan_workspace(
                 blocking,
             },
         ));
+        // ASP204 (unbounded loops) is not core-scoped: a `loop {}` or
+        // `while true {}` with no reachable break has no determinable bound
+        // anywhere in the tree, core or shell.
+        for (line, rule_id, blocking) in loops::unbounded_loop_findings(&source) {
+            findings.push(Finding {
+                path: shown.clone(),
+                line,
+                rule_id: rule_id.to_string(),
+                blocking,
+            });
+        }
         let is_core = core_declaration.is_core(relative);
         // ASP202 (assertion density) is scoped to the imperative shell: a
         // pure, fully-typed core function earns its correctness statically,

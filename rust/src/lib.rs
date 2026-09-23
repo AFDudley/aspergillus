@@ -13,6 +13,7 @@ pub mod clippy;
 pub mod core_declaration;
 pub mod duplicate_types;
 pub mod duplicates;
+pub mod loops;
 pub mod purity;
 pub mod workspace;
 
@@ -97,12 +98,14 @@ mod tests {
 
     #[test]
     fn a_warning_severity_rule_reports_but_does_not_block() {
+        // A generic check that non-error severities report without blocking;
+        // uses a throwaway rule id (ASP204 is now a gate check, not ast-grep).
         let rules =
-            load("id: ASP204\nlanguage: rust\nseverity: warning\nrule:\n  kind: loop_expression\n");
+            load("id: ASP999\nlanguage: rust\nseverity: warning\nrule:\n  kind: loop_expression\n");
         let source = "fn f() {\n    loop {\n        break;\n    }\n}\n";
         assert_eq!(
             source_findings(&rules, source),
-            vec![(2, "ASP204".to_string(), false)]
+            vec![(2, "ASP999".to_string(), false)]
         );
     }
 }
