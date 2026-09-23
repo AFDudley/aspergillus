@@ -11,8 +11,10 @@ use std::process::ExitCode;
 use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
 use ast_grep_language::SupportLang;
 
+```rust
 use aspergillus_rust_gate::workspace::rust_source_files;
-use aspergillus_rust_gate::{clippy, exit_status, source_findings, Finding};
+use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
+```
 
 /// The rule directory shipped alongside this crate, resolved at compile
 /// time so it travels with the crate whether a consumer copies `rust/`
@@ -113,6 +115,18 @@ fn scan_workspace(
                 blocking,
             },
         ));
+        for (line, rule_id, blocking) in purity::assertion_density_findings(&source)
+            .into_iter()
+            .chain(purity::impure_function_findings(&source))
+            .chain(purity::mixed_io_logic_findings(&source))
+        {
+            findings.push(Finding {
+                path: shown.clone(),
+                line,
+                rule_id: rule_id.to_string(),
+                blocking,
+            });
+        }
     }
     Ok((findings, files.len()))
 }

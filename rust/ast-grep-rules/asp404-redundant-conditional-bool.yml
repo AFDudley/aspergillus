@@ -1,0 +1,8 @@
+rule:
+  pattern: if $COND { true } else { $Y }
+id: ASP404
+language: rust
+severity: warning
+message: |
+  `if $COND { true } else { $Y }` collapses to `$COND || $Y` (boolean
+  context). See docs/rust-rules.md, ASP404 (redundant conditional bool).
