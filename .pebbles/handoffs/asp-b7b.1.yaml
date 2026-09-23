@@ -1,0 +1,112 @@
+status: completed
+pebble_id: asp-b7b.1
+summary: >
+  Made the Rust gate's ASP205 (impure function) and ASP206 (mixed I/O and
+  logic) rules read a declared functional-core path list and detect real
+  I/O instead of bare, collision-prone names. worker/asp-b7b-1 forked from
+  main (75b0187) before any Rust gate source existed there at all
+  (rust/src, ast-grep-rules and fixtures live only on the diverged
+  integrated branch); a merge commit (e527069) brought in that
+  prerequisite tree, verified conflict-free and untouched under python/
+  and typescript/ before merging. Added rust/src/core_declaration.rs: a
+  consumer declares core_paths globs in aspergillus.toml (or
+  --core-config), and ASP205/ASP206 (rust/src/purity.rs) report a
+  finding only for a file whose path matches a declared core glob;
+  an undeclared workspace has no core, so neither rule reports anything
+  in it. Refined purity.rs's I/O detection: collision-prone names
+  (open, create, read, send, recv, accept, ...) count as I/O only
+  through a call qualified by a known I/O-providing path prefix
+  (std::fs::, File::, std::process::, ...); the walk now descends into
+  closures; write!/writeln!/dbg! joined the I/O macro list, with a
+  write!/writeln! whose first argument is f (the fmt::Formatter
+  convention) excluded. Added committed aspergillus.toml core
+  declarations to the ASP205/ASP206 violating (and ASP205 satisfying)
+  fixtures, and a new committed verbatim snapshot of real lobaria
+  source at commit d0269c7 (rust/fixtures/lobaria-d0269c7/,
+  PROVENANCE.md) used to verify the four previously-flagged false
+  positives (shell/src/machine.rs create, shell/src/capture.rs
+  decode_worker, backtest/src/replay.rs open_tokens, chart/src/lib.rs
+  load) and the ASP206 satisfying fixture's shell wrapper checked under
+  ASP205 all report nothing, while lobaria's pure core (statechart/)
+  still reports zero ASP205/ASP206 findings. Added 22 new purity.rs unit
+  tests and 3 core_declaration.rs unit tests (45 total in the crate),
+  and 10 new scripts/asp_rust_* probes that build the real gate binary
+  and drive it as a subprocess (never the rule functions in-process)
+  against throwaway or committed fixtures, matching every `when` the
+  linked spec names. Verified directly: C1-C8, C10 and C13 each pass by
+  running their named script/grep exactly as the spec declares; C9
+  (cargo test) passes with 45/45; C11 (2 distinct patterns matched) and
+  C12 (no placeholder text) pass by direct grep. C14 (grep_absent for
+  ASP501/ASP502 in rust/ast-grep-rules/*.yml and rust/src/**/*.rs)
+  FAILS: the merge that supplied the prerequisite ASP205/ASP206
+  infrastructure also carries ASP501/ASP502 (pebbles asp-ce6.3/asp-ce6.4
+  — a whole-workspace duplicate-function/duplicate-type check, already
+  complete and unrelated to this pebble's scope) into this branch. C14's
+  premise — that ASP501/ASP502 are "not yet ported" — was accurate
+  against the stale main this pebble's spec was authored from, but not
+  against the actual, already-completed state of the work on the
+  integrated branch. Deleting that shipped, working, tested
+  functionality to force the literal grep to pass would be a regression
+  introduced to game a stale acceptance check, not a fix, so it was left
+  in place. No wired pre-commit gate (checked against .pre-commit-config.yaml)
+  names any file this branch touches, so no discrimination record is owed.
+cost: ~230k tokens
+commits:
+  - "e5270694b7f323b76dd47866715f8a5790fce683"
+  - "84f848eebe4a12dd3c037a60cb45cc279fcc0be4"
+verify_transcript:
+  hooks:
+    - name: cargo test --offline -q (rust/, aspergillus-rust-gate)
+      outcome: passed
+      duration_s: 1
+    - name: cargo clippy --offline --all-targets -q -- -D warnings (rust/)
+      outcome: passed
+      duration_s: 3
+    - name: cargo fmt --check (rust/)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_core_declaration_probe.py (C1)
+      outcome: passed
+      duration_s: 2
+    - name: scripts/asp_rust_io_name_collision_probe.py (C2)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_io_detection_probe.py (C3)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_asp205_206_fixture_pairs.py (C4)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_asp205_206_blocking_probe.py (C5)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_lobaria_false_positive_probe.py (C6)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_asp205_core_probe.py (C7)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_lobaria_statechart_probe.py (C8)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_clippy_fmt_probe.py (C10)
+      outcome: passed
+      duration_s: 3
+    - name: grep docs/rust-rules.md ASP205/ASP206 present (C11)
+      outcome: passed
+      duration_s: 1
+    - name: grep_absent docs/design.md placeholder text (C12)
+      outcome: passed
+      duration_s: 1
+    - name: scripts/asp_rust_asp205_206_scope_probe.py (C13)
+      outcome: passed
+      duration_s: 1
+    - name: grep_absent rust/ast-grep-rules/*.yml,rust/src/**/*.rs ASP501/ASP502 (C14)
+      outcome: failed
+      duration_s: 1
+e2e_gate:
+  spec: scripts/asp_rust_lobaria_false_positive_probe.py
+  command: python3 scripts/asp_rust_lobaria_false_positive_probe.py
+  result: passed
+  ran_at_sha: "84f848eebe4a12dd3c037a60cb45cc279fcc0be4"
+  mocks_in_path: false
