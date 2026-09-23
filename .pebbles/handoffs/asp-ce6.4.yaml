@@ -1,0 +1,75 @@
+status: completed
+pebble_id: asp-ce6.4
+summary: >
+  Added a Rust whole-workspace duplicate-TYPE check to aspergillus,
+  alongside the existing duplicate-function check (asp-ce6.3). The check
+  ships as a new `aspergillus-rust-dup-type-check` binary in the existing
+  `aspergillus-rust-gate` crate (rust/). Its functional core
+  (rust/src/duplicate_types.rs) walks a Cargo workspace's *.rs files
+  across every crate (rust/src/workspace.rs's new `crate_roots` maps each
+  file to the nearest ancestor Cargo.toml), parses each struct_item and
+  enum_item with the pinned ast-grep-core/ast-grep-config/ast-grep-language
+  0.40.0 crates, and computes a shape fingerprint that ignores each
+  field's own type and visibility: a tuple struct's field count, a
+  named-field struct's ordered field-name list, or an enum's ordered
+  variant-name list. Two declarations sharing a name AND a shape, across
+  two or more distinct crates, are one reported concept; a duplicate
+  confined to one crate is not reported, and two declarations that share
+  only a name are not reported. `--allowlist FILE` drops a named type,
+  one name per line with `#` comments, mirroring
+  `aspergillus check-duplicates`. I derived the exact tree-sitter-rust
+  node shapes for struct_item/enum_item (ordered_field_declaration_list
+  vs field_declaration_list vs a bare `;`; enum_variant_list) empirically
+  with a throwaway probe test against the real ast-grep-core parser
+  rather than guessing. I merged epic/asp-ce6 (already-integrated
+  asp-ce6.1/.2/.3 work) into this branch first, fast-forward, and fixed
+  one pre-existing defect that merge carried: a literal ```rust markdown
+  fence left inside aspergillus_rust_gate.rs that broke the crate's
+  build (separate commit). The pebble's acceptance depends on the real
+  lobaria workspace at commit a027fb9; since a grading sandbox cannot be
+  relied on to reach that live repository, rust/fixtures/lobaria-a027fb9/
+  holds a verbatim, committed copy of the exact real files the check
+  needs (Nanos/Receipt's three declaring files each, plus Refused/
+  Carried/Hit/Finding's declaring files), with provenance recorded in its
+  PROVENANCE.md. I wrote all 10 named acceptance-oracle scripts under the
+  new scripts/oracle/ (they did not exist before this branch) plus a
+  shared scripts/oracle/lib_rust_dup_type_check.sh helper, ran each
+  against the real cargo-built binary, and all 10 pass: the check
+  reports Nanos and Receipt at all three real files each, stays silent
+  on Refused/Carried/Hit/Finding, formats every line as `path:line:
+  ASPnnn`, the allowlist metamorphic relation holds, the check modifies
+  no scanned file, cargo build succeeds with all three ast-grep
+  dependencies present, the check still reports findings with python3
+  and node truly absent from PATH (not merely shadowed — verified with a
+  PATH built from per-directory symlink proxies that omit only the named
+  binaries), and the branch's diff against its recorded base commit
+  touches no Python or TypeScript rule file. 36 rust unit tests pass (8
+  new for duplicate_types.rs), clippy is clean with -D warnings, cargo
+  fmt is clean, and I added ASP502 rows to docs/design.md, docs/rust-
+  rules.md and rust/README.md without touching any pre-existing Rust
+  column entry outside my own addition (those belong to sibling
+  decomposed-child pebbles).
+cost: ~340k tokens
+commits:
+  - "624e4701cc252356c39452450ee7620f2bbda7ab"
+  - "1f9aa604d3ac15f0c82d0d8f7f110630c7308af0"
+verify_transcript:
+  hooks:
+    - name: "cargo test --manifest-path rust/Cargo.toml --offline"
+      outcome: passed
+      duration_s: 3
+    - name: "cargo clippy --manifest-path rust/Cargo.toml --offline --all-targets -- -D warnings"
+      outcome: passed
+      duration_s: 1
+    - name: "cargo fmt --manifest-path rust/Cargo.toml --check"
+      outcome: passed
+      duration_s: 1
+    - name: "pre-commit run --verbose --files <all changed files>"
+      outcome: passed
+      duration_s: 1
+e2e_gate:
+  spec: contracts/specs/derived-asp-ce6.4.spec.json
+  command: "bash scripts/oracle/cross_crate_scope.sh && bash scripts/oracle/lobaria_nanos_findings.sh a027fb9 && bash scripts/oracle/lobaria_receipt_findings.sh a027fb9 && bash scripts/oracle/lobaria_name_only_types.sh a027fb9 && bash scripts/oracle/finding_line_format.sh a027fb9 && bash scripts/oracle/allowlist_suppresses_named_pair.sh a027fb9 && bash scripts/oracle/no_files_modified.sh a027fb9 && bash scripts/oracle/cargo_build_and_dependencies.sh && bash scripts/oracle/run_gate_without_python_and_node.sh a027fb9 && bash scripts/oracle/python_and_typescript_rules_untouched.sh"
+  result: passed
+  ran_at_sha: "624e4701cc252356c39452450ee7620f2bbda7ab"
+  mocks_in_path: false
