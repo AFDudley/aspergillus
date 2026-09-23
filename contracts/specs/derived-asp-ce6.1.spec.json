@@ -1,0 +1,508 @@
+{
+  "id": "derived-asp-ce6.1",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust workspace that adopts Aspergillus gets every ASP rule checked mechanically on commit, the same way Python and TypeScript consumers do, including two whole-workspace checks: the same function body defined twice, and the same concept declared as a type in more than one crate.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories that adopt Aspergillus (first consumer: lobaria, a Cargo workspace of 33 crates), and the exophial workers committing into them.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. A consumer copies or depends on aspergillus/rust (as it does today for rust/configs/clippy.toml) and runs the Rust rules over its workspace; each finding prints as `path:line: ASPnnn` and a finding in a blocking rule fails the run. docs/design.md's Rust column names, for every rule of Levels 2 and 3 and every ASP4xx rule that applies to Rust, the enforcing check: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/ (the engine TypeScript already uses under typescript/ast-grep-rules/), or a whole-workspace check; a rule the Rust language already enforces names the language feature, and a rule that does not apply to Rust says why. No entry reads 'Manual', 'planned' or 'Module structure'. A duplicate-function check reports two Rust functions whose normalized bodies are identical, as `aspergillus check-duplicates` does for Python. A duplicate-type check reports a struct or enum declared in one crate whose concept a type in another crate of the same workspace already declares, with an allowlist for intended cases.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run against lobaria integrated a027fb9, the duplicate-type check reports the three declarations of Nanos (statechart/src/units.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) and of Receipt (statechart/src/edge.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) as findings. The ASP202, ASP204, ASP205 and ASP206 Rust checks each report a finding on a committed Rust fixture that violates the rule and none on a committed fixture that satisfies it, for every rule that has a Rust check. docs/design.md's Rust column has no 'Manual', 'planned' or 'Module structure' entry. A Rust consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language), with no Python or Node runtime in its gate path.\nWhat are the non-goals / constraints? What must this NOT do? Not a change to the Python or TypeScript rules. Not autofix: report-only, as the other languages are. Not a dylint compiler plugin as the required engine: ast-grep YAML plus the ast-grep crates is the engine lobaria already runs (lobaria chart/src/ast_grep_gate.rs, lob-979). The duplicate-type check does not flag two types that share only a name when their shapes differ (lobaria's per-module Refused, Carried, Hit and Finding types are distinct types with local meaning).\nAny examples or references? (links, prior art, a similar thing you like) aspergillus docs/design.md sections 'Level 2', 'Level 3', 'Catalog rules ASP4xx', 'Whole-project CLI tools' (check-duplicates, asp-21d); typescript/ast-grep-rules/*.yml; lobaria chart/src/ast_grep_gate.rs and scripts/gates/core-types-rules/*.yml (ast-grep YAML rules run on ast-grep-core/config/language 0.40.0 from Rust); lobaria integrated a027fb9: 454 pub type declarations carry 384 distinct names, 45 names declared more than once.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: Aspergillus must let a Rust workspace run the Aspergillus Rust rules over itself. A consumer copies or depends on aspergillus/rust, the same way it depends on rust/configs/clippy.toml today, and runs the Rust rules over its Cargo workspace. Each finding prints as `path:line: ASPnnn`. A finding in a blocking rule makes the run fail. The consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language). No Python runtime and no Node runtime is in the consumer gate path. The rule engine is declarative ast-grep YAML under rust/ast-grep-rules/, which is the engine TypeScript already uses under typescript/ast-grep-rules/, together with clippy lints. The checks report only. They do not autofix, because the Python and TypeScript rules do not autofix. A dylint compiler plugin is not the required engine. The first consumer is lobaria, a Cargo workspace of 33 crates. lobaria already runs ast-grep YAML rules from Rust in chart/src/ast_grep_gate.rs and scripts/gates/core-types-rules/*.yml, on ast-grep-core/config/language 0.40.0. This deliverable does not change the Python rules or the TypeScript rules.",
+  "restatement": "Aspergillus today gives a Rust consumer only reference configuration files: `rust/configs/clippy.toml` and `rust/configs/cargo-lints.toml`. The consumer copies them and runs clippy. There is no way for a Rust workspace to run the Aspergillus Rust rules over itself. This request asks for that missing piece.\n\nThe deliverable is a runnable Rust gate that lives under `aspergillus/rust`. A consumer adopts it the same way it adopts `rust/configs/clippy.toml` today: it copies the directory, or it declares a Cargo dependency on it. The consumer then runs the gate over its own Cargo workspace with cargo. The gate reads the workspace sources and reports every violation it finds.\n\nThe gate's rule engine is declarative ast-grep YAML. The rule files live under `rust/ast-grep-rules/`. This is the same engine and the same declarative form that the TypeScript side already uses under `typescript/ast-grep-rules/`. The gate evaluates those YAML rules from Rust, through the ast-grep crates `ast-grep-core`, `ast-grep-config` and `ast-grep-language`. It applies the clippy lints as well, so that the Rust ASP identifiers already mapped to clippy keep working. A dylint compiler plugin is explicitly not the engine; the request rejects that design.\n\nThe output contract is exact. Each finding prints on its own line as `path:line: ASPnnn` \u2014 a file path, a colon, a line number, a colon, a space, and the ASP rule identifier. A finding that comes from a rule marked blocking makes the whole run fail with a non-zero exit status. A workspace with nothing to report passes with a zero exit status, so the gate is usable as a commit or CI gate.\n\nThe gate reports only. It never rewrites a source file. This matches the Python rules and the TypeScript rules, which also report and do not autofix in this path.\n\nThe runtime constraint is strict and is a large part of why this work exists. A Rust consumer must not be forced to install a Python interpreter or a Node interpreter to run the Aspergillus rules. Everything the consumer executes to get a verdict is cargo and Rust crates. If `python`, `python3`, `node`, `npm` and `npx` are all absent from the machine, the gate still runs and still reports findings.\n\nThe first consumer is lobaria, a Cargo workspace of 33 crates. lobaria already runs ast-grep YAML rules from Rust in `chart/src/ast_grep_gate.rs` with rules in `scripts/gates/core-types-rules/*.yml`, on ast-grep-core, ast-grep-config and ast-grep-language version 0.40.0. The gate must therefore build and run against those crates at 0.40.0, so lobaria can adopt it without a version conflict.\n\nThis work adds a Rust surface. It does not change the Python rules and it does not change the TypeScript rules; both keep their existing behavior.",
+  "restatement_clauses": [
+    {
+      "id": "C1",
+      "text": "A Cargo workspace that copies or depends on `aspergillus/rust` runs the Aspergillus Rust rules over its own Cargo workspace with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language), and the run scans the workspace sources."
+    },
+    {
+      "id": "C2",
+      "text": "Each finding prints on its own line in the exact form `path:line: ASPnnn` \u2014 a file path, a colon, a line number, a colon, a space, and an ASP rule id of `ASP` plus three digits."
+    },
+    {
+      "id": "C3",
+      "text": "A finding in a blocking rule makes the run fail with a non-zero exit status."
+    },
+    {
+      "id": "C4",
+      "text": "A Cargo workspace with no findings passes: the run exits with status zero and reports no findings."
+    },
+    {
+      "id": "C5",
+      "text": "No Python runtime and no Node runtime is in the consumer gate path: with `python`, `python3`, `node`, `npm` and `npx` all absent from PATH, the gate still runs and still reports its findings."
+    },
+    {
+      "id": "C6",
+      "text": "The rule engine is declarative ast-grep YAML held under `rust/ast-grep-rules/`, which is the directory the deliverable creates."
+    },
+    {
+      "id": "C7",
+      "text": "Every rule file under `rust/ast-grep-rules/` is a declarative ast-grep rule carrying a top-level `rule:` block, the same declarative form the TypeScript rules use under `typescript/ast-grep-rules/`."
+    },
+    {
+      "id": "C8",
+      "text": "The gate applies clippy lints together with the ast-grep YAML rules, so a construct the configured clippy lints flag is reported as a finding."
+    },
+    {
+      "id": "C9",
+      "text": "The checks report only and do not autofix: after a run, every checked source file on disk is byte-identical to what it was before the run."
+    },
+    {
+      "id": "C10",
+      "text": "A dylint compiler plugin is not the engine: no Cargo manifest and no Rust source of the deliverable depends on dylint."
+    },
+    {
+      "id": "C11",
+      "text": "The gate depends on ast-grep-core, ast-grep-config and ast-grep-language at version 0.40.0, the version the first consumer lobaria already runs."
+    },
+    {
+      "id": "C12",
+      "text": "This deliverable does not change the Python rules or the TypeScript rules: their existing test suites still pass with zero failures."
+    }
+  ],
+  "goal": "Ship a self-contained Rust code-quality gate under aspergillus/rust that a Cargo workspace can copy or depend on and run over its own crates with cargo alone, printing each finding as `path:line: ASPnnn` and failing the run when a blocking rule fires.",
+  "acceptance_criteria": [
+    "A throwaway Cargo workspace that pulls in the Aspergillus Rust gate can run the Aspergillus Rust checks over its own crates using only cargo, and the run reads the workspace source files.",
+    "When the checks find something in a sample Rust crate, every reported line reads as a file path, a colon, a line number, a colon, a space, and a rule name such as ASP201 \u2014 and no reported line reads any other way.",
+    "A sample Rust crate that breaks a rule marked blocking makes the check run end in failure rather than success.",
+    "A sample Rust crate that breaks no rule makes the check run end in success and report nothing.",
+    "On a machine where python, python3, node, npm and npx cannot be found at all, the checks still run over a sample Rust crate and still report the findings in it.",
+    "The repository holds a folder named rust/ast-grep-rules, the home of the Rust rule files.",
+    "Every rule file in the Rust rules folder is written in the declarative rule form: each one contains a top-level rule: section, the same way the TypeScript rule files do.",
+    "A sample Rust crate holding code that the shipped clippy settings object to is reported by the checks, showing clippy lints run alongside the rule files.",
+    "After the checks run over a sample Rust crate that has findings in it, not one of the crate's files has been altered.",
+    "No build manifest and no Rust source file of the Rust gate mentions dylint.",
+    "The Rust gate's build manifest asks for all three ast-grep libraries \u2014 ast-grep-core, ast-grep-config and ast-grep-language \u2014 at version 0.40.0, the version the first consumer lobaria already uses.",
+    "The existing checks for the Python rules and for the TypeScript rules both still run to completion with zero failures."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A throwaway Cargo workspace that pulls in the Aspergillus Rust gate can run the Aspergillus Rust checks over its own crates using only cargo, and the run reads the workspace source files."
+    },
+    {
+      "id": "c2",
+      "text": "When the checks find something in a sample Rust crate, every reported line reads as a file path, a colon, a line number, a colon, a space, and a rule name such as ASP201 \u2014 and no reported line reads any other way."
+    },
+    {
+      "id": "c3",
+      "text": "A sample Rust crate that breaks a rule marked blocking makes the check run end in failure rather than success."
+    },
+    {
+      "id": "c4",
+      "text": "A sample Rust crate that breaks no rule makes the check run end in success and report nothing."
+    },
+    {
+      "id": "c5",
+      "text": "On a machine where python, python3, node, npm and npx cannot be found at all, the checks still run over a sample Rust crate and still report the findings in it."
+    },
+    {
+      "id": "c6",
+      "text": "The repository holds a folder named rust/ast-grep-rules, the home of the Rust rule files."
+    },
+    {
+      "id": "c7",
+      "text": "Every rule file in the Rust rules folder is written in the declarative rule form: each one contains a top-level rule: section, the same way the TypeScript rule files do."
+    },
+    {
+      "id": "c8",
+      "text": "A sample Rust crate holding code that the shipped clippy settings object to is reported by the checks, showing clippy lints run alongside the rule files."
+    },
+    {
+      "id": "c9",
+      "text": "After the checks run over a sample Rust crate that has findings in it, not one of the crate's files has been altered."
+    },
+    {
+      "id": "c10",
+      "text": "No build manifest and no Rust source file of the Rust gate mentions dylint."
+    },
+    {
+      "id": "c11",
+      "text": "The Rust gate's build manifest asks for all three ast-grep libraries \u2014 ast-grep-core, ast-grep-config and ast-grep-language \u2014 at version 0.40.0, the version the first consumer lobaria already uses."
+    },
+    {
+      "id": "c12",
+      "text": "The existing checks for the Python rules and for the TypeScript rules both still run to completion with zero failures."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C1",
+      "description": "A throwaway Cargo workspace that pulls in the Aspergillus Rust gate can run the Aspergillus Rust checks over its own crates using only cargo, and the run reads the workspace source files.",
+      "proves": "Proves a Rust workspace can run the Aspergillus Rust rules over itself by copying or depending on aspergillus/rust, using cargo and the ast-grep crates.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_runs_over_cargo_workspace.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "source_files_scanned",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "ast_grep_crates_linked",
+          "op": "ge",
+          "value": 3
+        },
+        {
+          "observe": "stdout_json",
+          "field": "driven_by_cargo",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C2",
+      "description": "When the checks find something in a sample Rust crate, every reported line reads as a file path, a colon, a line number, a colon, a space, and a rule name such as ASP201 \u2014 and no reported line reads any other way.",
+      "proves": "Proves each finding prints as `path:line: ASPnnn`.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_finding_line_format.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "finding_lines_matching_format",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "finding_lines_not_matching_format",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C3",
+      "description": "A sample Rust crate that breaks a rule marked blocking makes the check run end in failure rather than success.",
+      "proves": "Proves a finding in a blocking rule makes the run fail.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_blocking_finding_fails_run.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "blocking_findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "gate_exit_code",
+          "op": "ne",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C4",
+      "description": "A sample Rust crate that breaks no rule makes the check run end in success and report nothing.",
+      "proves": "Proves a clean workspace passes, so the gate does not fail every run regardless of the code.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_clean_workspace_passes.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "gate_exit_code",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C5",
+      "description": "On a machine where python, python3, node, npm and npx cannot be found at all, the checks still run over a sample Rust crate and still report the findings in it.",
+      "proves": "Proves no Python runtime and no Node runtime is in the consumer gate path.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_runs_without_python_or_node.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "python_found_on_path",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "observe": "stdout_json",
+          "field": "node_found_on_path",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c5"
+    },
+    {
+      "type": "file_exists",
+      "restatement_clause_id": "C6",
+      "description": "The repository holds a folder named rust/ast-grep-rules, the home of the Rust rule files.",
+      "proves": "Proves the Rust rule engine has its declarative rule directory at rust/ast-grep-rules/.",
+      "path": "rust/ast-grep-rules",
+      "clause_id": "c6"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "C7",
+      "description": "Every rule file in the Rust rules folder is written in the declarative rule form: each one contains a top-level rule: section, the same way the TypeScript rule files do.",
+      "proves": "Proves the rules are declarative ast-grep YAML, not hand-written compiler code.",
+      "pattern": "^rule:",
+      "files": [
+        "rust/ast-grep-rules/*.yml",
+        "rust/ast-grep-rules/*.yaml"
+      ],
+      "count": {
+        "unit": "files_without_match",
+        "op": "eq",
+        "value": 0
+      },
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C8",
+      "description": "A sample Rust crate holding code that the shipped clippy settings object to is reported by the checks, showing clippy lints run alongside the rule files.",
+      "proves": "Proves the gate applies clippy lints together with the ast-grep YAML rules.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_reports_clippy_findings.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "clippy_findings",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c8"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C9",
+      "description": "After the checks run over a sample Rust crate that has findings in it, not one of the crate's files has been altered.",
+      "proves": "Proves the checks report only and never rewrite a source file.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/rust_gate_does_not_modify_sources.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "files_changed_by_run",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c9"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "C10",
+      "description": "No build manifest and no Rust source file of the Rust gate mentions dylint.",
+      "proves": "Proves a dylint compiler plugin is not the engine behind the Rust checks.",
+      "pattern": "dylint",
+      "files": [
+        "rust/Cargo.toml",
+        "rust/*/Cargo.toml",
+        "rust/*/*/Cargo.toml",
+        "rust/*/src/*.rs",
+        "rust/*/src/*/*.rs"
+      ],
+      "clause_id": "c10"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "C11",
+      "description": "The Rust gate's build manifest asks for all three ast-grep libraries \u2014 ast-grep-core, ast-grep-config and ast-grep-language \u2014 at version 0.40.0, the version the first consumer lobaria already uses.",
+      "proves": "Proves the gate builds against ast-grep-core, ast-grep-config and ast-grep-language 0.40.0, so lobaria can adopt it without a version clash.",
+      "pattern": "ast-grep-core[^\\n]*0\\.40\\.0",
+      "additional_patterns": [
+        "ast-grep-config[^\\n]*0\\.40\\.0",
+        "ast-grep-language[^\\n]*0\\.40\\.0"
+      ],
+      "files": [
+        "rust/Cargo.toml",
+        "rust/*/Cargo.toml",
+        "rust/*/*/Cargo.toml"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 3
+      },
+      "clause_id": "c11"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C12",
+      "description": "The existing checks for the Python rules and for the TypeScript rules both still run to completion with zero failures.",
+      "proves": "Proves this work leaves the Python rules and the TypeScript rules working as before.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/oracles/python_and_typescript_rules_still_pass.sh",
+        "args": [
+          "--report-json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "python_rule_test_failures",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "typescript_rule_test_failures",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "python_rule_tests_run",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "typescript_rule_tests_run",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c12"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/oracles/python_and_typescript_rules_still_pass.sh",
+    "scripts/oracles/rust_gate_blocking_finding_fails_run.sh",
+    "scripts/oracles/rust_gate_clean_workspace_passes.sh",
+    "scripts/oracles/rust_gate_does_not_modify_sources.sh",
+    "scripts/oracles/rust_gate_finding_line_format.sh",
+    "scripts/oracles/rust_gate_reports_clippy_findings.sh",
+    "scripts/oracles/rust_gate_runs_over_cargo_workspace.sh",
+    "scripts/oracles/rust_gate_runs_without_python_or_node.sh"
+  ]
+}
