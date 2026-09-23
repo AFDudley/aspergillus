@@ -5,6 +5,14 @@
 # the real crate and the real fixtures the oracle then observes.
 set -uo pipefail
 
+# The cargo/rustc toolchain (and bun, used by a sibling oracle) install under
+# the user's home, not a system bin dir. Aspergillus's own acceptance gate runs
+# each oracle in a hermetic child env whose HOME is exposed read-through to the
+# real toolchain dirs but whose PATH carries only uv/git/bash + system dirs, so
+# make cargo reachable by name here. In a real consumer's shell these dirs are
+# already on PATH, so prepending them is a harmless no-op there.
+export PATH="${HOME}/.cargo/bin:${HOME}/.bun/bin:${PATH}"
+
 rust_gate_repo_root() {
     cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
 }

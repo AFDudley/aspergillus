@@ -1,3 +1,7 @@
+rule:
+  kind: static_item
+  has:
+    kind: mutable_specifier
 id: ASP203
 language: rust
 severity: error
@@ -6,7 +10,3 @@ message: |
   owner instead — a struct field, a `OnceLock`, or an argument passed
   through the call chain. See docs/design.md, "Level 2 — Blocking",
   ASP203 (no global mutable state).
-rule:
-  kind: static_item
-  has:
-    kind: mutable_specifier
