@@ -15,6 +15,8 @@ pub mod duplicate_types;
 pub mod duplicates;
 pub mod loops;
 pub mod purity;
+pub mod tupling;
+pub mod worker_wrapper;
 pub mod workspace;
 
 /// One finding: a rule id at one 1-based line of one file, and whether the

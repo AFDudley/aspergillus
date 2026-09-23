@@ -15,7 +15,9 @@ use aspergillus_rust_gate::core_declaration::{
     default_core_config_path, resolve_core_declaration, CoreDeclaration,
 };
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
-use aspergillus_rust_gate::{clippy, exit_status, loops, purity, source_findings, Finding};
+use aspergillus_rust_gate::{
+    clippy, exit_status, loops, purity, source_findings, tupling, worker_wrapper, Finding,
+};
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
@@ -245,6 +247,21 @@ fn scan_workspace(
         // `while true {}` with no reachable break has no determinable bound
         // anywhere in the tree, core or shell.
         for (line, rule_id, blocking) in loops::unbounded_loop_findings(&source) {
+            findings.push(Finding {
+                path: shown.clone(),
+                line,
+                rule_id: rule_id.to_string(),
+                blocking,
+            });
+        }
+        // ASP406 (Tupling) and ASP407 (Worker/Wrapper) are structural
+        // combinator findings, not core-scoped: two passes over one
+        // iterable, or a trivial verbatim pass-through wrapper, is debt
+        // anywhere in the tree.
+        for (line, rule_id, blocking) in tupling::tupling_findings(&source)
+            .into_iter()
+            .chain(worker_wrapper::worker_wrapper_findings(&source))
+        {
             findings.push(Finding {
                 path: shown.clone(),
                 line,
