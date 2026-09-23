@@ -1,0 +1,463 @@
+{
+  "id": "derived-asp-ce6.2",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust workspace that adopts Aspergillus gets every ASP rule checked mechanically on commit, the same way Python and TypeScript consumers do, including two whole-workspace checks: the same function body defined twice, and the same concept declared as a type in more than one crate.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories that adopt Aspergillus (first consumer: lobaria, a Cargo workspace of 33 crates), and the exophial workers committing into them.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. A consumer copies or depends on aspergillus/rust (as it does today for rust/configs/clippy.toml) and runs the Rust rules over its workspace; each finding prints as `path:line: ASPnnn` and a finding in a blocking rule fails the run. docs/design.md's Rust column names, for every rule of Levels 2 and 3 and every ASP4xx rule that applies to Rust, the enforcing check: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/ (the engine TypeScript already uses under typescript/ast-grep-rules/), or a whole-workspace check; a rule the Rust language already enforces names the language feature, and a rule that does not apply to Rust says why. No entry reads 'Manual', 'planned' or 'Module structure'. A duplicate-function check reports two Rust functions whose normalized bodies are identical, as `aspergillus check-duplicates` does for Python. A duplicate-type check reports a struct or enum declared in one crate whose concept a type in another crate of the same workspace already declares, with an allowlist for intended cases.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run against lobaria integrated a027fb9, the duplicate-type check reports the three declarations of Nanos (statechart/src/units.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) and of Receipt (statechart/src/edge.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) as findings. The ASP202, ASP204, ASP205 and ASP206 Rust checks each report a finding on a committed Rust fixture that violates the rule and none on a committed fixture that satisfies it, for every rule that has a Rust check. docs/design.md's Rust column has no 'Manual', 'planned' or 'Module structure' entry. A Rust consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language), with no Python or Node runtime in its gate path.\nWhat are the non-goals / constraints? What must this NOT do? Not a change to the Python or TypeScript rules. Not autofix: report-only, as the other languages are. Not a dylint compiler plugin as the required engine: ast-grep YAML plus the ast-grep crates is the engine lobaria already runs (lobaria chart/src/ast_grep_gate.rs, lob-979). The duplicate-type check does not flag two types that share only a name when their shapes differ (lobaria's per-module Refused, Carried, Hit and Finding types are distinct types with local meaning).\nAny examples or references? (links, prior art, a similar thing you like) aspergillus docs/design.md sections 'Level 2', 'Level 3', 'Catalog rules ASP4xx', 'Whole-project CLI tools' (check-duplicates, asp-21d); typescript/ast-grep-rules/*.yml; lobaria chart/src/ast_grep_gate.rs and scripts/gates/core-types-rules/*.yml (ast-grep YAML rules run on ast-grep-core/config/language 0.40.0 from Rust); lobaria integrated a027fb9: 454 pub type declarations carry 384 distinct names, 45 names declared more than once.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: Aspergillus must check every ASP rule of Levels 2 and 3, and every ASP4xx catalog rule that applies to Rust, mechanically on a Rust workspace. For each such rule, the enforcing check is one of three kinds: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/, or a whole-workspace check. A rule that the Rust language already enforces names the language feature instead. A rule that does not apply to Rust states why. Acceptance a person can check without reading code: the ASP202, ASP204, ASP205 and ASP206 Rust checks each report a finding on a committed Rust fixture that violates the rule, and report no finding on a committed Rust fixture that satisfies the rule. Every rule that has a Rust check gets this fixture pair. Each finding prints as `path:line: ASPnnn`. The checks report only; they do not autofix, because the Python and TypeScript rules do not autofix. This deliverable does not change the Python rules or the TypeScript rules. Reference: aspergillus docs/design.md sections 'Level 2', 'Level 3' and 'Catalog rules ASP4xx'; typescript/ast-grep-rules/*.yml; lobaria scripts/gates/core-types-rules/*.yml. The first consumer is lobaria, a Cargo workspace of 33 crates.",
+  "restatement": "Aspergillus today enforces its rule set on Python and on TypeScript. On Rust it ships only a clippy config. This request makes the Rust surface complete and mechanical.\n\nEvery ASP rule of Level 2 (ASP201 through ASP206), every ASP rule of Level 3 (ASP301 through ASP304), and every ASP4xx catalog rule (ASP401 through ASP417) gets a stated disposition for Rust. A disposition is one of five things. First, a clippy lint enforces the rule. Second, a declarative ast-grep YAML rule under rust/ast-grep-rules/ enforces the rule. Third, a whole-workspace check enforces the rule, because the fact is cross-file and one file cannot show it. Fourth, the Rust language itself already enforces the rule, and the disposition names the language feature that does so. Fifth, the rule does not apply to Rust, and the disposition states why.\n\nA person judges this deliverable without reading code. The Rust checks for ASP202, ASP204, ASP205 and ASP206 each run on two committed Rust fixtures. The check reports a finding on the fixture that violates the rule. The check reports no finding on the fixture that satisfies the rule. Every other rule that gets a Rust check gets the same fixture pair, and the pair behaves the same way.\n\nEvery finding prints in one form: the path, a colon, the line number, a colon, a space, then the rule id, as in `src/lib.rs:41: ASP202`.\n\nThe Rust checks report only. They never rewrite a file. The Python rules and the TypeScript rules do not autofix, so the Rust checks do not autofix either. This deliverable changes neither the Python rules nor the TypeScript rules. The first consumer is lobaria, a Cargo workspace of 33 crates.",
+  "restatement_clauses": [
+    {
+      "id": "C1",
+      "text": "The Rust rule mapping document docs/rust-rules.md names all 27 rule ids: ASP201, ASP202, ASP203, ASP204, ASP205, ASP206, ASP301, ASP302, ASP303, ASP304, and ASP401 through ASP417."
+    },
+    {
+      "id": "C2",
+      "text": "Each of those 27 rules carries exactly one Rust disposition, and that disposition is one of five kinds: a clippy lint, an ast-grep YAML rule under rust/ast-grep-rules/, a whole-workspace check, a named Rust language feature that already enforces the rule, or a stated reason the rule does not apply to Rust."
+    },
+    {
+      "id": "C3",
+      "text": "The ASP202 Rust check reports a finding on a committed Rust fixture that violates ASP202, and reports no finding on a committed Rust fixture that satisfies ASP202."
+    },
+    {
+      "id": "C4",
+      "text": "The ASP204 Rust check reports a finding on a committed Rust fixture that violates ASP204, and reports no finding on a committed Rust fixture that satisfies ASP204."
+    },
+    {
+      "id": "C5",
+      "text": "The ASP205 Rust check reports a finding on a committed Rust fixture that violates ASP205, and reports no finding on a committed Rust fixture that satisfies ASP205."
+    },
+    {
+      "id": "C6",
+      "text": "The ASP206 Rust check reports a finding on a committed Rust fixture that violates ASP206, and reports no finding on a committed Rust fixture that satisfies ASP206."
+    },
+    {
+      "id": "C7",
+      "text": "Every rule that has a Rust check has a committed violating fixture and a committed satisfying fixture, and that pair behaves the same way: a finding on the violating fixture, no finding on the satisfying fixture."
+    },
+    {
+      "id": "C8",
+      "text": "Each finding prints as `path:line: ASPnnn`."
+    },
+    {
+      "id": "C9",
+      "text": "The Rust checks report only; they do not autofix, so running them modifies no file of the Rust workspace."
+    },
+    {
+      "id": "C10",
+      "text": "This deliverable does not change the Python rules or the TypeScript rules; both rule sets still pass their own existing checks."
+    }
+  ],
+  "goal": "Aspergillus checks every Level 2, Level 3 and ASP4xx rule mechanically on a Rust workspace, with a committed violating/satisfying fixture pair per checked rule.",
+  "acceptance_criteria": [
+    "The Rust rule mapping document lists all 27 aspergillus rules by name: the six Level 2 rules, the four Level 3 rules, and the seventeen ASP4xx catalog rules. A reader can open the one document and find every rule id in it.",
+    "A report of the delivered Rust checking surface shows 27 rules in total, none of them left without an answer, and none of them answered in a way that is not one of the five allowed answers: a clippy lint, an ast-grep YAML rule under rust/ast-grep-rules/, a whole-workspace check, a named Rust language feature, or a stated reason the rule does not apply to Rust.",
+    "The ASP202 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+    "The ASP204 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+    "The ASP205 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+    "The ASP206 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+    "A sweep over every rule that has a Rust check shows at least four such rules, no rule missing either of its two committed Rust example files, and no rule whose pair of example files behaves the wrong way round.",
+    "The Rust checks run over every committed rule-breaking example, and a count of the printed lines is taken. At least four lines are printed, and not one of them departs from the single printed form: the file path, a colon, the line number, a colon, a space, then the rule id.",
+    "A throwaway copy of the Rust example workspace is made, and every Rust check runs over it. The checks print at least one finding, and afterwards not one file in that copy differs from the copy that was made.",
+    "The existing Python rule checks and the existing TypeScript rule checks both run to completion, and neither reports a failure."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "The Rust rule mapping document lists all 27 aspergillus rules by name: the six Level 2 rules, the four Level 3 rules, and the seventeen ASP4xx catalog rules. A reader can open the one document and find every rule id in it."
+    },
+    {
+      "id": "c2",
+      "text": "A report of the delivered Rust checking surface shows 27 rules in total, none of them left without an answer, and none of them answered in a way that is not one of the five allowed answers: a clippy lint, an ast-grep YAML rule under rust/ast-grep-rules/, a whole-workspace check, a named Rust language feature, or a stated reason the rule does not apply to Rust."
+    },
+    {
+      "id": "c3",
+      "text": "The ASP202 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule."
+    },
+    {
+      "id": "c4",
+      "text": "The ASP204 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule."
+    },
+    {
+      "id": "c5",
+      "text": "The ASP205 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule."
+    },
+    {
+      "id": "c6",
+      "text": "The ASP206 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule."
+    },
+    {
+      "id": "c7",
+      "text": "A sweep over every rule that has a Rust check shows at least four such rules, no rule missing either of its two committed Rust example files, and no rule whose pair of example files behaves the wrong way round."
+    },
+    {
+      "id": "c8",
+      "text": "The Rust checks run over every committed rule-breaking example, and a count of the printed lines is taken. At least four lines are printed, and not one of them departs from the single printed form: the file path, a colon, the line number, a colon, a space, then the rule id."
+    },
+    {
+      "id": "c9",
+      "text": "A throwaway copy of the Rust example workspace is made, and every Rust check runs over it. The checks print at least one finding, and afterwards not one file in that copy differs from the copy that was made."
+    },
+    {
+      "id": "c10",
+      "text": "The existing Python rule checks and the existing TypeScript rule checks both run to completion, and neither reports a failure."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "grep",
+      "description": "The Rust rule mapping document lists all 27 aspergillus rules by name: the six Level 2 rules, the four Level 3 rules, and the seventeen ASP4xx catalog rules. A reader can open the one document and find every rule id in it.",
+      "proves": "Proves the Rust coverage claim is complete, and that no rule was quietly left out of the mapping.",
+      "restatement_clause_id": "C1",
+      "pattern": "ASP201",
+      "additional_patterns": [
+        "ASP202",
+        "ASP203",
+        "ASP204",
+        "ASP205",
+        "ASP206",
+        "ASP301",
+        "ASP302",
+        "ASP303",
+        "ASP304",
+        "ASP401",
+        "ASP402",
+        "ASP403",
+        "ASP404",
+        "ASP405",
+        "ASP406",
+        "ASP407",
+        "ASP408",
+        "ASP409",
+        "ASP410",
+        "ASP411",
+        "ASP412",
+        "ASP413",
+        "ASP414",
+        "ASP415",
+        "ASP416",
+        "ASP417"
+      ],
+      "files": [
+        "docs/rust-rules.md"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 27
+      },
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "description": "A report of the delivered Rust checking surface shows 27 rules in total, none of them left without an answer, and none of them answered in a way that is not one of the five allowed answers: a clippy lint, an ast-grep YAML rule under rust/ast-grep-rules/, a whole-workspace check, a named Rust language feature, or a stated reason the rule does not apply to Rust.",
+      "proves": "Proves every rule has a real and recognised disposition for Rust, so the mapping is an answer sheet and not a list of blanks.",
+      "restatement_clause_id": "C2",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_rule_audit.py",
+        "args": [
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "rules_total",
+          "op": "eq",
+          "value": 27
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_without_disposition",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_with_unrecognized_disposition",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1200,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "description": "The ASP202 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+      "proves": "Proves the ASP202 Rust check finds the fault it exists to find, and stays quiet on correct code.",
+      "restatement_clause_id": "C3",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_rule_probe.py",
+        "args": [
+          "--rule",
+          "ASP202",
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violating_findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "satisfying_findings",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "description": "The ASP204 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+      "proves": "Proves the ASP204 Rust check finds the fault it exists to find, and stays quiet on correct code.",
+      "restatement_clause_id": "C4",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_rule_probe.py",
+        "args": [
+          "--rule",
+          "ASP204",
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violating_findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "satisfying_findings",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "description": "The ASP205 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+      "proves": "Proves the ASP205 Rust check finds the fault it exists to find, and stays quiet on correct code.",
+      "restatement_clause_id": "C5",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_rule_probe.py",
+        "args": [
+          "--rule",
+          "ASP205",
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violating_findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "satisfying_findings",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "The ASP206 check runs on the two committed Rust example files. It reports at least one finding on the example that breaks the rule. It reports nothing on the example that keeps the rule.",
+      "proves": "Proves the ASP206 Rust check finds the fault it exists to find, and stays quiet on correct code.",
+      "restatement_clause_id": "C6",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_rule_probe.py",
+        "args": [
+          "--rule",
+          "ASP206",
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "violating_findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "satisfying_findings",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "description": "A sweep over every rule that has a Rust check shows at least four such rules, no rule missing either of its two committed Rust example files, and no rule whose pair of example files behaves the wrong way round.",
+      "proves": "Proves the fixture pair rule holds for all checked rules, not only for the four rules the request names by hand.",
+      "restatement_clause_id": "C7",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_rule_audit.py",
+        "args": [
+          "--fixtures",
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "rules_with_check",
+          "op": "ge",
+          "value": 4
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_with_check_missing_fixture_pair",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_with_check_whose_fixture_pair_misbehaves",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1200,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "description": "The Rust checks run over every committed rule-breaking example, and a count of the printed lines is taken. At least four lines are printed, and not one of them departs from the single printed form: the file path, a colon, the line number, a colon, a space, then the rule id.",
+      "proves": "Proves every finding a person sees is printed in the one agreed form, so a reader or an editor can jump straight to the offending line.",
+      "restatement_clause_id": "C8",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_finding_format.py",
+        "args": [
+          "--format-regex",
+          "^\\S+:[0-9]+: ASP[0-9]{3}$",
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "finding_lines_total",
+          "op": "ge",
+          "value": 4
+        },
+        {
+          "observe": "stdout_json",
+          "field": "finding_lines_not_matching_format",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c8"
+    },
+    {
+      "type": "behavior",
+      "description": "A throwaway copy of the Rust example workspace is made, and every Rust check runs over it. The checks print at least one finding, and afterwards not one file in that copy differs from the copy that was made.",
+      "proves": "Proves the Rust checks only report. They leave the user's source exactly as it was, the same way the Python rules and the TypeScript rules do.",
+      "restatement_clause_id": "C9",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_no_autofix.py",
+        "args": [
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "files_modified",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c9"
+    },
+    {
+      "type": "behavior",
+      "description": "The existing Python rule checks and the existing TypeScript rule checks both run to completion, and neither reports a failure.",
+      "proves": "Proves adding the Rust surface disturbed neither of the two rule sets that already shipped.",
+      "restatement_clause_id": "C10",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_python_ts_rules_intact.py",
+        "args": [
+          "--json"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "python_rule_failures",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "typescript_rule_failures",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1200,
+      "clause_id": "c10"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/asp_python_ts_rules_intact.py",
+    "scripts/asp_rust_finding_format.py",
+    "scripts/asp_rust_no_autofix.py",
+    "scripts/asp_rust_rule_audit.py",
+    "scripts/asp_rust_rule_probe.py"
+  ]
+}
