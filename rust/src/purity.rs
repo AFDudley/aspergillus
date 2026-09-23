@@ -210,13 +210,13 @@ pub fn assertion_density_findings(source: &str) -> Vec<(usize, &'static str, boo
 }
 
 /// ASP205: a function whose body calls a known Rust I/O name. Mirrors
-/// `ImpureFunction`: advisory, not blocking — the function may
-/// legitimately be an orchestrator.
+/// `ImpureFunction`: blocking — the finding fails the gate run, since every
+/// Aspergillus Rust rule now blocks.
 pub fn impure_function_findings(source: &str) -> Vec<(usize, &'static str, bool)> {
     scan_functions(source)
         .into_iter()
         .filter(|f| !f.io_calls.is_empty())
-        .map(|f| (f.line, "ASP205", false))
+        .map(|f| (f.line, "ASP205", true))
         .collect()
 }
 
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn a_function_calling_println_is_asp205() {
         let source = "fn save(data: &str) {\n    println!(\"{data}\");\n}\n";
-        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", false)]);
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
     }
 
     #[test]
@@ -285,6 +285,6 @@ mod tests {
         let source =
             "fn outer() {\n    fn inner() {\n        println!(\"hi\");\n    }\n    inner();\n}\n";
         let found = impure_function_findings(source);
-        assert_eq!(found, vec![(2, "ASP205", false)]);
+        assert_eq!(found, vec![(2, "ASP205", true)]);
     }
 }

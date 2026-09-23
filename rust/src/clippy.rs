@@ -11,14 +11,14 @@ use std::process::Command;
 use crate::Finding;
 
 /// The clippy lints the gate forces on, the level it forces them to, and
-/// the ASP id each reports as. The level decides blocking: `deny` reports
-/// as `error` (blocking), `warn` reports as `warning` (not blocking).
+/// the ASP id each reports as. Every lint the gate forces is at `deny`, so
+/// every one reports as `error` (blocking).
 const FORCED_LINTS: &[(&str, &str, &str)] = &[
-    ("clippy::too_many_lines", "warn", "ASP201"),
+    ("clippy::too_many_lines", "deny", "ASP201"),
     ("clippy::unwrap_used", "deny", "ASP301"),
     ("clippy::expect_used", "deny", "ASP301"),
     ("clippy::panic", "deny", "ASP301"),
-    ("clippy::redundant_closure", "warn", "ASP403"),
+    ("clippy::redundant_closure", "deny", "ASP403"),
 ];
 
 /// Run `cargo clippy` over `workspace_dir` with the forced lints above, and

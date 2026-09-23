@@ -23,8 +23,11 @@ A runnable Rust gate, plus reference clippy and Cargo lint configs.
 
 1. Copy the `rust/` directory into the consumer repo (or depend on it by
    path), the same way `configs/clippy.toml` is adopted today. The gate
-   reads `ast-grep-rules/` from beside its own `Cargo.toml`, so the rules
-   travel with it either way.
+   resolves its rule directory at run time — either an explicit `--rules <dir>`
+   argument, or the `CARGO_MANIFEST_DIR` environment variable (set by `cargo
+run`). It never falls back to a compiled-in path, so a binary built from
+   one checkout and run from another reads the right `ast-grep-rules/`
+   directory.
 
    The crate's `Cargo.toml` declares an empty `[workspace]` table, so when
    `rust/` is vendored inside a consumer's own Cargo workspace, cargo treats
@@ -33,8 +36,10 @@ A runnable Rust gate, plus reference clippy and Cargo lint configs.
    needed; run its binaries directly with `--manifest-path rust/Cargo.toml`.
 
 2. Run the gate over the workspace: `cargo run --manifest-path
-rust/Cargo.toml -- path/to/workspace` (default target: `.`). It exits
-   0 with no blocking finding, non-zero with at least one.
+rust/Cargo.toml -- path/to/workspace [--rules DIR]` (default target: `.`).
+   The gate resolves its rule directory at run time — the `--rules` argument
+   or `CARGO_MANIFEST_DIR` (set by `cargo run`) — never a compiled-in path.
+   It exits 0 with no blocking finding, non-zero with at least one.
 3. Paste `configs/cargo-lints.toml` contents into the consumer's
    `Cargo.toml` under `[lints.clippy]`, and copy `configs/clippy.toml` to
    the consumer repo root, so a plain `cargo clippy` run (outside the
@@ -48,16 +53,16 @@ disposition table (every Level 2, Level 3 and ASP4xx rule), and
 the ones with a committed `../rust/fixtures/<ASPnnn>/{violating,satisfying}/`
 fixture pair:
 
-| ASP    | Tooling                                                                     |
-| ------ | --------------------------------------------------------------------------- |
-| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `warn`                   |
-| ASP202 | `src/purity.rs::assertion_density_findings` (gate check)                    |
-| ASP204 | `ast-grep-rules/asp204-no-infinite-loop.yml` (severity `warning`)           |
-| ASP205 | `src/purity.rs::impure_function_findings` (gate check)                      |
-| ASP206 | `src/purity.rs::mixed_io_logic_findings` (gate check)                       |
-| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `deny`               |
-| ASP403 | `clippy::redundant_closure`, forced at `warn`                               |
-| ASP404 | `ast-grep-rules/asp404-redundant-conditional-bool.yml` (severity `warning`) |
+| ASP    | Tooling                                                                   |
+| ------ | ------------------------------------------------------------------------- |
+| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `deny`                 |
+| ASP202 | `src/purity.rs::assertion_density_findings` (gate check)                  |
+| ASP204 | `ast-grep-rules/asp204-no-infinite-loop.yml` (severity `error`)           |
+| ASP205 | `src/purity.rs::impure_function_findings` (gate check)                    |
+| ASP206 | `src/purity.rs::mixed_io_logic_findings` (gate check)                     |
+| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `deny`             |
+| ASP403 | `clippy::redundant_closure`, forced at `deny`                             |
+| ASP404 | `ast-grep-rules/asp404-redundant-conditional-bool.yml` (severity `error`) |
 
 ASP203 (no safe `static mut`), ASP302 (no `null`) and ASP413 (`match`
 exhaustiveness) are language features: the compiler enforces them, so no
@@ -80,6 +85,5 @@ commit `a027fb9` — see `fixtures/lobaria-a027fb9/PROVENANCE.md` and
 The gate treats a finding as blocking exactly when the underlying tool
 reports it at `error` level: an ast-grep rule with `severity: error`, a
 clippy lint the gate forces to `deny`, or a gate check that returns
-`blocking: true`. `clippy::too_many_lines` and `clippy::redundant_closure`
-stay at `warn` until a dedicated PR promotes them, matching the
-TypeScript severity-flip workflow.
+`blocking: true`. Every Aspergillus Rust rule reports as blocking, so a
+gate run with any finding exits non-zero.

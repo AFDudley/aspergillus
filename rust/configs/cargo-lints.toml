@@ -2,7 +2,7 @@
 # Paste into consumer `Cargo.toml`.
 
 [lints.clippy]
-too_many_lines = "warn"       # ASP201 — flip to "deny" when zero violations
+too_many_lines = "deny"          # ASP201
 unwrap_used = "deny"          # ASP301 — prefer Result<T, E>
 expect_used = "deny"          # ASP301
 panic = "deny"                # ASP301

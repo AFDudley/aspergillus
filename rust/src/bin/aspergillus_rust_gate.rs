@@ -14,14 +14,16 @@ use ast_grep_language::SupportLang;
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
 
-/// The rule directory shipped alongside this crate, resolved at compile
-/// time so it travels with the crate whether a consumer copies `rust/`
-/// wholesale or depends on it by path.
-const RULES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/ast-grep-rules");
-
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let (exclude_patterns, remaining) = match take_excludes(raw_args) {
+    let (rules_dir_opt, args) = match take_rules(raw_args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let (exclude_patterns, remaining) = match take_excludes(args) {
         Ok(parsed) => parsed,
         Err(why) => {
             eprintln!("aspergillus-rust-gate: {why}");
@@ -30,7 +32,7 @@ fn main() -> ExitCode {
     };
     if remaining.len() > 1 {
         eprintln!(
-            "usage: aspergillus-rust-gate [WORKSPACE_DIR] [--exclude GLOB]...   (default: .)"
+            "usage: aspergillus-rust-gate [WORKSPACE_DIR] [--exclude GLOB]... [--rules DIR]   (default: .)"
         );
         return ExitCode::from(2);
     }
@@ -43,10 +45,26 @@ fn main() -> ExitCode {
     };
     let workspace_dir = PathBuf::from(remaining.first().map_or(".", String::as_str));
 
-    let rules = match load_rules(Path::new(RULES_DIR)) {
-        Ok(rules) => rules,
-        Err(why) => {
-            eprintln!("aspergillus-rust-gate: input error: {why}");
+    // Resolve the rule directory at run time: the `--rules` argument when
+    // given, otherwise `CARGO_MANIFEST_DIR/ast-grep-rules` (cargo sets that
+    // variable for `cargo run`). When neither is available, fail with an
+    // input error naming both. The gate never falls back to a compiled-in
+    // path.
+    let rules_dir: Option<PathBuf> = rules_dir_opt.map(PathBuf::from).or_else(|| {
+        std::env::var("CARGO_MANIFEST_DIR")
+            .ok()
+            .map(|dir| PathBuf::from(dir).join("ast-grep-rules"))
+    });
+    let rules = match rules_dir {
+        Some(dir) => match load_rules(&dir) {
+            Ok(rules) => rules,
+            Err(why) => {
+                eprintln!("aspergillus-rust-gate: input error: {why}");
+                return ExitCode::from(2);
+            }
+        },
+        None => {
+            eprintln!("aspergillus-rust-gate: input error: no --rules argument and no CARGO_MANIFEST_DIR environment variable available");
             return ExitCode::from(2);
         }
     };
@@ -83,6 +101,28 @@ fn main() -> ExitCode {
         findings.len()
     );
     ExitCode::from(exit_status(&findings))
+}
+/// Extract the optional `--rules <dir>` argument from `args`, returning
+/// the rule directory (when present) and the remaining arguments in their
+/// original order. A `--rules` without a value is an input error.
+fn take_rules(args: Vec<String>) -> Result<(Option<String>, Vec<String>), String> {
+    let mut rules_dir: Option<String> = None;
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--rules" {
+            let value = args
+                .get(i + 1)
+                .cloned()
+                .ok_or_else(|| "--rules needs a DIR argument".to_string())?;
+            rules_dir = Some(value);
+            i += 2;
+        } else {
+            rest.push(args[i].clone());
+            i += 1;
+        }
+    }
+    Ok((rules_dir, rest))
 }
 
 /// The ast-grep rules declared by the shipped rule directory's YAML files.

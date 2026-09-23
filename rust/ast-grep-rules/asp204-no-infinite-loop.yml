@@ -2,7 +2,7 @@ rule:
   kind: loop_expression
 id: ASP204
 language: rust
-severity: warning
+severity: error
 message: |
   A `loop { ... }` has no statically-determinable iteration bound. Prefer
   an iterator, a bounded `for` range, or a `while` over a checked

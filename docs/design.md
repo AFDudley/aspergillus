@@ -418,7 +418,7 @@ Paste `rust/configs/cargo-lints.toml` contents into the consumer's
 ## Enforcement model
 
 - **Level 2 blocks** — pre-commit fails on any violation.
-- **Level 3 also blocks** in strict adopters (recommended); warn elsewhere.
+- **Level 3 also blocks** in strict adopters (recommended); for Rust the gate forces every rule to block (no warn tier).
 - **Severity-flip workflow**: every new rule lands at `warn`, stays there
   until violations reach 0, then flips to `error` in a dedicated PR.
 - **Per-rule suppression**: `# noqa: ASP2XX` (Python), ESLint disable comments
