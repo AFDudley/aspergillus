@@ -214,10 +214,11 @@ fn walk_own_scope<D: Doc>(node: &Node<'_, D>, visit: &mut impl FnMut(&Node<'_, D
 /// Whether a `write!`/`writeln!` invocation targets an in-memory
 /// `fmt::Formatter` — the near-universal shape of a `Display`/`Debug`
 /// impl's `fmt` method or a `serde::de::Visitor::expecting` method — not a
-/// file or socket. Every one of these targets a parameter named `f`
-/// (rustc's own `fmt::Formatter` docs, and every generated `Display`/
-/// `Debug` impl, use exactly that name); a `write!`/`writeln!` whose first
-/// argument is any other identifier is presumed to target real I/O.
+/// file or socket. A `Display`/`Debug` impl's `fmt` method names its
+/// `fmt::Formatter` parameter `f`; a `serde::de::Visitor::expecting` method
+/// names it `formatter` (rustc's own docs and every generated impl use
+/// exactly those two names). A `write!`/`writeln!` whose first argument is
+/// any other identifier is presumed to target real I/O.
 fn targets_a_formatter<D: Doc>(macro_invocation: &Node<'_, D>) -> bool {
     let text = macro_invocation.text();
     let Some(open) = text.find('(') else {
@@ -225,7 +226,7 @@ fn targets_a_formatter<D: Doc>(macro_invocation: &Node<'_, D>) -> bool {
     };
     let after_open = &text[open + 1..];
     let first_arg_end = after_open.find([',', ')']).unwrap_or(after_open.len());
-    after_open[..first_arg_end].trim() == "f"
+    matches!(after_open[..first_arg_end].trim(), "f" | "formatter")
 }
 
 /// Whether `call`'s callee text is qualified by a known I/O-providing
@@ -414,6 +415,18 @@ mod tests {
     fn write_macro_is_asp205() {
         let source = "fn f(w: &mut std::fs::File) {\n    write!(w, \"x\").unwrap();\n}\n";
         assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn write_to_a_display_formatter_named_f_is_not_asp205() {
+        let source = "fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n    write!(f, \"{}\", self.0)\n}\n";
+        assert_eq!(impure_function_findings(source), vec![]);
+    }
+
+    #[test]
+    fn write_to_a_visitor_expecting_formatter_is_not_asp205() {
+        let source = "fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n    write!(formatter, \"a sequence of {N} elements\")\n}\n";
+        assert_eq!(impure_function_findings(source), vec![]);
     }
 
     #[test]
