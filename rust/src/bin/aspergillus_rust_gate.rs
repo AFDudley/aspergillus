@@ -11,10 +11,8 @@ use std::process::ExitCode;
 use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
 use ast_grep_language::SupportLang;
 
-```rust
 use aspergillus_rust_gate::workspace::rust_source_files;
 use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
-```
 
 /// The rule directory shipped alongside this crate, resolved at compile
 /// time so it travels with the crate whether a consumer copies `rust/`
