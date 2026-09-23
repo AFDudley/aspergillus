@@ -91,14 +91,14 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 ### Level 2 — Blocking
 
-| Rule   | Description                              | Python (Fixit)        | TypeScript                                                               | Rust                            |
-| ------ | ---------------------------------------- | --------------------- | ------------------------------------------------------------------------ | ------------------------------- |
-| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`     | `max-lines-per-function`                                                 | `clippy::too_many_lines`        |
-| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity` | `aspergillus/asp202-min-assertions` (custom)                             | Manual (planned dylint rule)    |
-| ASP203 | No global mutable state                  | `GlobalMutableState`  | `no-restricted-syntax` (module-level `let`/`var`/`export let`)           | Language (no safe `static mut`) |
-| ASP204 | No unbounded loops                       | `UnboundedLoop`       | `functional/no-loop-statements` (strict; revisit)                        | Manual (prefer iterators)       |
-| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`      | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure (pure core)    |
-| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`     | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Module structure                |
+| Rule   | Description                              | Python (Fixit)        | TypeScript                                                               | Rust                                                                                                            |
+| ------ | ---------------------------------------- | --------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| ASP201 | Function ≤ 60 lines                      | `FunctionTooLong`     | `max-lines-per-function`                                                 | `clippy::too_many_lines` (threshold 60 via `rust/configs/clippy.toml`)                                          |
+| ASP202 | Assertion density ≥ 2 per function       | `LowAssertionDensity` | `aspergillus/asp202-min-assertions` (custom)                             | Gate check `rust/src/purity.rs::assertion_density_findings`, run by `cargo run --manifest-path rust/Cargo.toml` |
+| ASP203 | No global mutable state                  | `GlobalMutableState`  | `no-restricted-syntax` (module-level `let`/`var`/`export let`)           | Language (safe Rust has no mutable `static`); `rust/ast-grep-rules/asp203-no-static-mut.yml` flags it too       |
+| ASP204 | No unbounded loops                       | `UnboundedLoop`       | `functional/no-loop-statements` (strict; revisit)                        | `rust/ast-grep-rules/asp204-no-infinite-loop.yml` (flags every bare `loop { ... }`)                             |
+| ASP205 | No impure functions outside I/O boundary | `ImpureFunction`      | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Gate check `rust/src/purity.rs::impure_function_findings`, run by `cargo run --manifest-path rust/Cargo.toml`   |
+| ASP206 | Functional core / imperative shell       | `MixedIOAndLogic`     | `eslint-plugin-boundaries` + layout templates from `aspergillus-ts init` | Gate check `rust/src/purity.rs::mixed_io_logic_findings`, run by `cargo run --manifest-path rust/Cargo.toml`    |
 
 #### TypeScript Level 2 — design notes
 
@@ -112,12 +112,12 @@ Reference configs live in `python/src/aspergillus/configs/`,
 
 ### Level 3 — Warning
 
-| Rule   | Description                                         | Python (Fixit)                    | TypeScript                                                                                                  | Rust                                                        |
-| ------ | --------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| ASP301 | Result types, no exceptions                         | — (retired for Python; see below) | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic` |
-| ASP302 | No Optional/None returns                            | `OptionalReturnType`              | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions`                               | No null in language                                         |
-| ASP303 | No error swallowed into a success sentinel          | `ErrorSwallowedIntoSentinel`      | — (Python-specific)                                                                                         | —                                                           |
-| ASP304 | A surfaced failure must carry its captured evidence | `FailureDiscardsEvidence`         | — (Python-specific)                                                                                         | —                                                           |
+| Rule   | Description                                         | Python (Fixit)                    | TypeScript                                                                                                  | Rust                                                                                                                                                              |
+| ------ | --------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ASP301 | Result types, no exceptions                         | — (retired for Python; see below) | `functional/no-throw-statements` (FC layers only) + `@okee-tech/neverthrow/must-consume-result` (universal) | `Result<T, E>`; `clippy::unwrap_used`/`expect_used`/`panic`                                                                                                       |
+| ASP302 | No Optional/None returns                            | `OptionalReturnType`              | `tsconfig.strictNullChecks` + `@typescript-eslint/strict-boolean-expressions`                               | Language (no `null`; a possibly-absent value is `Option<T>`, which must be matched or unwrapped before use)                                                       |
+| ASP303 | No error swallowed into a success sentinel          | `ErrorSwallowedIntoSentinel`      | — (Python-specific)                                                                                         | does not apply: Rust has no exceptions; a fallible function's `Result<T, E>` return type keeps failure visible regardless of how the caller handles the `Err` arm |
+| ASP304 | A surfaced failure must carry its captured evidence | `FailureDiscardsEvidence`         | — (Python-specific)                                                                                         | does not apply: no exception re-raise path exists; `?` propagates the original `Err` unchanged, and `map_err`/`From` conversions are explicit at the call site    |
 
 #### Python Level 3 — ASP301 retired (pebble asp-80c)
 
@@ -246,23 +246,23 @@ seam that makes a catalog rule actually run). All ship at `warn`
 (severity-graduation workflow above); Tier 1 rules autofix, Tier 2
 rules are detection-only.
 
-| Rule   | Class                                 | Tier   | Move                                                           |
-| ------ | ------------------------------------- | ------ | -------------------------------------------------------------- |
-| ASP401 | `MapFusion`                           | 1      | `map(f).map(g)` → composed `map`                               |
-| ASP402 | `FilterFusion`                        | 1      | `filter(p).filter(q)` → composed `filter`                      |
-| ASP403 | `EtaReduce`                           | 1      | `lambda x: f(x)` → `f`                                         |
-| ASP404 | `RedundantConditionalBoolAnd`/`...Or` | 1      | `True if X else Y` / `Y if X else False` → `or`/`and`          |
-| ASP406 | `Tupling`                             | 2      | fused multi-pass aggregation over one iterable                 |
-| ASP407 | `WorkerWrapper`                       | 2      | trivial pass-through wrapper                                   |
-| ASP408 | `AntiSpecialCasing`                   | 2      | hardcoded-answer / env-branching gaming detector               |
-| ASP409 | `ShellToSelf`                         | 2      | invoking your own package via subprocess                       |
-| ASP410 | `InProcessE2E`                        | 2      | in-process SUT construction masquerading as an e2e             |
-| ASP411 | `FsmRedundantBranches`                | 2      | likely redundant states in an enum `match`/if-elif dispatch    |
-| ASP412 | `FsmEdgeDuration`                     | reject | FSM transition body must not embed unbounded work              |
-| ASP413 | `FsmEnumDispatchExhaustive`           | reject | if/elif enum dispatch must be exhaustiveness-checkable         |
-| ASP414 | `FsmStringlyDispatch`                 | 2      | if/elif or match dispatch shadows a same-module Enum's values  |
-| ASP416 | `FsmValidateNotParse`                 | 2      | return-type union includes an arm equal to a parameter's type  |
-| ASP417 | `FsmShotgunParse`                     | 2      | a side effect precedes a later input rejection in one function |
+| Rule   | Class                                 | Tier   | Move                                                           | Rust                                                                                                                                                                                                                 |
+| ------ | ------------------------------------- | ------ | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ASP401 | `MapFusion`                           | 1      | `map(f).map(g)` → composed `map`                               | does not apply: lazy `Iterator::map` fuses two chained calls into one at compile time (monomorphization + inlining); there is no separate pass to fuse                                                               |
+| ASP402 | `FilterFusion`                        | 1      | `filter(p).filter(q)` → composed `filter`                      | does not apply: `Iterator::filter` is the same lazy, zero-cost adapter as `Iterator::map` — see ASP401                                                                                                               |
+| ASP403 | `EtaReduce`                           | 1      | `lambda x: f(x)` → `f`                                         | `clippy::redundant_closure`                                                                                                                                                                                          |
+| ASP404 | `RedundantConditionalBoolAnd`/`...Or` | 1      | `True if X else Y` / `Y if X else False` → `or`/`and`          | `rust/ast-grep-rules/asp404-redundant-conditional-bool.yml`                                                                                                                                                          |
+| ASP406 | `Tupling`                             | 2      | fused multi-pass aggregation over one iterable                 | does not apply: aggregation is a generic `Iterator` method chained off an arbitrary receiver, not a closed builtin set; proving two chains read the same iterable needs type/borrow info beyond syntax               |
+| ASP407 | `WorkerWrapper`                       | 2      | trivial pass-through wrapper                                   | does not apply: a one-call forwarding body is often a required trait-conformance shape (`Deref`, a trait method stub); the Python heuristic would flag idiomatic Rust as often as a real accidental wrapper          |
+| ASP408 | `AntiSpecialCasing`                   | 2      | hardcoded-answer / env-branching gaming detector               | does not apply: Rust's idiomatic equivalent, `#[cfg(test)]`, is a compile-time attribute for exactly this purpose; porting the trigger would flag ordinary test modules                                              |
+| ASP409 | `ShellToSelf`                         | 2      | invoking your own package via subprocess                       | does not apply: telling `Command::new(env!("CARGO_BIN_EXE_<name>"))` for "this crate's own binary" apart from a workspace sibling's binary needs the same per-consumer identity the Python rule takes as a parameter |
+| ASP410 | `InProcessE2E`                        | 2      | in-process SUT construction masquerading as an e2e             | does not apply: identifying the SUT needs the same per-consumer identity ASP409 needs; no default, consumer-independent trigger exists without it                                                                    |
+| ASP411 | `FsmRedundantBranches`                | 2      | likely redundant states in an enum `match`/if-elif dispatch    | does not apply: "likely redundant" branches need semantic near-duplicate comparison between match-arm bodies, not one structural ast-grep pattern                                                                    |
+| ASP412 | `FsmEdgeDuration`                     | reject | FSM transition body must not embed unbounded work              | does not apply: flagging unbounded work inside a "transition body" needs the gate to know which functions are FSM transition handlers, a project-specific convention with no default                                 |
+| ASP413 | `FsmEnumDispatchExhaustive`           | reject | if/elif enum dispatch must be exhaustiveness-checkable         | Language (`match` on an enum-typed value is exhaustiveness-checked by the compiler; a missing arm fails to compile unless a `_` wildcard is present)                                                                 |
+| ASP414 | `FsmStringlyDispatch`                 | 2      | if/elif or match dispatch shadows a same-module Enum's values  | does not apply: confirming a string dispatch shadows a same-module enum's values needs type resolution beyond what syntactic ast-grep matching provides                                                              |
+| ASP416 | `FsmValidateNotParse`                 | 2      | return-type union includes an arm equal to a parameter's type  | does not apply: comparing a return type's success arm to a parameter's type needs real type resolution (generics, trait objects, lifetimes) that syntactic name comparison cannot give reliably                      |
+| ASP417 | `FsmShotgunParse`                     | 2      | a side effect precedes a later input rejection in one function | does not apply: Rust's effect surface is not enumerable the way Python's stdlib I/O blocklist is, so the same fixed-set heuristic would over- and under-match                                                        |
 
 ASP405 is deliberately unassigned for Python — see
 `catalog/__init__.py`'s "Why no ASP405 redundant-await-return" for the
@@ -443,6 +443,33 @@ grouping facts across the whole corpus.
   pattern). Core logic is pure (`duplicates.py`); `__main__.py` is the
   imperative shell. Proven against exophial's pre/post-exo-c3a test tree (the
   22 duplicated `_git()` helpers). Pebble: asp-21d.
+
+- **Rust: `cargo run --manifest-path rust/Cargo.toml --bin
+aspergillus-rust-dup-check -- [WORKSPACE_DIR]`** — the same type-2
+  duplicate-function check (ASP501), applied across a Cargo workspace's
+  crates instead of Python's `.py` tree. Walks every `.rs` file, normalizes
+  each `function_item` body the same way (identifiers → one placeholder,
+  distinguishing tokens kept exact), hashes the normalized body, and prints
+  `path:line: ASP501` for a hash bucket with more than one member. Core
+  logic is pure (`rust/src/duplicates.rs`); the binary
+  (`rust/src/bin/aspergillus_rust_dup_check.rs`) is the imperative shell.
+  Pebble: asp-ce6.3.
+
+- **Rust: `cargo run --manifest-path rust/Cargo.toml --bin
+aspergillus-rust-dup-type-check -- [WORKSPACE_DIR] [--allowlist FILE]`**
+  — a whole-workspace duplicate-type check (ASP502) with no Python
+  counterpart: reports a `struct`/`enum` declared in more than one crate of
+  a Cargo workspace with the same name and the same shape (field count,
+  field-name list, or variant-name list — never a field's own type), and
+  prints `path:line: ASP502` per occurrence. An `--allowlist FILE` accepts
+  a type name per line with `#` comments, for a shared name that carries
+  distinct local meaning per crate. Verified against the real `lobaria`
+  workspace at commit `a027fb9`: it reports `Nanos` and `Receipt`, and
+  stays silent about `Refused`, `Carried`, `Hit`, and `Finding`, which
+  share a name across files but not a shape. Core logic is pure
+  (`rust/src/duplicate_types.rs`); the binary
+  (`rust/src/bin/aspergillus_rust_dup_type_check.rs`) is the imperative
+  shell. Pebble: asp-ce6.4.
 
 ## What this is NOT
 
