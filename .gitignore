@@ -28,3 +28,5 @@ node_modules/
 .claude/worktrees/
 .scratch/
 /rust/target/
+rust/fixtures/*/*/target/
+rust/fixtures/*/*/Cargo.lock

@@ -30,21 +30,31 @@ rust/Cargo.toml -- path/to/workspace` (default target: `.`). It exits
 
 ## Mapping
 
-See `../docs/design.md` for the authoritative ASP ID ↔ per-language tool
-mapping. Rust summary:
+See `../docs/rust-rules.md` for the full 27-rule ASP ID ↔ Rust
+disposition table (every Level 2, Level 3 and ASP4xx rule), and
+`../docs/design.md` for the cross-language summary. Checked rules —
+the ones with a committed `../rust/fixtures/<ASPnnn>/{violating,satisfying}/`
+fixture pair:
 
-| ASP    | Tooling                                                           |
-| ------ | ----------------------------------------------------------------- |
-| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `warn`         |
-| ASP203 | `ast-grep-rules/asp203-no-static-mut.yml` (severity `error`)      |
-| ASP204 | `ast-grep-rules/asp204-no-infinite-loop.yml` (severity `warning`) |
-| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `deny`     |
+| ASP    | Tooling                                                                     |
+| ------ | --------------------------------------------------------------------------- |
+| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `warn`                   |
+| ASP202 | `src/purity.rs::assertion_density_findings` (gate check)                    |
+| ASP204 | `ast-grep-rules/asp204-no-infinite-loop.yml` (severity `warning`)           |
+| ASP205 | `src/purity.rs::impure_function_findings` (gate check)                      |
+| ASP206 | `src/purity.rs::mixed_io_logic_findings` (gate check)                       |
+| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `deny`               |
+| ASP403 | `clippy::redundant_closure`, forced at `warn`                               |
+| ASP404 | `ast-grep-rules/asp404-redundant-conditional-bool.yml` (severity `warning`) |
+
+ASP203 (no safe `static mut`), ASP302 (no `null`) and ASP413 (`match`
+exhaustiveness) are language features: the compiler enforces them, so no
+gate check runs. `ast-grep-rules/asp203-no-static-mut.yml` still flags a
+`static mut` declaration as defense in depth.
 
 The gate treats a finding as blocking exactly when the underlying tool
-reports it at `error` level: an ast-grep rule with `severity: error`, or a
-clippy lint the gate forces to `deny`. `clippy::too_many_lines` stays at
-`warn` until a dedicated PR promotes it, matching the TypeScript
-severity-flip workflow.
-
-ASP202 (assertion density) and ASP206 (functional core / imperative
-shell) are not yet covered by a Rust check; see `../docs/design.md`.
+reports it at `error` level: an ast-grep rule with `severity: error`, a
+clippy lint the gate forces to `deny`, or a gate check that returns
+`blocking: true`. `clippy::too_many_lines` and `clippy::redundant_closure`
+stay at `warn` until a dedicated PR promotes them, matching the
+TypeScript severity-flip workflow.

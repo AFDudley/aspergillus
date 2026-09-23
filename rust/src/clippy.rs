@@ -18,6 +18,7 @@ const FORCED_LINTS: &[(&str, &str, &str)] = &[
     ("clippy::unwrap_used", "deny", "ASP301"),
     ("clippy::expect_used", "deny", "ASP301"),
     ("clippy::panic", "deny", "ASP301"),
+    ("clippy::redundant_closure", "warn", "ASP403"),
 ];
 
 /// Run `cargo clippy` over `workspace_dir` with the forced lints above, and
