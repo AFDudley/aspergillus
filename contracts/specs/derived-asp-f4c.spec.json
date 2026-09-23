@@ -1,0 +1,360 @@
+{
+  "id": "derived-asp-f4c",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust consumer can exclude path globs from the aspergillus Rust checks so intentionally rule-violating fixture subtrees produce no findings, while genuine duplicates outside those paths still report.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories adopting aspergillus (first consumer: lobaria), whose commit gate must report only genuine findings and skip the fixture inputs of their own gates.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. Each of the three Rust check binaries \u2014 aspergillus-rust-dup-type-check, aspergillus-rust-dup-check and aspergillus-rust-gate \u2014 accepts a repeatable --exclude <glob> flag; a source file whose workspace-relative path matches any --exclude glob is not scanned and yields no finding. Run aspergillus-rust-dup-type-check over the lobaria workspace with --exclude 'scripts/oracles/fixtures/**': the printed findings name the five production duplicate concepts Bps, SignedLamports, TrajectoryRow, Cut and Run, no printed line has a path under scripts/oracles/fixtures/, and no line reports statechart/src/chart.rs Owed or Hole (whose only other declarations were the excluded fixtures). Without the flag those excluded-path findings and the Owed and Hole findings are present.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Over a committed two-crate Rust fixture where one duplicated type is declared once under an excluded glob and once outside it, each of the three binaries prints the finding at the unexcluded path and omits the finding at the excluded path. Over the lobaria workspace with --exclude 'scripts/oracles/fixtures/**', aspergillus-rust-dup-type-check prints findings for exactly Bps, SignedLamports, TrajectoryRow, Cut and Run and no path under scripts/oracles/fixtures/ and no Owed or Hole finding. Passing --exclude more than once excludes the union of the globs.\nWhat are the non-goals / constraints? What must this NOT do? Not a change to which types or functions count as duplicates \u2014 only which paths are scanned. The existing --allowlist by type name stays and coexists. Not autofix. No change to the Python or TypeScript checks.\nAny examples or references? (links, prior art, a similar thing you like) Same class of path-skip the workspace walker already does for target/ and hidden dirs; fnmatch/gitignore-style glob. Consumer case: lobaria scripts/oracles/fixtures/** are intentional rule-violating inputs to its chart-conformance and totality gates.\nWhat priority is this? (P0\u2013P4) and why now? P1",
+  "restatement": "Today the three aspergillus Rust check binaries scan every source file of a Cargo workspace. A consumer cannot tell them to skip a subtree. That hurts a consumer whose own gates keep intentionally rule-violating inputs in the tree. The first such consumer is lobaria. Its scripts/oracles/fixtures/ subtree holds deliberate rule violations, and they feed lobaria's chart-conformance gate and totality gate. The Rust checks report those deliberate violations as findings. The findings are noise, and they hide the genuine findings.\n\nThis work adds one path filter to the three Rust check binaries: aspergillus-rust-dup-type-check, aspergillus-rust-dup-check and aspergillus-rust-gate. Each binary accepts a --exclude flag that takes one glob. A consumer repeats the flag. Two or more flags exclude the union of their globs. The binary matches each glob against the workspace-relative path of a source file. The binary does not scan a file whose path matches. A file the binary does not scan produces no finding.\n\nThe filter is the same class of path skip the workspace walker already does for target/ and for hidden directories. The glob syntax is the fnmatch or gitignore style a person expects, so scripts/oracles/fixtures/** names a whole subtree.\n\nThe consumer demonstration is lobaria. A person runs aspergillus-rust-dup-type-check over the lobaria workspace with --exclude 'scripts/oracles/fixtures/**'. The printed findings name the five production duplicate concepts: Bps, SignedLamports, TrajectoryRow, Cut and Run. No printed line carries a path under scripts/oracles/fixtures/. No line reports statechart/src/chart.rs Owed, and no line reports statechart/src/chart.rs Hole, because the only other declaration of each of those two concepts sat under the excluded fixtures path. The same run without the flag prints the excluded-path findings, and prints the Owed finding and the Hole finding.\n\nThe flag changes only which paths a binary scans. It does not change which types or which functions count as duplicates. A file the binary still scans produces exactly the findings it produced before. The existing --allowlist flag, which suppresses a finding by type name, stays. A person uses both flags in one run, and each one does its own job. No binary edits a file: the checks stay report-only, with no autofix. The Python checks and the TypeScript checks get no exclusion flag and no other change.",
+  "restatement_clauses": [
+    {
+      "id": "c1",
+      "text": "Each of the three Rust check binaries \u2014 aspergillus-rust-dup-type-check, aspergillus-rust-dup-check and aspergillus-rust-gate \u2014 accepts a repeatable --exclude <glob> flag and runs to completion when a person passes it."
+    },
+    {
+      "id": "c2",
+      "text": "Over a committed two-crate Rust fixture where one duplicated type is declared once under a path matching an --exclude glob and once outside it, each of the three binaries prints the finding at the unexcluded path and prints no finding at the excluded path."
+    },
+    {
+      "id": "c3",
+      "text": "Passing --exclude more than once excludes the union of the globs: no finding carries a path matching either glob, and a finding outside both globs still prints."
+    },
+    {
+      "id": "c4",
+      "text": "Over a committed workspace fixture that reproduces the lobaria layout, aspergillus-rust-dup-type-check run with --exclude 'scripts/oracles/fixtures/**' prints findings naming exactly the five concepts Bps, SignedLamports, TrajectoryRow, Cut and Run, prints no line whose path is under scripts/oracles/fixtures/, and prints no line reporting statechart/src/chart.rs Owed or statechart/src/chart.rs Hole."
+    },
+    {
+      "id": "c5",
+      "text": "Over that same lobaria-shaped fixture, and with no --exclude flag, aspergillus-rust-dup-type-check prints findings whose paths are under scripts/oracles/fixtures/, and prints the statechart/src/chart.rs Owed finding and the statechart/src/chart.rs Hole finding."
+    },
+    {
+      "id": "c6",
+      "text": "The existing --allowlist flag, which suppresses a finding by type name, stays and coexists with --exclude: one run that passes both prints no finding naming the allowlisted type, prints no finding whose path matches the excluded glob, and still prints the remaining findings."
+    },
+    {
+      "id": "c7",
+      "text": "The --exclude flag changes only which paths a binary scans, never which types or functions count as duplicates: the findings of a run with an --exclude glob are exactly the findings of the same run without it, minus the findings whose path matches that glob."
+    },
+    {
+      "id": "c8",
+      "text": "The binaries stay report-only with no autofix: no file of the checked workspace changes during a run that uses --exclude."
+    },
+    {
+      "id": "c9",
+      "text": "This work does not change the Python checks or the TypeScript checks: python/src/aspergillus/duplicates.py, python/src/aspergillus/rules/level2.py, python/src/aspergillus/rules/level3.py and the rule files under typescript/ast-grep-rules/ declare no --exclude option."
+    }
+  ],
+  "goal": "Give the three aspergillus Rust check binaries a repeatable --exclude <glob> flag that skips matching workspace-relative paths, so fixture subtrees produce no findings while duplicates outside those paths still report.",
+  "acceptance_criteria": [
+    "A person starts each of the three Rust checkers in turn and gives each one two path patterns to skip, one pattern per flag. Each of the three programs accepts the patterns and finishes its run.",
+    "A person checks a small two-part Rust project in which the same concept is declared twice: once inside the folder they asked to skip, and once outside it. Each of the three checkers reports the declaration outside the skipped folder, and reports nothing inside it.",
+    "A person names two different folders to skip, one per flag, in a single run. The report holds nothing from either folder, and still holds a finding from a third place that the person did not skip.",
+    "A person checks a stored copy of the lobaria project layout with the duplicate-type checker, and asks it to skip everything under scripts/oracles/fixtures/. The report holds five findings, and they name Bps, SignedLamports, TrajectoryRow, Cut and Run. No line points at a file under scripts/oracles/fixtures/. No line reports Owed or Hole in statechart/src/chart.rs.",
+    "A person checks the same stored copy of the lobaria project layout, and asks for no folder to be skipped. The report now holds lines that point at files under scripts/oracles/fixtures/, and it holds the Owed finding and the Hole finding.",
+    "In one run a person names a type to let through by name, and separately names a folder to skip. The report holds no line for that type name, holds no line from that folder, and still holds the other findings.",
+    "A person checks the same project twice: once with a folder skipped, once with nothing skipped. The second report equals the first report plus exactly the lines that point into the skipped folder, and nothing else differs.",
+    "A person records the exact content of every file of a project, runs a checker over it with a folder skipped, and compares the files afterwards. Nothing changed, and the checker still printed findings.",
+    "The Python duplicate checker, the two Python rule files, and the TypeScript rule files offer no skip-this-path option."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A person starts each of the three Rust checkers in turn and gives each one two path patterns to skip, one pattern per flag. Each of the three programs accepts the patterns and finishes its run."
+    },
+    {
+      "id": "c2",
+      "text": "A person checks a small two-part Rust project in which the same concept is declared twice: once inside the folder they asked to skip, and once outside it. Each of the three checkers reports the declaration outside the skipped folder, and reports nothing inside it."
+    },
+    {
+      "id": "c3",
+      "text": "A person names two different folders to skip, one per flag, in a single run. The report holds nothing from either folder, and still holds a finding from a third place that the person did not skip."
+    },
+    {
+      "id": "c4",
+      "text": "A person checks a stored copy of the lobaria project layout with the duplicate-type checker, and asks it to skip everything under scripts/oracles/fixtures/. The report holds five findings, and they name Bps, SignedLamports, TrajectoryRow, Cut and Run. No line points at a file under scripts/oracles/fixtures/. No line reports Owed or Hole in statechart/src/chart.rs."
+    },
+    {
+      "id": "c5",
+      "text": "A person checks the same stored copy of the lobaria project layout, and asks for no folder to be skipped. The report now holds lines that point at files under scripts/oracles/fixtures/, and it holds the Owed finding and the Hole finding."
+    },
+    {
+      "id": "c6",
+      "text": "In one run a person names a type to let through by name, and separately names a folder to skip. The report holds no line for that type name, holds no line from that folder, and still holds the other findings."
+    },
+    {
+      "id": "c7",
+      "text": "A person checks the same project twice: once with a folder skipped, once with nothing skipped. The second report equals the first report plus exactly the lines that point into the skipped folder, and nothing else differs."
+    },
+    {
+      "id": "c8",
+      "text": "A person records the exact content of every file of a project, runs a checker over it with a folder skipped, and compares the files afterwards. Nothing changed, and the checker still printed findings."
+    },
+    {
+      "id": "c9",
+      "text": "The Python duplicate checker, the two Python rule files, and the TypeScript rule files offer no skip-this-path option."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "description": "A person starts each of the three Rust checkers in turn and gives each one two path patterns to skip, one pattern per flag. Each of the three programs accepts the patterns and finishes its run.",
+      "proves": "All three Rust checkers offer the skip-this-path option, and a person may give it more than once, as the request asks.",
+      "restatement_clause_id": "c1",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_flag_accepted_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "binaries_accepting_repeated_exclude",
+          "op": "eq",
+          "value": 3
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "description": "A person checks a small two-part Rust project in which the same concept is declared twice: once inside the folder they asked to skip, and once outside it. Each of the three checkers reports the declaration outside the skipped folder, and reports nothing inside it.",
+      "proves": "A file whose path matches a skip pattern produces no finding, while a genuine duplicate outside the skipped paths still reports.",
+      "restatement_clause_id": "c2",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_two_crate_fixture_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "binaries_reporting_unexcluded_declaration",
+          "op": "eq",
+          "value": 3
+        },
+        {
+          "observe": "stdout_json",
+          "field": "binaries_reporting_excluded_declaration",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "description": "A person names two different folders to skip, one per flag, in a single run. The report holds nothing from either folder, and still holds a finding from a third place that the person did not skip.",
+      "proves": "Repeating the flag skips every named pattern together, not only the first one and not only the last one.",
+      "restatement_clause_id": "c3",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_union_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_under_first_glob",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_under_second_glob",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_outside_both_globs",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "description": "A person checks a stored copy of the lobaria project layout with the duplicate-type checker, and asks it to skip everything under scripts/oracles/fixtures/. The report holds five findings, and they name Bps, SignedLamports, TrajectoryRow, Cut and Run. No line points at a file under scripts/oracles/fixtures/. No line reports Owed or Hole in statechart/src/chart.rs.",
+      "proves": "The consumer case in the request works: the real duplicates still report, and the deliberate fixture inputs, plus the two concepts whose only other declaration sat among them, drop out.",
+      "restatement_clause_id": "c4",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_lobaria_shape_probe.sh",
+        "args": [
+          "--exclude",
+          "scripts/oracles/fixtures/**"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_total",
+          "op": "eq",
+          "value": 5
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_naming_expected_concepts",
+          "op": "eq",
+          "value": 5
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_under_excluded_path",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_naming_owed_or_hole",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "description": "A person checks the same stored copy of the lobaria project layout, and asks for no folder to be skipped. The report now holds lines that point at files under scripts/oracles/fixtures/, and it holds the Owed finding and the Hole finding.",
+      "proves": "Skipping paths is something the person switches on: with no pattern given, the checker reports everything it reported before, so the new flag removes nothing by default.",
+      "restatement_clause_id": "c5",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_lobaria_shape_default_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_under_excluded_path",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_naming_owed_or_hole",
+          "op": "eq",
+          "value": 2
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "description": "In one run a person names a type to let through by name, and separately names a folder to skip. The report holds no line for that type name, holds no line from that folder, and still holds the other findings.",
+      "proves": "The older let-this-type-through option keeps working beside the new skip-this-path option, and neither one cancels the other.",
+      "restatement_clause_id": "c6",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_allowlist_coexist_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_naming_allowlisted_type",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_under_excluded_path",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "remaining_findings",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c6"
+    },
+    {
+      "type": "metamorphic",
+      "description": "A person checks the same project twice: once with a folder skipped, once with nothing skipped. The second report equals the first report plus exactly the lines that point into the skipped folder, and nothing else differs.",
+      "proves": "Skipping a path removes only the lines from that path. It never changes what counts as a duplicate anywhere else.",
+      "restatement_clause_id": "c7",
+      "relation_class": "conservation",
+      "run": [
+        "python3",
+        "scripts/rust_exclude_conservation_relation.py"
+      ],
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "description": "A person records the exact content of every file of a project, runs a checker over it with a folder skipped, and compares the files afterwards. Nothing changed, and the checker still printed findings.",
+      "proves": "The checkers stay report-only. The new flag adds no autofix.",
+      "restatement_clause_id": "c8",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/rust_exclude_no_write_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "files_changed_during_run",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_printed",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c8"
+    },
+    {
+      "type": "grep_absent",
+      "description": "The Python duplicate checker, the two Python rule files, and the TypeScript rule files offer no skip-this-path option.",
+      "proves": "The new option reaches the Rust checks only. The Python checks and the TypeScript checks stay as they are, which the request names as a non-goal.",
+      "restatement_clause_id": "c9",
+      "pattern": "--exclude",
+      "files": [
+        "python/src/aspergillus/duplicates.py",
+        "python/src/aspergillus/rules/level2.py",
+        "python/src/aspergillus/rules/level3.py",
+        "typescript/ast-grep-rules/eta-reduce-arrow.yml",
+        "typescript/ast-grep-rules/filter-fusion.yml",
+        "typescript/ast-grep-rules/map-fusion.yml",
+        "typescript/ast-grep-rules/redundant-await-return.yml",
+        "typescript/ast-grep-rules/redundant-ternary-bool-false.yml",
+        "typescript/ast-grep-rules/redundant-ternary-bool-true.yml"
+      ],
+      "clause_id": "c9"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/rust_exclude_allowlist_coexist_probe.sh",
+    "scripts/rust_exclude_conservation_relation.py",
+    "scripts/rust_exclude_flag_accepted_probe.sh",
+    "scripts/rust_exclude_lobaria_shape_default_probe.sh",
+    "scripts/rust_exclude_lobaria_shape_probe.sh",
+    "scripts/rust_exclude_no_write_probe.sh",
+    "scripts/rust_exclude_two_crate_fixture_probe.sh",
+    "scripts/rust_exclude_union_probe.sh"
+  ]
+}
