@@ -16,13 +16,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use aspergillus_rust_gate::duplicates::{
-    duplicate_groups, findings_for_groups, function_occurrences,
+    duplicate_findings, duplicate_groups, function_occurrences, DEFAULT_MIN_LINES,
+    DEFAULT_MIN_STATEMENTS,
 };
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
-
-/// Matches the Python reference's `check-duplicates --min-lines` default:
-/// a function spanning fewer lines is excluded from clone detection.
-const DEFAULT_MIN_LINES: usize = 5;
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
@@ -70,7 +67,7 @@ fn main() -> ExitCode {
     }
 
     let groups = duplicate_groups(&occurrences);
-    let findings = findings_for_groups(&groups);
+    let findings = duplicate_findings(&occurrences, DEFAULT_MIN_LINES, DEFAULT_MIN_STATEMENTS);
 
     for finding in &findings {
         println!("{}", finding.render());
