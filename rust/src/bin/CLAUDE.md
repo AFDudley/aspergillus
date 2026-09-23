@@ -9,8 +9,12 @@ workspace's `*.rs` files via `aspergillus_rust_gate::workspace::rust_source_file
 (the clippy shell in `../clippy.rs`), prints every finding as
 `path:line: ASPnnn`, and exits non-zero when a blocking finding exists.
 
-Usage: `cargo run --manifest-path rust/Cargo.toml -- [WORKSPACE_DIR]`
-(default: `.`).
+Usage: `cargo run --manifest-path rust/Cargo.toml -- [WORKSPACE_DIR]
+[--core-config FILE]` (default workspace: `.`). `--core-config` names the
+consumer's functional-core declaration file directly; when absent, the
+gate looks for `WORKSPACE_DIR/aspergillus.toml` and, failing that, treats
+the workspace as having no declared core (ASP205/ASP206 then report
+nothing — `../core_declaration.rs`).
 
 `aspergillus_rust_dup_check.rs` — the `aspergillus-rust-dup-check` binary's
 CLI: the imperative shell for the whole-workspace duplicate-function check.

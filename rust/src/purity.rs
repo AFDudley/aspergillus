@@ -13,21 +13,35 @@
 use ast_grep_core::{Doc, Node};
 use ast_grep_language::{LanguageExt, SupportLang};
 
-/// Bare call or macro names the gate treats as I/O effects: filesystem,
-/// process, network and console. Matched on the callee's last path
-/// segment (a bare method name, or a plain/scoped function name)
-/// regardless of receiver type — the same no-type-resolution trade-off
+/// Call names the gate treats as I/O regardless of call form or receiver:
+/// rarely collide with a domain method of the same name, so the callee's
+/// last path segment alone (a bare method name, or a plain/scoped
+/// function name) is enough — the same no-type-resolution trade-off
 /// `io_blocklist.py`'s `IO_METHOD_NAMES` documents.
-const IO_CALL_NAMES: &[&str] = &[
+const IO_UNAMBIGUOUS_NAMES: &[&str] = &[
     "read_to_string",
-    "write_all",
-    "write_fmt",
-    "write",
-    "read",
     "read_to_end",
     "read_line",
+    "write_all",
+    "write_fmt",
+    "flush",
+    "sync_all",
+];
+
+/// Call names the gate treats as I/O ONLY when the call is qualified by a
+/// known I/O-providing path (`IO_QUALIFIED_PREFIXES`) — these names are
+/// common enough on an ordinary domain type or module that an unqualified
+/// match would flag legitimate non-I/O code. Verified false positives the
+/// unqualified match produced: `book.open()` on an in-memory book,
+/// `json5::read(text)` over a `&str`, `queue.recv()`/`results.send(..)`
+/// on an `mpsc` channel, and `rc::create(..)`/`fire::create(..)` domain
+/// constructors (lobaria `shell/src/machine.rs`, `shell/src/capture.rs`,
+/// `backtest/src/replay.rs`, `chart/src/lib.rs`).
+const IO_QUALIFIED_ONLY_NAMES: &[&str] = &[
     "open",
     "create",
+    "read",
+    "write",
     "remove_file",
     "remove_dir",
     "remove_dir_all",
@@ -42,15 +56,39 @@ const IO_CALL_NAMES: &[&str] = &[
     "send",
     "recv",
     "accept",
-    "spawn",
-    "output",
-    "status",
+    "exit",
 ];
 
-/// Console-output macros the gate treats as I/O, matched on the macro's
-/// bare name (the `println!` invocation's `macro` field is `println`, not
-/// `println!`).
-const IO_MACRO_NAMES: &[&str] = &["println", "eprintln", "print", "eprint"];
+/// A known I/O-providing path prefix: a scoped call whose full callee text
+/// starts with one of these is I/O even when its bare name is one of the
+/// collision-prone `IO_QUALIFIED_ONLY_NAMES`. A plain method call on an
+/// unrelated receiver (`book.open()`) or a scoped call into an unrelated
+/// module (`json5::read`, `rc::create`) starts with none of these and
+/// stays unmatched.
+const IO_QUALIFIED_PREFIXES: &[&str] = &[
+    "std::fs::",
+    "fs::",
+    "File::",
+    "std::io::",
+    "io::",
+    "std::net::",
+    "net::",
+    "TcpStream::",
+    "TcpListener::",
+    "UdpSocket::",
+    "std::process::",
+    "process::",
+    "Command::",
+];
+
+/// Console-output and buffer-write macros the gate treats as I/O, matched
+/// on the macro's bare name (the `println!` invocation's `macro` field is
+/// `println`, not `println!`). `write!`/`writeln!` can also target an
+/// in-memory `String` — a known over-approximation, kept because the gate
+/// has no receiver-type information to narrow it further.
+const IO_MACRO_NAMES: &[&str] = &[
+    "println", "eprintln", "print", "eprint", "write", "writeln", "dbg",
+];
 
 /// Assert-like macros, matched the same way. NASA `assert(cond)`'s Rust
 /// equivalents.
@@ -123,13 +161,18 @@ fn function_signal<D: Doc>(func: &Node<'_, D>) -> FunctionSignal {
             let kind = node.kind();
             if kind == "call_expression" {
                 if let Some(name) = call_callee_name(node) {
-                    if IO_CALL_NAMES.contains(&name.as_str()) {
+                    let is_io = IO_UNAMBIGUOUS_NAMES.contains(&name.as_str())
+                        || (IO_QUALIFIED_ONLY_NAMES.contains(&name.as_str())
+                            && is_qualified_io_call(node));
+                    if is_io {
                         io_calls.push(name);
                     }
                 }
             } else if kind == "macro_invocation" {
                 if let Some(name) = macro_name(node) {
-                    if IO_MACRO_NAMES.contains(&name.as_str()) {
+                    let is_formatter_write =
+                        (name == "write" || name == "writeln") && targets_a_formatter(node);
+                    if IO_MACRO_NAMES.contains(&name.as_str()) && !is_formatter_write {
                         io_calls.push(name.clone());
                     }
                     if ASSERT_MACRO_NAMES.contains(&name.as_str()) {
@@ -152,18 +195,52 @@ fn function_signal<D: Doc>(func: &Node<'_, D>) -> FunctionSignal {
 }
 
 /// Visits every descendant of `node` with `visit`, skipping into a
-/// descendant that is itself a nested function or closure — that
-/// descendant is visited once but its own body is not walked, so a
-/// nested function's calls and asserts count toward the nested function's
-/// own signal, not its enclosing function's.
+/// descendant that is itself a nested function — that descendant is
+/// visited once but its own body is not walked, so a nested function's
+/// calls and asserts count toward the nested function's own signal, not
+/// its enclosing function's. A closure is NOT skipped: `scan_functions`
+/// only collects `function_item` nodes, so a closure's own I/O calls
+/// (`iter().for_each(|p| std::fs::write(p, ..))`) would otherwise never
+/// be seen by any function's signal at all.
 fn walk_own_scope<D: Doc>(node: &Node<'_, D>, visit: &mut impl FnMut(&Node<'_, D>)) {
     for child in node.children() {
         visit(&child);
-        let kind = child.kind();
-        if kind != "function_item" && kind != "closure_expression" {
+        if child.kind() != "function_item" {
             walk_own_scope(&child, visit);
         }
     }
+}
+
+/// Whether a `write!`/`writeln!` invocation targets an in-memory
+/// `fmt::Formatter` — the near-universal shape of a `Display`/`Debug`
+/// impl's `fmt` method or a `serde::de::Visitor::expecting` method — not a
+/// file or socket. Every one of these targets a parameter named `f`
+/// (rustc's own `fmt::Formatter` docs, and every generated `Display`/
+/// `Debug` impl, use exactly that name); a `write!`/`writeln!` whose first
+/// argument is any other identifier is presumed to target real I/O.
+fn targets_a_formatter<D: Doc>(macro_invocation: &Node<'_, D>) -> bool {
+    let text = macro_invocation.text();
+    let Some(open) = text.find('(') else {
+        return false;
+    };
+    let after_open = &text[open + 1..];
+    let first_arg_end = after_open.find([',', ')']).unwrap_or(after_open.len());
+    after_open[..first_arg_end].trim() == "f"
+}
+
+/// Whether `call`'s callee text is qualified by a known I/O-providing
+/// path prefix (`IO_QUALIFIED_PREFIXES`) — a scoped call into a real I/O
+/// module or type (`std::fs::File::open`, `TcpListener::bind`), not a
+/// plain method call on an arbitrary receiver or a scoped call into an
+/// unrelated module.
+fn is_qualified_io_call<D: Doc>(call: &Node<'_, D>) -> bool {
+    let Some(callee) = call.field("function") else {
+        return false;
+    };
+    let text = callee.text();
+    IO_QUALIFIED_PREFIXES
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
 }
 
 /// The macro's bare name (the `println!` invocation's `macro` field text
@@ -286,5 +363,92 @@ mod tests {
             "fn outer() {\n    fn inner() {\n        println!(\"hi\");\n    }\n    inner();\n}\n";
         let found = impure_function_findings(source);
         assert_eq!(found, vec![(2, "ASP205", true)]);
+    }
+
+    #[test]
+    fn a_bare_method_call_named_open_on_a_domain_receiver_is_not_asp205() {
+        let source = "fn open_tokens(book: &Book) -> Option<Unit> {\n    book.open().find_map(|x| Some(x))\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_scoped_read_call_into_an_unrelated_module_is_not_asp205() {
+        let source = "fn load(text: &str) -> Chart {\n    json5::read(text).unwrap()\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn mpsc_send_and_recv_are_not_asp205() {
+        let source =
+            "fn decode_worker(queue: &Receiver<Job>, results: &SyncSender<Out>) {\n    let job = queue.recv();\n    results.send(job).ok();\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_domain_create_constructor_is_not_asp205() {
+        let source =
+            "fn build(from: Unseen) -> Running {\n    let outcome = rc::create(from);\n    outcome\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_qualified_filesystem_write_is_asp205() {
+        let source =
+            "fn save(path: &str, data: &[u8]) {\n    std::fs::write(path, data).unwrap();\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn a_file_write_hidden_inside_a_for_each_closure_is_asp205() {
+        let source = "fn persist(ps: &[&str]) {\n    ps.iter().for_each(|p| std::fs::write(p, b\"\").unwrap());\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn writeln_to_a_file_is_asp205() {
+        let source = "fn f(w: &mut std::fs::File) {\n    writeln!(w, \"x\").unwrap();\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn write_macro_is_asp205() {
+        let source = "fn f(w: &mut std::fs::File) {\n    write!(w, \"x\").unwrap();\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn dbg_macro_is_asp205() {
+        let source = "fn f(x: i32) -> i32 {\n    dbg!(x)\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn flush_is_asp205() {
+        let source = "fn f(w: &mut std::fs::File) {\n    w.flush().unwrap();\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn sync_all_is_asp205() {
+        let source = "fn f(w: &std::fs::File) {\n    w.sync_all().unwrap();\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn process_exit_is_asp205() {
+        let source = "fn f() {\n    std::process::exit(1);\n}\n";
+        assert_eq!(impure_function_findings(source), vec![(1, "ASP205", true)]);
+    }
+
+    #[test]
+    fn write_to_a_formatter_in_a_display_impl_is_not_asp205() {
+        let source = "impl fmt::Display for Chart {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        write!(f, \"{}\", self.0)\n    }\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn writeln_to_a_formatter_in_a_visitor_expecting_method_is_not_asp205() {
+        let source = "impl<'de> Visitor<'de> for SignatureVisitor {\n    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        writeln!(f, \"a sequence of {N} bytes\")\n    }\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
     }
 }

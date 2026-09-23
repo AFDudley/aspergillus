@@ -30,14 +30,58 @@ Every finding prints as `path:line: ASPnnn`.
 
 ## Level 2 — Blocking
 
-| Rule   | Disposition                                                                                                                                                                                                                                                                                                 |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ASP201 | Clippy lint: `clippy::too_many_lines`, threshold 60 via `rust/configs/clippy.toml`. Checked rule.                                                                                                                                                                                                           |
-| ASP202 | Gate check: `rust/src/purity.rs::assertion_density_findings` — a function past 5 lines with fewer than 2 `assert!`/`assert_eq!`/`assert_ne!`/`debug_assert!`-family invocations. Checked rule.                                                                                                              |
-| ASP203 | Language feature: safe Rust has no mutable `static`; a `static mut` declaration requires `unsafe` to read or write, so this class of global mutable state does not compile as ordinary code. `rust/ast-grep-rules/asp203-no-static-mut.yml` still flags the declaration itself as a defense-in-depth check. |
-| ASP204 | ast-grep rule: `rust/ast-grep-rules/asp204-no-infinite-loop.yml` — flags every `loop { ... }` construct (no statically-determinable bound). Checked rule.                                                                                                                                                   |
-| ASP205 | Gate check: `rust/src/purity.rs::impure_function_findings` — a function whose body calls a known Rust I/O name (filesystem, process, network, console). Checked rule.                                                                                                                                       |
-| ASP206 | Gate check: `rust/src/purity.rs::mixed_io_logic_findings` — a function that both calls I/O and holds more than 3 top-level logic statements. Checked rule.                                                                                                                                                  |
+| Rule   | Disposition                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ASP201 | Clippy lint: `clippy::too_many_lines`, threshold 60 via `rust/configs/clippy.toml`. Checked rule.                                                                                                                                                                                                                                                                                                     |
+| ASP202 | Gate check: `rust/src/purity.rs::assertion_density_findings` — a function past 5 lines with fewer than 2 `assert!`/`assert_eq!`/`assert_ne!`/`debug_assert!`-family invocations. Checked rule.                                                                                                                                                                                                        |
+| ASP203 | Language feature: safe Rust has no mutable `static`; a `static mut` declaration requires `unsafe` to read or write, so this class of global mutable state does not compile as ordinary code. `rust/ast-grep-rules/asp203-no-static-mut.yml` still flags the declaration itself as a defense-in-depth check.                                                                                           |
+| ASP204 | ast-grep rule: `rust/ast-grep-rules/asp204-no-infinite-loop.yml` — flags every `loop { ... }` construct (no statically-determinable bound). Checked rule.                                                                                                                                                                                                                                             |
+| ASP205 | Gate check: `rust/src/purity.rs::impure_function_findings` — a function whose body calls a known Rust I/O name (filesystem, process, network, console). Scoped to the consumer's declared functional core (`rust/src/core_declaration.rs`): a finding requires both the I/O call and a workspace-relative path matching a `core_paths` glob in `aspergillus.toml` (or `--core-config`). Checked rule. |
+| ASP206 | Gate check: `rust/src/purity.rs::mixed_io_logic_findings` — a function that both calls I/O and holds more than 3 top-level logic statements. Scoped to the declared functional core the same way as ASP205. Checked rule.                                                                                                                                                                             |
+
+### ASP205/ASP206 — the functional-core declaration
+
+A consumer declares which workspace paths hold the functional core in
+`aspergillus.toml` at the scanned workspace's root (or a file named by
+`--core-config`): a `core_paths` array of workspace-relative,
+gitignore/fnmatch-style globs, e.g. `core_paths = ["statechart/**"]`.
+`rust/src/core_declaration.rs` reads it. A file whose path matches no
+`core_paths` glob is the imperative shell: ASP205 and ASP206 report
+nothing there, however much I/O it calls. The same I/O inside a declared
+core path is the finding. An undeclared workspace (no `aspergillus.toml`
+and no `--core-config`) has no functional core at all — ASP205 and
+ASP206 report nothing anywhere in it, not an input error; only a
+malformed _existing_ declaration is one. ASP202 is not core-scoped (see
+its own row above): Rust has no dynamic-parameter escape hatch, so its
+assertion-density floor applies workspace-wide.
+
+`rust/src/purity.rs`'s I/O detection matches a call by its qualified
+path, not a bare method or function name, for the names collision-prone
+enough to name an ordinary domain method too (`open`, `create`, `read`,
+`write`, `send`, `recv`, `accept`, …): only a call qualified by a known
+I/O-providing prefix (`std::fs::`, `File::`, `std::net::`,
+`std::process::`, …) counts. `book.open()` on an in-memory value,
+`json5::read(text)` over a `&str`, an `mpsc` `Receiver::recv`/
+`SyncSender::send`, and a domain `create`/`accept` constructor all stay
+unmatched. A small set of names unambiguous on any receiver
+(`write_all`, `flush`, `sync_all`, …) match regardless of call form. The
+walk descends into a closure body (so `iter().for_each(|p|
+std::fs::write(p, ..))` is seen) but not into a nested `fn` item (scanned
+as its own separate signal). `println!`/`eprintln!`/`print!`/`eprint!`/
+`write!`/`writeln!`/`dbg!` all count as I/O macros, except a `write!`/
+`writeln!` whose first argument is `f` — the near-universal parameter
+name a `Display`/`Debug`/`serde::de::Visitor::expecting` impl gives its
+`fmt::Formatter`, so a `write!(f, ..)` there is an in-memory format, not
+I/O.
+
+Verified against the real `lobaria` workspace at commit `d0269c7`
+(`rust/fixtures/lobaria-d0269c7/`, its own `aspergillus.toml` declaring
+`statechart/**` as the core): `shell/src/machine.rs`'s `create`,
+`shell/src/capture.rs`'s `decode_worker` (`mpsc` `send`/`recv`),
+`backtest/src/replay.rs`'s `open_tokens` (`Book::open`), and
+`chart/src/lib.rs`'s `load` (`json5::read`) — all previously false
+positives — report nothing; `statechart`, lobaria's pure core, still
+reports zero ASP205 and zero ASP206 findings. Pebble: asp-b7b.1.
 
 ## Level 3 — Warning
 

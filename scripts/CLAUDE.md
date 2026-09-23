@@ -110,6 +110,20 @@ instead of an ad-hoc script no gate invoked (pebble asp-fd1.5).
   Each probe locates a concept's declaration line by grepping the
   committed fixture rather than a hardcoded line number, so an edit to
   the fixture cannot silently desync the oracle from it.
+- `asp_rust_core_declaration_probe.py` / `asp_rust_io_name_collision_probe.py` /
+  `asp_rust_io_detection_probe.py` / `asp_rust_asp205_206_fixture_pairs.py` /
+  `asp_rust_asp205_206_blocking_probe.py` / `asp_rust_lobaria_false_positive_probe.py` /
+  `asp_rust_asp205_core_probe.py` / `asp_rust_lobaria_statechart_probe.py` /
+  `asp_rust_clippy_fmt_probe.py` / `asp_rust_asp205_206_scope_probe.py` (pebble
+  asp-b7b.1) — behavioral oracle probes for the Rust gate's ASP205
+  (`ImpureFunction`) and ASP206 (`MixedIOAndLogic`) rules
+  (`rust/src/purity.rs`, `rust/src/core_declaration.rs`). Each builds
+  `aspergillus-rust-gate` and drives it as a real subprocess over a
+  throwaway or committed fixture workspace — never the rule functions
+  in-process. `asp_rust_lobaria_false_positive_probe.py` and
+  `asp_rust_lobaria_statechart_probe.py` run it over
+  `rust/fixtures/lobaria-d0269c7/`, a committed verbatim snapshot of real
+  `lobaria` source at commit `d0269c7` (see its `PROVENANCE.md`).
 - `oracle_type1_semantics.py` / `oracle_type1_report_fields.py` /
   `oracle_type1_boilerplate_exclusion.py` / `oracle_type1_editing_scenarios.py`
   (pebble asp-d88.1) — behavioral oracle probes for type-1 (exact) clone

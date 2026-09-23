@@ -11,12 +11,20 @@ use std::process::ExitCode;
 use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
 use ast_grep_language::SupportLang;
 
+use aspergillus_rust_gate::core_declaration::{resolve_core_declaration, CoreDeclaration};
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let (rules_dir_opt, args) = match take_rules(raw_args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let (core_config_opt, args) = match take_core_config(args) {
         Ok(parsed) => parsed,
         Err(why) => {
             eprintln!("aspergillus-rust-gate: {why}");
@@ -32,7 +40,7 @@ fn main() -> ExitCode {
     };
     if remaining.len() > 1 {
         eprintln!(
-            "usage: aspergillus-rust-gate [WORKSPACE_DIR] [--exclude GLOB]... [--rules DIR]   (default: .)"
+            "usage: aspergillus-rust-gate [WORKSPACE_DIR] [--exclude GLOB]... [--rules DIR] [--core-config FILE]   (default: .)"
         );
         return ExitCode::from(2);
     }
@@ -44,6 +52,30 @@ fn main() -> ExitCode {
         }
     };
     let workspace_dir = PathBuf::from(remaining.first().map_or(".", String::as_str));
+
+    // Resolve the consumer's functional-core path declaration: the
+    // `--core-config` argument when given, otherwise
+    // `<WORKSPACE_DIR>/aspergillus.toml` when it exists, otherwise no
+    // declaration at all — ASP205/ASP206 then report nothing, since an
+    // undeclared workspace has no functional core to scope them to.
+    let core_declaration: Option<CoreDeclaration> =
+        match resolve_core_declaration(&workspace_dir, core_config_opt.as_deref()) {
+            Ok(declaration) => declaration,
+            Err(why) => {
+                eprintln!("aspergillus-rust-gate: input error: {why}");
+                return ExitCode::from(2);
+            }
+        };
+    match &core_declaration {
+        Some(declaration) => eprintln!(
+            "aspergillus-rust-gate: read core declaration from {} ({} path pattern(s))",
+            declaration.source_path.display(),
+            declaration.path_count
+        ),
+        None => eprintln!(
+            "aspergillus-rust-gate: no core declaration found; ASP205/ASP206 report nothing"
+        ),
+    }
 
     // Resolve the rule directory at run time: the `--rules` argument when
     // given, otherwise `CARGO_MANIFEST_DIR/ast-grep-rules` (cargo sets that
@@ -69,13 +101,14 @@ fn main() -> ExitCode {
         }
     };
 
-    let (mut findings, scanned) = match scan_workspace(&rules, &workspace_dir, &excludes) {
-        Ok(result) => result,
-        Err(why) => {
-            eprintln!("aspergillus-rust-gate: input error: {why}");
-            return ExitCode::from(2);
-        }
-    };
+    let (mut findings, scanned) =
+        match scan_workspace(&rules, &workspace_dir, &excludes, core_declaration.as_ref()) {
+            Ok(result) => result,
+            Err(why) => {
+                eprintln!("aspergillus-rust-gate: input error: {why}");
+                return ExitCode::from(2);
+            }
+        };
 
     match clippy::clippy_findings(&workspace_dir) {
         Ok(hits) => findings.extend(hits.into_iter().filter(|f| !excludes.is_match(&f.path))),
@@ -102,6 +135,30 @@ fn main() -> ExitCode {
     );
     ExitCode::from(exit_status(&findings))
 }
+/// Extract the optional `--core-config <file>` argument from `args`,
+/// returning the declaration file's path (when present) and the
+/// remaining arguments in their original order. A `--core-config` without
+/// a value is an input error.
+fn take_core_config(args: Vec<String>) -> Result<(Option<PathBuf>, Vec<String>), String> {
+    let mut core_config: Option<PathBuf> = None;
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--core-config" {
+            let value = args
+                .get(i + 1)
+                .cloned()
+                .ok_or_else(|| "--core-config needs a FILE argument".to_string())?;
+            core_config = Some(PathBuf::from(value));
+            i += 2;
+        } else {
+            rest.push(args[i].clone());
+            i += 1;
+        }
+    }
+    Ok((core_config, rest))
+}
+
 /// Extract the optional `--rules <dir>` argument from `args`, returning
 /// the rule directory (when present) and the remaining arguments in their
 /// original order. A `--rules` without a value is an input error.
@@ -147,21 +204,25 @@ fn load_rules(dir: &Path) -> Result<Vec<RuleConfig<SupportLang>>, String> {
 
 /// Every ast-grep finding across the workspace's Rust source files, and
 /// how many files were scanned.
+///
+/// ASP205 and ASP206 (`purity::impure_function_findings`,
+/// `purity::mixed_io_logic_findings`) only run over a file inside the
+/// declared functional core: I/O in the imperative shell is legal. ASP202
+/// (`purity::assertion_density_findings`) is not core-scoped — Rust has no
+/// dynamic-parameter escape hatch, so its floor applies workspace-wide.
 fn scan_workspace(
     rules: &[RuleConfig<SupportLang>],
     workspace_dir: &Path,
     excludes: &globset::GlobSet,
+    core_declaration: Option<&CoreDeclaration>,
 ) -> Result<(Vec<Finding>, usize), String> {
     let files = rust_source_files(workspace_dir, excludes);
     let mut findings = Vec::new();
     for path in &files {
         let source =
             std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let shown = path
-            .strip_prefix(workspace_dir)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .into_owned();
+        let relative = path.strip_prefix(workspace_dir).unwrap_or(path);
+        let shown = relative.to_string_lossy().into_owned();
         findings.extend(source_findings(rules, &source).into_iter().map(
             |(line, rule_id, blocking)| Finding {
                 path: shown.clone(),
@@ -170,17 +231,27 @@ fn scan_workspace(
                 blocking,
             },
         ));
-        for (line, rule_id, blocking) in purity::assertion_density_findings(&source)
-            .into_iter()
-            .chain(purity::impure_function_findings(&source))
-            .chain(purity::mixed_io_logic_findings(&source))
-        {
+        for (line, rule_id, blocking) in purity::assertion_density_findings(&source) {
             findings.push(Finding {
                 path: shown.clone(),
                 line,
                 rule_id: rule_id.to_string(),
                 blocking,
             });
+        }
+        let is_core = core_declaration.is_some_and(|d| d.is_core(relative));
+        if is_core {
+            for (line, rule_id, blocking) in purity::impure_function_findings(&source)
+                .into_iter()
+                .chain(purity::mixed_io_logic_findings(&source))
+            {
+                findings.push(Finding {
+                    path: shown.clone(),
+                    line,
+                    rule_id: rule_id.to_string(),
+                    blocking,
+                });
+            }
         }
     }
     Ok((findings, files.len()))

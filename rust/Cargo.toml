@@ -29,6 +29,8 @@ walkdir = "2"
 # Cargo.lock as a transitive dependency of `ignore`, so pinning it directly
 # adds no new crate to the build.
 globset = "0.4"
+# Reads a consumer's functional-core path declaration (aspergillus.toml).
+toml = "0.8"
 
 [[bin]]
 name = "aspergillus-rust-gate"

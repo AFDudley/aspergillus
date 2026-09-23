@@ -8,6 +8,20 @@ The `aspergillus-rust-gate` crate. Functional core / imperative shell split:
 - `clippy.rs` — the imperative shell around `cargo clippy`: runs it as a
   subprocess, maps its lint codes to ASP ids (`FORCED_LINTS`), and turns its
   JSON diagnostics into `Finding`s.
+- `core_declaration.rs` — the imperative shell around a consumer's
+  functional-core path declaration: reads and parses `aspergillus.toml`'s
+  `core_paths` array (or the file `--core-config` names) into a compiled
+  `GlobSet`. ASP205/ASP206 (`purity.rs`) report a finding only for a file
+  whose workspace-relative path the resulting `CoreDeclaration::is_core`
+  matches — pebble asp-b7b.1.
+- `purity.rs` — the pure core shared by ASP202, ASP205 and ASP206: given
+  an already-read source string, `scan_functions` walks its ast-grep
+  parse tree and returns each function's purity signal (its I/O calls,
+  assert count, and logic-statement count). `impure_function_findings`
+  (ASP205) and `mixed_io_logic_findings` (ASP206) report from that
+  signal; the gate binary (below) gates their result on
+  `core_declaration::CoreDeclaration::is_core` per scanned file — no
+  path or file-system concept lives in this module itself.
 - `duplicates.rs` — the pure core of the whole-workspace duplicate-function
   check. Given an already-read source string, `function_occurrences` walks
   its ast-grep parse tree and returns each function's type-2 normalized

@@ -290,6 +290,21 @@ shaped differently:
   `aspergillus-ts init` time; the layout is imported as a flat-config block
   and can be overridden by the consumer.
 
+- **Rust** combines both ideas (`rust/src/core_declaration.rs`,
+  `rust/src/purity.rs`). A consumer declares the functional core as a
+  glob list, `core_paths` in `aspergillus.toml` at the scanned workspace
+  root — the same "declare the boundary as paths" idea the TypeScript
+  layouts express, without a plugin dependency. ASP205 and ASP206 report
+  a finding only inside a declared core path; I/O in an undeclared path
+  is the imperative shell and is legal. I/O detection itself follows the
+  Python blocklist's shape (a curated name list, since a no-type-resolution
+  ast-grep pass has no import graph to walk), refined to require a known
+  I/O-providing qualified path (`std::fs::`, `File::`, `std::process::`,
+  …) for a name common enough on an ordinary domain type to collide
+  (`open`, `create`, `read`, `send`, `recv`, `accept`, …) — see
+  `docs/rust-rules.md`'s ASP205/ASP206 section for the full list and the
+  verified false positives it eliminates. Implemented: pebble asp-b7b.1.
+
 ## Distribution
 
 Each language subtree has its own distribution path. TypeScript uses

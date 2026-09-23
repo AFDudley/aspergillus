@@ -10,6 +10,7 @@ use ast_grep_config::{RuleConfig, Severity};
 use ast_grep_language::{LanguageExt, SupportLang};
 
 pub mod clippy;
+pub mod core_declaration;
 pub mod duplicate_types;
 pub mod duplicates;
 pub mod purity;
