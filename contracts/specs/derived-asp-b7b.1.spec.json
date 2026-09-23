@@ -1,0 +1,534 @@
+{
+  "id": "derived-asp-b7b.1",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust consumer can make ASP202, ASP204, ASP205 and ASP206 blocking and every finding is a real instance of the rule's intent, so the rules can gate commits without flagging correct code and without being evaded by common Rust forms.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories adopting Aspergillus (first consumer lobaria), and the workers refactoring code to satisfy the rules.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. ASP205 and ASP206 know the imperative shell: a consumer declares which paths are functional core (for example in a config file the gate reads, as TypeScript layouts do), and a function that performs I/O in the shell is legal; I/O inside the declared core is the finding. Their I/O detection no longer matches bare method names that collide with domain methods: `book.open()` on an in-memory book, `json5::read(text)` over a &str, `mpsc` `send`/`recv`, a domain `create`/`accept` constructor are not I/O. It sees I/O inside closures (`iter().for_each(|p| std::fs::write(..))`), `writeln!`/`write!` to a file, `dbg!`, `flush`, `sync_all`, `std::process::exit`. ASP202 follows the Python rule's refinement (asp-070, asp-da5): it scopes to imperative-shell functions, and counts `?`, `return Err(..)` guard clauses, `ok_or`/`ok_or_else`, validating constructors and assert macros as assertions; test functions are exempt as in Python. ASP204 flags a loop with no statically determinable bound, including `while true`, and does not flag a `loop` whose exit is bounded by a counter or an iterator. Every one of the four is blocking and has committed violating and satisfying fixture pairs covering the cases above.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run over lobaria integrated with --exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**' and lobaria's core declaration: these verified false positives produce no finding: shell/src/machine.rs:990 `create`, shell/src/capture.rs:506 `decode_worker` (mpsc send/recv), backtest/src/replay.rs:223 `open_tokens`, chart/src/lib.rs:52 `load` (json5::read), statechart/src/array.rs:20 `serialize` (ASP202), and the ASP206 satisfying fixture's shell wrapper under ASP205. These probes produce a finding: `fn persist(ps: &[&str]) { ps.iter().for_each(|p| std::fs::write(p, b\"\").unwrap()); }` declared in a core path (ASP205), `fn f(w: &mut std::fs::File) { writeln!(w, \"x\").unwrap(); }` in core (ASP205), `fn spin() { while true {} }` (ASP204). `loop { if n >= 10 { break; } n += 1; }` produces no ASP204 finding. statechart (lobaria's pure core) still has 0 ASP205 and 0 ASP206 findings. cargo test, cargo clippy -D warnings and cargo fmt --check pass in rust/; docs/design.md and docs/rust-rules.md describe each rule as implemented.\nWhat are the non-goals / constraints? What must this NOT do? Not ASP501/ASP502 or rules not yet ported (a sibling pebble ports those). Not lobaria's code changes (a lobaria pebble applies the rules). Not a Python or TypeScript change. No report-only rule: each of the four is blocking once correct.\nAny examples or references? (links, prior art, a similar thing you like) Verification 2026-09-23 (cloud agents VerifyASP202, VerifyASP205_206, VerifySingleFileRules, VerifyDupRules, VerifyLobariaGate; aspergillus integrated 019f8b9, lobaria integrated d0269c7): ASP202 1493 findings on lobaria, 1250 (84%) on pure functions, counts only assert!/assert_eq!/assert_ne!/debug_assert*; ASP205 278 findings, 0 in the pure core, >=25 pure functions flagged by name collision, and the crate's own ASP206/satisfying fixture still fires ASP205; ASP206 114 findings, ~84% in bins/oracles/tests, <=11 real FC/IS debt; ASP204 16 findings, 12 bounded by construction, `while true` missed. Python references: python/src/aspergillus/rules/level2.py (_is_imperative_shell, LowAssertionDensity, ImpureFunction, MixedIOAndLogic), design.md ASP205/206 and TypeScript eslint-plugin-boundaries.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: In the Rust implementation of Aspergillus (the rust/ tree), make rule ASP205 (impure function in the functional core) and rule ASP206 (mixed I/O and logic) correct and blocking.\n\nBoth rules must know the imperative shell. A consumer declares which repository paths are the functional core, for example in a config file the gate reads, as the TypeScript layouts do. A function that performs I/O in the imperative shell is legal. I/O inside a declared core path is the finding.\n\nThe I/O detection must no longer match bare method names that collide with domain methods. `book.open()` on an in-memory book is not I/O. `json5::read(text)` over a &str is not I/O. An `mpsc` `send` or `recv` is not I/O. A domain `create` or `accept` constructor is not I/O. The detection must find I/O inside closures, for example `iter().for_each(|p| std::fs::write(..))`. It must find `writeln!` and `write!` to a file. It must find `dbg!`, `flush`, `sync_all` and `std::process::exit`.\n\nEach of the two rules gets committed violating and satisfying fixture pairs that cover the cases above. Each of the two rules is blocking.\n\nAcceptance a person can check without reading code: run the gate over lobaria integrated with `--exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**'` and lobaria's core declaration. These verified false positives produce no finding: shell/src/machine.rs:990 `create`, shell/src/capture.rs:506 `decode_worker` (mpsc send/recv), backtest/src/replay.rs:223 `open_tokens`, chart/src/lib.rs:52 `load` (json5::read), and the ASP206 satisfying fixture's shell wrapper under ASP205. These probes produce an ASP205 finding when a core path declares them: `fn persist(ps: &[&str]) { ps.iter().for_each(|p| std::fs::write(p, b\"\").unwrap()); }` and `fn f(w: &mut std::fs::File) { writeln!(w, \"x\").unwrap(); }`. statechart, which is lobaria's pure core, still has 0 ASP205 findings and 0 ASP206 findings. In rust/, `cargo test`, `cargo clippy -D warnings` and `cargo fmt --check` pass. docs/design.md and docs/rust-rules.md describe ASP205 and ASP206 as implemented.\n\nConstraints: do not change lobaria's code, because a lobaria pebble applies the rules. Do not change the Python implementation or the TypeScript implementation. Do not port ASP501, ASP502, or other rules that are not yet ported, because a sibling pebble ports those. No report-only mode: each rule is blocking once it is correct.\n\nReferences: the Python implementation in python/src/aspergillus/rules/level2.py (`_is_imperative_shell`, `ImpureFunction`, `MixedIOAndLogic`), design.md ASP205 and ASP206, and the TypeScript eslint-plugin-boundaries. The 2026-09-23 verification (cloud agents VerifyASP205_206 and VerifyLobariaGate, aspergillus integrated 019f8b9, lobaria integrated d0269c7) measured ASP205 at 278 findings with 0 in the pure core, at least 25 pure functions flagged by a name collision, and the crate's own ASP206 satisfying fixture firing ASP205. It measured ASP206 at 114 findings, about 84% of them in bins, oracles and tests, and at most 11 real core/shell debt items. Priority P1.",
+  "restatement": "The Rust gate of Aspergillus already reports ASP205 (an impure function in the functional core) and ASP206 (mixed I/O and logic). Both rules are wrong today. They read no declaration of which paths are the functional core, so they treat the whole repository as the core. They match bare method names, so they call a domain method I/O. The 2026-09-23 measurement showed the cost: ASP205 produced 278 findings with 0 in the pure core, at least 25 pure functions were flagged by a name collision, and the crate's own ASP206 satisfying fixture fired ASP205. ASP206 produced 114 findings, about 84% of them in binaries, oracles and tests, and at most 11 real items of core/shell debt.\n\nThis request makes both rules correct, and then makes both rules block.\n\nFirst, both rules must know the imperative shell. A consumer declares which repository paths hold the functional core. The declaration lives in a configuration file that the gate reads, in the same spirit as the TypeScript layouts. A function that performs I/O in the imperative shell is legal, and the rules stay silent about it. The same I/O inside a declared core path is the finding.\n\nSecond, the I/O detection must stop matching a bare method name that collides with a domain method. These four shapes are not I/O and produce no finding: `book.open()` on an in-memory book, `json5::read(text)` over a `&str`, an `mpsc` `send` or `recv`, and a domain `create` or `accept` constructor.\n\nThird, the I/O detection must find the I/O it misses today. It must find I/O inside a closure, for example `iter().for_each(|p| std::fs::write(..))`. It must find `writeln!` and `write!` to a file. It must find `dbg!`, `flush`, `sync_all` and `std::process::exit`.\n\nFourth, each of the two rules carries committed fixture pairs. One fixture of a pair breaks the rule. The other fixture of the pair obeys it. The pairs cover the cases above.\n\nFifth, each of the two rules is blocking. A finding fails the run. There is no report-only mode for either rule.\n\nA person checks the result this way. Run the gate over lobaria integrated with `--exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**'` and lobaria's core declaration. Five verified false positives produce no finding: shell/src/machine.rs:990 `create`, shell/src/capture.rs:506 `decode_worker` (mpsc send/recv), backtest/src/replay.rs:223 `open_tokens`, chart/src/lib.rs:52 `load` (json5::read), and the ASP206 satisfying fixture's shell wrapper under ASP205. Two probe functions produce an ASP205 finding when a core path declares them: `fn persist(ps: &[&str]) { ps.iter().for_each(|p| std::fs::write(p, b\"\").unwrap()); }` and `fn f(w: &mut std::fs::File) { writeln!(w, \"x\").unwrap(); }`. statechart, which is lobaria's pure core, keeps 0 ASP205 findings and 0 ASP206 findings. In rust/, `cargo test`, `cargo clippy -D warnings` and `cargo fmt --check` pass. docs/design.md and docs/rust-rules.md describe ASP205 and ASP206 as implemented.\n\nThe work stays inside the Rust gate. It changes no file of lobaria, because a lobaria pebble applies the rules. It changes no file of the Python implementation and no file of the TypeScript implementation. It ports no rule that is not yet ported, so ASP501 and ASP502 stay absent, because a sibling pebble ports those.",
+  "restatement_clauses": [
+    {
+      "id": "C1",
+      "text": "A consumer declares which repository paths are the functional core in a configuration file the gate reads. A function that performs I/O in the imperative shell produces no finding. The same I/O inside a declared core path is the finding."
+    },
+    {
+      "id": "C2",
+      "text": "The I/O detection no longer matches a bare method name that collides with a domain method. Inside a declared core path these produce no finding: `book.open()` on an in-memory book, `json5::read(text)` over a &str, an `mpsc` `send` or `recv`, and a domain `create` or `accept` constructor."
+    },
+    {
+      "id": "C3",
+      "text": "The I/O detection finds I/O inside closures, for example `iter().for_each(|p| std::fs::write(..))`. It finds `writeln!` and `write!` to a file. It finds `dbg!`, `flush`, `sync_all` and `std::process::exit`."
+    },
+    {
+      "id": "C4",
+      "text": "Each of ASP205 and ASP206 carries committed violating and satisfying fixture pairs that cover the cases above. The rule reports at least one finding on each violating fixture and no finding on each satisfying fixture."
+    },
+    {
+      "id": "C5",
+      "text": "Each of the two rules is blocking. A finding in ASP205 or ASP206 fails the run. Neither rule has a report-only mode."
+    },
+    {
+      "id": "C6",
+      "text": "Run the gate over lobaria integrated with `--exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**'` and lobaria's core declaration. These five verified false positives produce no finding: shell/src/machine.rs:990 `create`, shell/src/capture.rs:506 `decode_worker` (mpsc send/recv), backtest/src/replay.rs:223 `open_tokens`, chart/src/lib.rs:52 `load` (json5::read), and the ASP206 satisfying fixture's shell wrapper under ASP205."
+    },
+    {
+      "id": "C7",
+      "text": "These two probes produce an ASP205 finding when a core path declares them: `fn persist(ps: &[&str]) { ps.iter().for_each(|p| std::fs::write(p, b\"\").unwrap()); }` and `fn f(w: &mut std::fs::File) { writeln!(w, \"x\").unwrap(); }`."
+    },
+    {
+      "id": "C8",
+      "text": "statechart, which is lobaria's pure core, still has 0 ASP205 findings and 0 ASP206 findings under the same run."
+    },
+    {
+      "id": "C9",
+      "text": "In rust/, `cargo test` passes for the aspergillus-rust-gate package."
+    },
+    {
+      "id": "C10",
+      "text": "In rust/, `cargo clippy -D warnings` passes and `cargo fmt --check` passes."
+    },
+    {
+      "id": "C11",
+      "text": "docs/rust-rules.md names ASP205 and ASP206 and describes each as implemented."
+    },
+    {
+      "id": "C12",
+      "text": "docs/design.md describes ASP205 and ASP206 as implemented. Neither rule reads 'Module structure', 'Manual' or 'planned' in that document."
+    },
+    {
+      "id": "C13",
+      "text": "The work changes no file of lobaria's source, no file under python/ and no file under typescript/, because a lobaria pebble applies the rules and the other two implementations stay as they are."
+    },
+    {
+      "id": "C14",
+      "text": "The work ports no rule that is not yet ported. ASP501 and ASP502 stay absent from the Rust gate, because a sibling pebble ports those."
+    }
+  ],
+  "goal": "Make the Rust gate's ASP205 and ASP206 rules read a declared functional-core path list, detect real I/O instead of bare method names, and block on a finding.",
+  "acceptance_criteria": [
+    "A report takes one and the same function that writes a file, places it once in a folder the project declares as the functional core and once in a folder outside it, then runs the two rules over both. It counts the findings in each place. The core copy gets at least one finding. The outside copy gets none. The report also states that it read the declaration from a configuration file.",
+    "A report places four kinds of ordinary domain code inside a folder declared as the functional core: opening an in-memory book, reading settings text with json5, passing a message between threads, and building a value with a create or accept constructor. It runs both rules over them and counts how many of these cases got a finding. At least five cases run and none of them gets a finding.",
+    "A report places seven kinds of real I/O inside a folder declared as the functional core: a file write hidden inside a closure passed to for_each, writeln! to a file, write! to a file, dbg!, flush, sync_all, and ending the process with std::process::exit. It runs the rules over each and counts the cases that got no finding. At least seven cases run and none is missed.",
+    "A report runs the ASP205 rule and the ASP206 rule over the stored example files kept with the project. Each rule has an example that breaks it and an example that obeys it. The report counts the rules whose examples are missing, the rules that said nothing about the breaking example, and the rules that complained about the obeying example. Both rules run and all three counts are zero.",
+    "A report runs the gate over the stored example that breaks ASP205 and over the stored example that breaks ASP206, and records whether the run failed each time. It also records whether either rule offers a setting that turns its finding into a warning. Both rules run, both runs fail, and neither rule has a report-only setting.",
+    "A report runs the gate over the lobaria source with the two exclusions 'scripts/oracles/fixtures/**' and 'vendored/**' and with lobaria's own declaration of its core. It then looks at five places that were wrongly reported before: shell/src/machine.rs line 990 create, shell/src/capture.rs line 506 decode_worker, backtest/src/replay.rs line 223 open_tokens, chart/src/lib.rs line 52 load, and the shell wrapper in the ASP206 obeying example checked under ASP205. All five places are checked and none of them is reported.",
+    "A report puts two short functions into a folder declared as the functional core. The first writes an empty file for every path in a list, inside a closure. The second writes a line of text into an open file. It runs ASP205 over both and counts the ones that got no finding. Both functions are checked and neither is missed.",
+    "A report runs the same lobaria check and counts the findings raised inside statechart, which is lobaria's pure core. It reports how many source files of statechart it read, how many ASP205 findings it saw there, and how many ASP206 findings it saw there. It reads at least one file, and both counts are zero.",
+    "The automated test suite of the Rust gate passes, and the tests really exercise the changed behaviour: when the checker's own logic is deliberately altered, the tests notice and fail.",
+    "A report runs the Rust code-style checker with warnings treated as errors, and the Rust formatter in checking mode, over the Rust gate. It records the result of each. Both finish with no complaint.",
+    "The Rust rules document names both rules: the one about an impure function in the functional core, and the one about mixed input-output and logic.",
+    "In the project design document, neither of the two rules is still described with a placeholder such as 'Module structure', 'Manual' or 'planned'.",
+    "A report compares this work against the project state it started from, and counts the changed files in three places: the lobaria source, the Python implementation folder, and the TypeScript implementation folder. All three counts are zero.",
+    "The Rust gate's rule files and source carry no rule numbered ASP501 or ASP502, which a different piece of work will add."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A report takes one and the same function that writes a file, places it once in a folder the project declares as the functional core and once in a folder outside it, then runs the two rules over both. It counts the findings in each place. The core copy gets at least one finding. The outside copy gets none. The report also states that it read the declaration from a configuration file."
+    },
+    {
+      "id": "c2",
+      "text": "A report places four kinds of ordinary domain code inside a folder declared as the functional core: opening an in-memory book, reading settings text with json5, passing a message between threads, and building a value with a create or accept constructor. It runs both rules over them and counts how many of these cases got a finding. At least five cases run and none of them gets a finding."
+    },
+    {
+      "id": "c3",
+      "text": "A report places seven kinds of real I/O inside a folder declared as the functional core: a file write hidden inside a closure passed to for_each, writeln! to a file, write! to a file, dbg!, flush, sync_all, and ending the process with std::process::exit. It runs the rules over each and counts the cases that got no finding. At least seven cases run and none is missed."
+    },
+    {
+      "id": "c4",
+      "text": "A report runs the ASP205 rule and the ASP206 rule over the stored example files kept with the project. Each rule has an example that breaks it and an example that obeys it. The report counts the rules whose examples are missing, the rules that said nothing about the breaking example, and the rules that complained about the obeying example. Both rules run and all three counts are zero."
+    },
+    {
+      "id": "c5",
+      "text": "A report runs the gate over the stored example that breaks ASP205 and over the stored example that breaks ASP206, and records whether the run failed each time. It also records whether either rule offers a setting that turns its finding into a warning. Both rules run, both runs fail, and neither rule has a report-only setting."
+    },
+    {
+      "id": "c6",
+      "text": "A report runs the gate over the lobaria source with the two exclusions 'scripts/oracles/fixtures/**' and 'vendored/**' and with lobaria's own declaration of its core. It then looks at five places that were wrongly reported before: shell/src/machine.rs line 990 create, shell/src/capture.rs line 506 decode_worker, backtest/src/replay.rs line 223 open_tokens, chart/src/lib.rs line 52 load, and the shell wrapper in the ASP206 obeying example checked under ASP205. All five places are checked and none of them is reported."
+    },
+    {
+      "id": "c7",
+      "text": "A report puts two short functions into a folder declared as the functional core. The first writes an empty file for every path in a list, inside a closure. The second writes a line of text into an open file. It runs ASP205 over both and counts the ones that got no finding. Both functions are checked and neither is missed."
+    },
+    {
+      "id": "c8",
+      "text": "A report runs the same lobaria check and counts the findings raised inside statechart, which is lobaria's pure core. It reports how many source files of statechart it read, how many ASP205 findings it saw there, and how many ASP206 findings it saw there. It reads at least one file, and both counts are zero."
+    },
+    {
+      "id": "c9",
+      "text": "The automated test suite of the Rust gate passes, and the tests really exercise the changed behaviour: when the checker's own logic is deliberately altered, the tests notice and fail."
+    },
+    {
+      "id": "c10",
+      "text": "A report runs the Rust code-style checker with warnings treated as errors, and the Rust formatter in checking mode, over the Rust gate. It records the result of each. Both finish with no complaint."
+    },
+    {
+      "id": "c11",
+      "text": "The Rust rules document names both rules: the one about an impure function in the functional core, and the one about mixed input-output and logic."
+    },
+    {
+      "id": "c12",
+      "text": "In the project design document, neither of the two rules is still described with a placeholder such as 'Module structure', 'Manual' or 'planned'."
+    },
+    {
+      "id": "c13",
+      "text": "A report compares this work against the project state it started from, and counts the changed files in three places: the lobaria source, the Python implementation folder, and the TypeScript implementation folder. All three counts are zero."
+    },
+    {
+      "id": "c14",
+      "text": "The Rust gate's rule files and source carry no rule numbered ASP501 or ASP502, which a different piece of work will add."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C1",
+      "description": "A report takes one and the same function that writes a file, places it once in a folder the project declares as the functional core and once in a folder outside it, then runs the two rules over both. It counts the findings in each place. The core copy gets at least one finding. The outside copy gets none. The report also states that it read the declaration from a configuration file.",
+      "proves": "Proves the two rules know the imperative shell: they read a declared core path list from a configuration file, and the same I/O is a finding inside the core and legal outside it.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_core_declaration_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_in_declared_core",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_outside_declared_core",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "core_declaration_file_read",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C2",
+      "description": "A report places four kinds of ordinary domain code inside a folder declared as the functional core: opening an in-memory book, reading settings text with json5, passing a message between threads, and building a value with a create or accept constructor. It runs both rules over them and counts how many of these cases got a finding. At least five cases run and none of them gets a finding.",
+      "proves": "Proves the detection no longer calls a domain method I/O just because its name looks like a file operation.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_io_name_collision_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "cases_checked",
+          "op": "ge",
+          "value": 5
+        },
+        {
+          "observe": "stdout_json",
+          "field": "cases_with_finding",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C3",
+      "description": "A report places seven kinds of real I/O inside a folder declared as the functional core: a file write hidden inside a closure passed to for_each, writeln! to a file, write! to a file, dbg!, flush, sync_all, and ending the process with std::process::exit. It runs the rules over each and counts the cases that got no finding. At least seven cases run and none is missed.",
+      "proves": "Proves the detection finds the I/O it missed before, including I/O inside a closure and I/O written through a macro.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_io_detection_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "cases_checked",
+          "op": "ge",
+          "value": 7
+        },
+        {
+          "observe": "stdout_json",
+          "field": "cases_without_finding",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C4",
+      "description": "A report runs the ASP205 rule and the ASP206 rule over the stored example files kept with the project. Each rule has an example that breaks it and an example that obeys it. The report counts the rules whose examples are missing, the rules that said nothing about the breaking example, and the rules that complained about the obeying example. Both rules run and all three counts are zero.",
+      "proves": "Proves each of the two rules carries committed violating and satisfying examples, and behaves correctly on both.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_asp205_206_fixture_pairs.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "rules_checked",
+          "op": "eq",
+          "value": 2
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_missing_fixtures",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "violating_fixtures_without_finding",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "satisfying_fixtures_with_finding",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C5",
+      "description": "A report runs the gate over the stored example that breaks ASP205 and over the stored example that breaks ASP206, and records whether the run failed each time. It also records whether either rule offers a setting that turns its finding into a warning. Both rules run, both runs fail, and neither rule has a report-only setting.",
+      "proves": "Proves each of the two rules blocks: a finding fails the run, and no report-only mode exists to let a finding through.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_asp205_206_blocking_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "rules_checked",
+          "op": "eq",
+          "value": 2
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_that_did_not_fail_the_run",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_with_report_only_mode",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C6",
+      "description": "A report runs the gate over the lobaria source with the two exclusions 'scripts/oracles/fixtures/**' and 'vendored/**' and with lobaria's own declaration of its core. It then looks at five places that were wrongly reported before: shell/src/machine.rs line 990 create, shell/src/capture.rs line 506 decode_worker, backtest/src/replay.rs line 223 open_tokens, chart/src/lib.rs line 52 load, and the shell wrapper in the ASP206 obeying example checked under ASP205. All five places are checked and none of them is reported.",
+      "proves": "Proves the five verified false positives are gone from a real run over lobaria with the stated exclusions and core declaration.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_lobaria_false_positive_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "sites_checked",
+          "op": "eq",
+          "value": 5
+        },
+        {
+          "observe": "stdout_json",
+          "field": "sites_with_finding",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C7",
+      "description": "A report puts two short functions into a folder declared as the functional core. The first writes an empty file for every path in a list, inside a closure. The second writes a line of text into an open file. It runs ASP205 over both and counts the ones that got no finding. Both functions are checked and neither is missed.",
+      "proves": "Proves the two stated probe functions raise an ASP205 finding once a core path declares them.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_asp205_core_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "probes_checked",
+          "op": "eq",
+          "value": 2
+        },
+        {
+          "observe": "stdout_json",
+          "field": "probes_without_asp205_finding",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C8",
+      "description": "A report runs the same lobaria check and counts the findings raised inside statechart, which is lobaria's pure core. It reports how many source files of statechart it read, how many ASP205 findings it saw there, and how many ASP206 findings it saw there. It reads at least one file, and both counts are zero.",
+      "proves": "Proves the corrected rules stay silent over lobaria's pure core, so the fix did not trade false positives for noise in the core.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_lobaria_statechart_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "statechart_files_scanned",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "statechart_asp205_findings",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "statechart_asp206_findings",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c8"
+    },
+    {
+      "type": "mutation_gated_test",
+      "restatement_clause_id": "C9",
+      "description": "The automated test suite of the Rust gate passes, and the tests really exercise the changed behaviour: when the checker's own logic is deliberately altered, the tests notice and fail.",
+      "proves": "Proves the Rust gate's test suite passes and is adequate, rather than passing because the tests assert nothing.",
+      "package": "aspergillus-rust-gate",
+      "clause_id": "c9"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C10",
+      "description": "A report runs the Rust code-style checker with warnings treated as errors, and the Rust formatter in checking mode, over the Rust gate. It records the result of each. Both finish with no complaint.",
+      "proves": "Proves the Rust gate passes cargo clippy with -D warnings and cargo fmt --check, so the change meets the project's Rust code standards.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_clippy_fmt_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "clippy_exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "fmt_check_exit_code",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c10"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "C11",
+      "description": "The Rust rules document names both rules: the one about an impure function in the functional core, and the one about mixed input-output and logic.",
+      "proves": "Proves docs/rust-rules.md exists and describes ASP205 and ASP206.",
+      "pattern": "ASP205",
+      "additional_patterns": [
+        "ASP206"
+      ],
+      "files": [
+        "docs/rust-rules.md"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 2
+      },
+      "clause_id": "c11"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "C12",
+      "description": "In the project design document, neither of the two rules is still described with a placeholder such as 'Module structure', 'Manual' or 'planned'.",
+      "proves": "Proves docs/design.md describes ASP205 and ASP206 as implemented rather than as future or manual work.",
+      "pattern": "ASP205[^\\n]*(Module structure|Manual|planned|not implemented)",
+      "additional_patterns": [
+        "ASP206[^\\n]*(Module structure|Manual|planned|not implemented)"
+      ],
+      "files": [
+        "docs/design.md"
+      ],
+      "clause_id": "c12"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C13",
+      "description": "A report compares this work against the project state it started from, and counts the changed files in three places: the lobaria source, the Python implementation folder, and the TypeScript implementation folder. All three counts are zero.",
+      "proves": "Proves the fix lives in the Rust gate only, and leaves lobaria, the Python implementation and the TypeScript implementation untouched.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/asp_rust_asp205_206_scope_probe.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "lobaria_source_files_changed",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "python_files_changed",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "typescript_files_changed",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c13"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "C14",
+      "description": "The Rust gate's rule files and source carry no rule numbered ASP501 or ASP502, which a different piece of work will add.",
+      "proves": "Proves this work ported no rule outside its scope, so the sibling work that ports ASP501 and ASP502 is not duplicated or pre-empted.",
+      "pattern": "ASP501",
+      "additional_patterns": [
+        "ASP502"
+      ],
+      "files": [
+        "rust/ast-grep-rules/*.yml",
+        "rust/src/**/*.rs"
+      ],
+      "clause_id": "c14"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/asp_rust_asp205_206_blocking_probe.py",
+    "scripts/asp_rust_asp205_206_fixture_pairs.py",
+    "scripts/asp_rust_asp205_206_scope_probe.py",
+    "scripts/asp_rust_asp205_core_probe.py",
+    "scripts/asp_rust_clippy_fmt_probe.py",
+    "scripts/asp_rust_core_declaration_probe.py",
+    "scripts/asp_rust_io_detection_probe.py",
+    "scripts/asp_rust_io_name_collision_probe.py",
+    "scripts/asp_rust_lobaria_false_positive_probe.py",
+    "scripts/asp_rust_lobaria_statechart_probe.py"
+  ]
+}
