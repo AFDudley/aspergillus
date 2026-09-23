@@ -64,11 +64,12 @@ pub fn read_core_declaration(path: &Path) -> Result<CoreDeclaration, String> {
 }
 
 /// The declaration at `--core-config`'s value when given, otherwise the
-/// default location if it exists, otherwise `None` — an undeclared
-/// workspace has no functional core, so ASP205/ASP206 report nothing in
-/// it. A malformed declaration that DOES exist is still an `Err`: a typo
-/// in a consumer's `core_paths` should not silently disable the rules it
-/// was meant to scope.
+/// default location if it exists, otherwise `None`. A malformed
+/// declaration that DOES exist is an `Err`: a typo in a consumer's
+/// `core_paths` must not silently disable the rules it was meant to
+/// scope. The gate treats `None` (no declaration at all) as a hard input
+/// error too — ASP205/ASP206 require a declaration, and a workspace with
+/// no pure core states that explicitly with `core_paths = []`.
 pub fn resolve_core_declaration(
     workspace_dir: &Path,
     core_config_arg: Option<&Path>,
@@ -101,6 +102,19 @@ mod tests {
         };
         assert!(declaration.is_core(Path::new("statechart/src/chart.rs")));
         assert!(!declaration.is_core(Path::new("shell/src/machine.rs")));
+    }
+
+    #[test]
+    fn an_empty_core_paths_declaration_parses_to_an_empty_core() {
+        let dir = std::env::temp_dir().join("aspergillus-core-declaration-test-empty");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("aspergillus.toml"), "core_paths = []\n").unwrap();
+        let declaration = resolve_core_declaration(&dir, None).unwrap().unwrap();
+        assert_eq!(declaration.path_count, 0);
+        // Every path is shell: no path is core, so ASP205 never fires and
+        // ASP206 treats every non-test file as shell.
+        assert!(!declaration.is_core(Path::new("src/lib.rs")));
+        assert!(!declaration.is_core(Path::new("anything/at/all.rs")));
     }
 
     #[test]

@@ -11,7 +11,9 @@ use std::process::ExitCode;
 use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
 use ast_grep_language::SupportLang;
 
-use aspergillus_rust_gate::core_declaration::{resolve_core_declaration, CoreDeclaration};
+use aspergillus_rust_gate::core_declaration::{
+    default_core_config_path, resolve_core_declaration, CoreDeclaration,
+};
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
 
@@ -55,27 +57,35 @@ fn main() -> ExitCode {
 
     // Resolve the consumer's functional-core path declaration: the
     // `--core-config` argument when given, otherwise
-    // `<WORKSPACE_DIR>/aspergillus.toml` when it exists, otherwise no
-    // declaration at all — ASP205/ASP206 then report nothing, since an
-    // undeclared workspace has no functional core to scope them to.
-    let core_declaration: Option<CoreDeclaration> =
+    // `<WORKSPACE_DIR>/aspergillus.toml`. ASP205/ASP206 are always part of
+    // the run, so the gate REQUIRES a declaration: a missing, unreadable or
+    // unparseable one is a hard input error (exit 2), never a silent
+    // "report nothing" — a judge must not fail open. A workspace with no
+    // pure core says so explicitly with `core_paths = []` (which parses to
+    // an empty core: ASP205 never fires, ASP206 treats every non-test file
+    // as shell).
+    let core_declaration: CoreDeclaration =
         match resolve_core_declaration(&workspace_dir, core_config_opt.as_deref()) {
-            Ok(declaration) => declaration,
+            Ok(Some(declaration)) => declaration,
+            Ok(None) => {
+                eprintln!(
+                    "aspergillus-rust-gate: input error: no functional-core declaration found \
+                     (looked for {} and no --core-config); ASP205/ASP206 need one — declare \
+                     `core_paths = []` for a workspace with no pure core",
+                    default_core_config_path(&workspace_dir).display()
+                );
+                return ExitCode::from(2);
+            }
             Err(why) => {
                 eprintln!("aspergillus-rust-gate: input error: {why}");
                 return ExitCode::from(2);
             }
         };
-    match &core_declaration {
-        Some(declaration) => eprintln!(
-            "aspergillus-rust-gate: read core declaration from {} ({} path pattern(s))",
-            declaration.source_path.display(),
-            declaration.path_count
-        ),
-        None => eprintln!(
-            "aspergillus-rust-gate: no core declaration found; ASP205/ASP206 report nothing"
-        ),
-    }
+    eprintln!(
+        "aspergillus-rust-gate: read core declaration from {} ({} path pattern(s))",
+        core_declaration.source_path.display(),
+        core_declaration.path_count
+    );
 
     // Resolve the rule directory at run time: the `--rules` argument when
     // given, otherwise `CARGO_MANIFEST_DIR/ast-grep-rules` (cargo sets that
@@ -102,7 +112,7 @@ fn main() -> ExitCode {
     };
 
     let (mut findings, scanned) =
-        match scan_workspace(&rules, &workspace_dir, &excludes, core_declaration.as_ref()) {
+        match scan_workspace(&rules, &workspace_dir, &excludes, &core_declaration) {
             Ok(result) => result,
             Err(why) => {
                 eprintln!("aspergillus-rust-gate: input error: {why}");
@@ -214,7 +224,7 @@ fn scan_workspace(
     rules: &[RuleConfig<SupportLang>],
     workspace_dir: &Path,
     excludes: &globset::GlobSet,
-    core_declaration: Option<&CoreDeclaration>,
+    core_declaration: &CoreDeclaration,
 ) -> Result<(Vec<Finding>, usize), String> {
     let files = rust_source_files(workspace_dir, excludes);
     let mut findings = Vec::new();
@@ -241,8 +251,7 @@ fn scan_workspace(
         }
         // ASP205 (impure function) fires inside the declared functional
         // core: I/O in the core is the finding.
-        let has_core = core_declaration.is_some();
-        let is_core = core_declaration.is_some_and(|d| d.is_core(relative));
+        let is_core = core_declaration.is_core(relative);
         if is_core {
             for (line, rule_id, blocking) in purity::impure_function_findings(&source) {
                 findings.push(Finding {
@@ -254,11 +263,10 @@ fn scan_workspace(
             }
         }
         // ASP206 (mixed I/O + logic) fires in the imperative SHELL — a
-        // declared, non-core, non-test-path file: a thin shell holds no
-        // logic, so a shell function mixing I/O with logic is the finding.
-        // With no core declared there is no shell to scope to, so it is
-        // silent, exactly like ASP205.
-        if has_core && !is_core && !is_test_path(relative) {
+        // non-core, non-test-path file: a thin shell holds no logic, so a
+        // shell function mixing I/O with logic is the finding. An empty
+        // core (`core_paths = []`) makes every non-test file shell.
+        if !is_core && !is_test_path(relative) {
             for (line, rule_id, blocking) in purity::mixed_io_logic_findings(&source) {
                 findings.push(Finding {
                     path: shown.clone(),

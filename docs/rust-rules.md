@@ -56,12 +56,15 @@ whose fix is lifting it into the core. ASP206 does not fire inside the
 core (ASP205 already flags core I/O there) nor on test code (`#[test]`/
 `#[tokio::test]` functions, functions inside a `#[cfg(test)]` module, and
 files under a `tests/` directory are exempt, as the Python sibling
-exempts `test_`). An undeclared workspace (no `aspergillus.toml` and no
-`--core-config`) has no core and no shell — ASP205 and ASP206 report
-nothing anywhere in it, not an input error; only a malformed _existing_
-declaration is one. ASP202 is not core-scoped (see its own row above):
-Rust has no dynamic-parameter escape hatch, so its assertion-density
-floor applies workspace-wide.
+exempts `test_`). The gate requires a declaration: an undeclared
+workspace (no `aspergillus.toml` and no `--core-config`), an unreadable
+file, or one that does not parse as a `core_paths` array is a hard input
+error and exits `2` — the gate never silently disables ASP205/ASP206 (a
+judge must not fail open). A workspace with genuinely no pure core says
+so explicitly with `core_paths = []`: ASP205 then never fires and ASP206
+treats every non-test file as shell. ASP202 is not core-scoped (see its
+own row above): Rust has no dynamic-parameter escape hatch, so its
+assertion-density floor applies workspace-wide.
 
 `rust/src/purity.rs`'s I/O detection matches a call by its qualified
 path, not a bare method or function name, for the names collision-prone
