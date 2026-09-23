@@ -256,8 +256,12 @@ fn scan_workspace(
         // ASP202 (assertion density) is scoped to the imperative shell: a
         // pure, fully-typed core function earns its correctness statically,
         // so the runtime-assert floor applies only outside the declared
-        // core.
-        if !is_core {
+        // core. It also exempts test code — both `#[test]`/`#[cfg(test)]`
+        // functions (via the per-function `is_test` signal) and any file
+        // under a crate-level `tests/` directory (an integration test and
+        // its helpers are test infrastructure, not shell debt), matching
+        // ASP206's `is_test_path` exemption.
+        if !is_core && !is_test_path(relative) {
             for (line, rule_id, blocking) in purity::assertion_density_findings(&source) {
                 findings.push(Finding {
                     path: shown.clone(),
