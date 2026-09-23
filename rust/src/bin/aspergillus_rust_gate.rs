@@ -239,12 +239,27 @@ fn scan_workspace(
                 blocking,
             });
         }
+        // ASP205 (impure function) fires inside the declared functional
+        // core: I/O in the core is the finding.
+        let has_core = core_declaration.is_some();
         let is_core = core_declaration.is_some_and(|d| d.is_core(relative));
         if is_core {
-            for (line, rule_id, blocking) in purity::impure_function_findings(&source)
-                .into_iter()
-                .chain(purity::mixed_io_logic_findings(&source))
-            {
+            for (line, rule_id, blocking) in purity::impure_function_findings(&source) {
+                findings.push(Finding {
+                    path: shown.clone(),
+                    line,
+                    rule_id: rule_id.to_string(),
+                    blocking,
+                });
+            }
+        }
+        // ASP206 (mixed I/O + logic) fires in the imperative SHELL — a
+        // declared, non-core, non-test-path file: a thin shell holds no
+        // logic, so a shell function mixing I/O with logic is the finding.
+        // With no core declared there is no shell to scope to, so it is
+        // silent, exactly like ASP205.
+        if has_core && !is_core && !is_test_path(relative) {
+            for (line, rule_id, blocking) in purity::mixed_io_logic_findings(&source) {
                 findings.push(Finding {
                     path: shown.clone(),
                     line,
@@ -255,4 +270,12 @@ fn scan_workspace(
         }
     }
     Ok((findings, files.len()))
+}
+
+/// Whether `relative` is a test-only source path: a Cargo integration-test
+/// or any file under a `tests/` directory. ASP206 exempts these, as the
+/// Python sibling exempts `test_` code — a test's I/O-and-logic mix is the
+/// test, not shell debt to lift into the core.
+fn is_test_path(relative: &Path) -> bool {
+    relative.components().any(|c| c.as_os_str() == "tests")
 }

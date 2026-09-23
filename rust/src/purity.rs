@@ -119,13 +119,17 @@ const LOGIC_STATEMENT_KINDS: &[&str] = &[
 
 /// One function's purity signal: its start line, its line count, the I/O
 /// names its body calls (empty if pure), how many assert-like macros it
-/// invokes, and how many top-level logic statements its body holds.
+/// invokes, how many top-level logic statements its body holds, and
+/// whether it is a test function (carries a `#[test]`-style attribute or
+/// sits inside a `#[cfg(test)]` module) — the Python sibling exempts
+/// `test_` functions, so the Rust rules exempt these.
 pub struct FunctionSignal {
     pub line: usize,
     pub line_count: usize,
     pub io_calls: Vec<String>,
     pub assert_count: usize,
     pub logic_count: usize,
+    pub is_test: bool,
 }
 
 /// Every function in `source`, each with its own purity signal. A nested
@@ -191,7 +195,45 @@ fn function_signal<D: Doc>(func: &Node<'_, D>) -> FunctionSignal {
         io_calls,
         assert_count,
         logic_count,
+        is_test: is_test_function(func),
     }
+}
+
+/// Whether `func` is a test function: it carries a `#[test]`-style
+/// attribute (`#[test]`, `#[tokio::test]`, `#[cfg(test)]`), or it sits
+/// inside a module annotated `#[cfg(test)]`. tree-sitter-rust models an
+/// item's attributes as `attribute_item` nodes that PRECEDE the item as
+/// siblings, so both cases are read off preceding siblings — of the
+/// function for a direct attribute, of an ancestor `mod_item` for the
+/// enclosing test module. Mirrors the Python sibling exempting `test_`.
+fn is_test_function<D: Doc>(func: &Node<'_, D>) -> bool {
+    if has_test_attribute(func) {
+        return true;
+    }
+    let mut ancestor = func.parent();
+    while let Some(node) = ancestor {
+        if node.kind() == "mod_item" && has_test_attribute(&node) {
+            return true;
+        }
+        ancestor = node.parent();
+    }
+    false
+}
+
+/// Whether `item`'s immediately-preceding `attribute_item` siblings
+/// include a `test`/`cfg(test)` attribute.
+fn has_test_attribute<D: Doc>(item: &Node<'_, D>) -> bool {
+    let mut prev = item.prev();
+    while let Some(node) = prev {
+        if node.kind() != "attribute_item" {
+            break;
+        }
+        if node.text().contains("test") {
+            return true;
+        }
+        prev = node.prev();
+    }
+    false
 }
 
 /// Visits every descendant of `node` with `visit`, skipping into a
@@ -287,26 +329,29 @@ pub fn assertion_density_findings(source: &str) -> Vec<(usize, &'static str, boo
         .collect()
 }
 
-/// ASP205: a function whose body calls a known Rust I/O name. Mirrors
-/// `ImpureFunction`: blocking — the finding fails the gate run, since every
-/// Aspergillus Rust rule now blocks.
+/// ASP205: a non-test function whose body calls a known Rust I/O name.
+/// Mirrors `ImpureFunction`: blocking. The gate runs it only over files
+/// inside the declared functional core — I/O in the core is the finding.
 pub fn impure_function_findings(source: &str) -> Vec<(usize, &'static str, bool)> {
     scan_functions(source)
         .into_iter()
-        .filter(|f| !f.io_calls.is_empty())
+        .filter(|f| !f.is_test && !f.io_calls.is_empty())
         .map(|f| (f.line, "ASP205", true))
         .collect()
 }
 
-/// ASP206: a function that both calls I/O and holds more than
-/// `LOGIC_THRESHOLD` top-level logic statements — I/O mixed with enough
-/// business logic that functional-core / imperative-shell separation
-/// would help. Mirrors `MixedIOAndLogic`.
+/// ASP206: a non-test function that both calls I/O and holds more than
+/// `LOGIC_THRESHOLD` top-level logic statements. Mirrors `MixedIOAndLogic`.
+/// The gate runs it only over files OUTSIDE the declared functional core
+/// (the imperative shell): a thin shell is adapters between the world and
+/// the core's types, so a shell function that mixes I/O with real logic is
+/// the finding — the fix is lifting that logic into the core. Inside the
+/// core, ASP205 already flags any I/O, so ASP206 would add nothing there.
 pub fn mixed_io_logic_findings(source: &str) -> Vec<(usize, &'static str, bool)> {
     const LOGIC_THRESHOLD: usize = 3;
     scan_functions(source)
         .into_iter()
-        .filter(|f| !f.io_calls.is_empty() && f.logic_count > LOGIC_THRESHOLD)
+        .filter(|f| !f.is_test && !f.io_calls.is_empty() && f.logic_count > LOGIC_THRESHOLD)
         .map(|f| (f.line, "ASP206", true))
         .collect()
 }
@@ -355,6 +400,20 @@ mod tests {
     #[test]
     fn an_orchestrator_under_the_threshold_is_not_asp206() {
         let source = "fn orchestrator(raw: &str) {\n    println!(\"{raw}\");\n}\n";
+        assert_eq!(mixed_io_logic_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_test_function_doing_io_is_exempt_from_asp205_and_asp206() {
+        let source = "#[test]\nfn writes_a_file() {\n    std::fs::write(\"x\", b\"\").unwrap();\n    let a = 1;\n    let b = 2;\n    let c = 3;\n    let d = 4;\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
+        assert_eq!(mixed_io_logic_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_helper_inside_a_cfg_test_module_is_exempt() {
+        let source = "#[cfg(test)]\nmod tests {\n    fn helper() {\n        std::fs::write(\"x\", b\"\").unwrap();\n        let a = 1;\n        let b = 2;\n        let c = 3;\n        let d = 4;\n    }\n}\n";
+        assert_eq!(impure_function_findings(source), Vec::new());
         assert_eq!(mixed_io_logic_findings(source), Vec::new());
     }
 
