@@ -23,3 +23,7 @@ walkdir = "2"
 [[bin]]
 name = "aspergillus-rust-gate"
 path = "src/bin/aspergillus_rust_gate.rs"
+
+[[bin]]
+name = "aspergillus-rust-dup-check"
+path = "src/bin/aspergillus_rust_dup_check.rs"

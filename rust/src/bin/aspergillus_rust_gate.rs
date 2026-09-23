@@ -10,8 +10,8 @@ use std::process::ExitCode;
 
 use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
 use ast_grep_language::SupportLang;
-use walkdir::WalkDir;
 
+use aspergillus_rust_gate::workspace::rust_source_files;
 use aspergillus_rust_gate::{clippy, exit_status, source_findings, Finding};
 
 /// The rule directory shipped alongside this crate, resolved at compile
@@ -89,31 +89,13 @@ fn load_rules(dir: &Path) -> Result<Vec<RuleConfig<SupportLang>>, String> {
     Ok(rules)
 }
 
-/// Every `*.rs` file under `workspace_dir`, skipping `target/` and any
-/// hidden directory, in path order.
-fn rust_files(workspace_dir: &Path) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = WalkDir::new(workspace_dir)
-        .into_iter()
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            entry.depth() == 0 || (name != "target" && !name.starts_with('.'))
-        })
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-        .map(walkdir::DirEntry::into_path)
-        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
-        .collect();
-    files.sort();
-    files
-}
-
 /// Every ast-grep finding across the workspace's Rust source files, and
 /// how many files were scanned.
 fn scan_workspace(
     rules: &[RuleConfig<SupportLang>],
     workspace_dir: &Path,
 ) -> Result<(Vec<Finding>, usize), String> {
-    let files = rust_files(workspace_dir);
+    let files = rust_source_files(workspace_dir);
     let mut findings = Vec::new();
     for path in &files {
         let source =

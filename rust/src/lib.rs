@@ -10,6 +10,8 @@ use ast_grep_config::{RuleConfig, Severity};
 use ast_grep_language::{LanguageExt, SupportLang};
 
 pub mod clippy;
+pub mod duplicates;
+pub mod workspace;
 
 /// One finding: a rule id at one 1-based line of one file, and whether the
 /// rule that raised it is blocking.
