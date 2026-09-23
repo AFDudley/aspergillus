@@ -1,0 +1,338 @@
+{
+  "id": "derived-asp-ce6.3",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust workspace that adopts Aspergillus gets every ASP rule checked mechanically on commit, the same way Python and TypeScript consumers do, including two whole-workspace checks: the same function body defined twice, and the same concept declared as a type in more than one crate.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories that adopt Aspergillus (first consumer: lobaria, a Cargo workspace of 33 crates), and the exophial workers committing into them.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. A consumer copies or depends on aspergillus/rust (as it does today for rust/configs/clippy.toml) and runs the Rust rules over its workspace; each finding prints as `path:line: ASPnnn` and a finding in a blocking rule fails the run. docs/design.md's Rust column names, for every rule of Levels 2 and 3 and every ASP4xx rule that applies to Rust, the enforcing check: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/ (the engine TypeScript already uses under typescript/ast-grep-rules/), or a whole-workspace check; a rule the Rust language already enforces names the language feature, and a rule that does not apply to Rust says why. No entry reads 'Manual', 'planned' or 'Module structure'. A duplicate-function check reports two Rust functions whose normalized bodies are identical, as `aspergillus check-duplicates` does for Python. A duplicate-type check reports a struct or enum declared in one crate whose concept a type in another crate of the same workspace already declares, with an allowlist for intended cases.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run against lobaria integrated a027fb9, the duplicate-type check reports the three declarations of Nanos (statechart/src/units.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) and of Receipt (statechart/src/edge.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) as findings. The ASP202, ASP204, ASP205 and ASP206 Rust checks each report a finding on a committed Rust fixture that violates the rule and none on a committed fixture that satisfies it, for every rule that has a Rust check. docs/design.md's Rust column has no 'Manual', 'planned' or 'Module structure' entry. A Rust consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language), with no Python or Node runtime in its gate path.\nWhat are the non-goals / constraints? What must this NOT do? Not a change to the Python or TypeScript rules. Not autofix: report-only, as the other languages are. Not a dylint compiler plugin as the required engine: ast-grep YAML plus the ast-grep crates is the engine lobaria already runs (lobaria chart/src/ast_grep_gate.rs, lob-979). The duplicate-type check does not flag two types that share only a name when their shapes differ (lobaria's per-module Refused, Carried, Hit and Finding types are distinct types with local meaning).\nAny examples or references? (links, prior art, a similar thing you like) aspergillus docs/design.md sections 'Level 2', 'Level 3', 'Catalog rules ASP4xx', 'Whole-project CLI tools' (check-duplicates, asp-21d); typescript/ast-grep-rules/*.yml; lobaria chart/src/ast_grep_gate.rs and scripts/gates/core-types-rules/*.yml (ast-grep YAML rules run on ast-grep-core/config/language 0.40.0 from Rust); lobaria integrated a027fb9: 454 pub type declarations carry 384 distinct names, 45 names declared more than once.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: Aspergillus must report duplicate Rust functions across a whole Cargo workspace. The check reports two Rust functions whose normalized bodies are identical, the same way `aspergillus check-duplicates` reports duplicate Python functions today. Each finding prints as `path:line: ASPnnn`. The check reports only; it does not autofix. The check runs with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language). No Python runtime and no Node runtime is in the consumer gate path. The first consumer is lobaria, a Cargo workspace of 33 crates. Reference: aspergillus docs/design.md section 'Whole-project CLI tools' (check-duplicates, asp-21d). This deliverable does not change the Python rules or the TypeScript rules.",
+  "restatement": "Aspergillus today reports duplicate Python functions with `aspergillus check-duplicates`. This request asks for the same service for Rust. A new check reads a whole Cargo workspace. It reads every crate in that workspace, not one crate only. It normalizes each Rust function body the same way the Python detector normalizes a Python function body. It then reports each pair of functions whose normalized bodies are identical. The first consumer is lobaria, a Cargo workspace of 33 crates, so a duplicate pair that sits in two different crates must still appear in the report.\n\nThe check reports only. It never rewrites a scanned file. It prints each finding as `path:line: ASPnnn`. It prints nothing when the workspace holds no duplicate pair.\n\nThe check is a Rust program. It builds and runs with cargo. It uses the ast-grep crates ast-grep-core, ast-grep-config and ast-grep-language to parse the Rust code. The consumer runs it in a gate that has no Python runtime and no Node runtime, so the check must produce its findings when python3 and node are absent.\n\nThis work adds a new surface. It does not change the existing Python rules and it does not change the existing TypeScript rules. The Python duplicate detector keeps its present behaviour. Reference: aspergillus docs/design.md section 'Whole-project CLI tools' (check-duplicates, asp-21d).",
+  "restatement_clauses": [
+    {
+      "id": "C1",
+      "text": "The check reads a whole Cargo workspace and reports a duplicate function pair whose two functions sit in two different crates of that workspace (the first consumer is lobaria, a Cargo workspace of 33 crates)."
+    },
+    {
+      "id": "C2",
+      "text": "The check reports two Rust functions whose normalized bodies are identical, the same way `aspergillus check-duplicates` reports duplicate Python functions today."
+    },
+    {
+      "id": "C3",
+      "text": "The check reports no finding when no two Rust functions in the scanned workspace have identical normalized bodies."
+    },
+    {
+      "id": "C4",
+      "text": "Each finding prints as `path:line: ASPnnn`."
+    },
+    {
+      "id": "C5",
+      "text": "The check reports only. It does not autofix, and it leaves every scanned file byte-identical."
+    },
+    {
+      "id": "C6",
+      "text": "The check builds and runs with cargo, and it uses the ast-grep crates ast-grep-core, ast-grep-config and ast-grep-language."
+    },
+    {
+      "id": "C7",
+      "text": "No Python runtime and no Node runtime is in the consumer gate path: the check prints its findings when python3 and node are not available."
+    },
+    {
+      "id": "C8",
+      "text": "This deliverable does not change the Python rules: `aspergillus check-duplicates` still reports duplicate Python functions."
+    },
+    {
+      "id": "C9",
+      "text": "This deliverable does not change the TypeScript rules: the TypeScript rule files keep their rule declarations."
+    }
+  ],
+  "goal": "Add a Rust duplicate-function check to aspergillus that reports pairs of Rust functions with identical normalized bodies across a whole Cargo workspace, builds and runs with cargo and the ast-grep crates, prints each finding as `path:line: ASPnnn`, and changes no Python or TypeScript rule.",
+  "acceptance_criteria": [
+    "A throwaway Cargo workspace holds two crates. Each crate holds one copy of the same function. The report names both crates.",
+    "A Rust file holds two functions with the same body shape but different function names, different variable names and different literal values. The check reports them as one duplicate pair.",
+    "A Cargo workspace holds only functions with different bodies. The check reports nothing.",
+    "The check runs on a workspace with a known duplicate pair. Every printed finding line reads as a file path, a colon, a line number, a colon, a space, and an ASP code with three digits. The count of lines that do not read that way is reported.",
+    "Every file of a workspace with a known duplicate pair is fingerprinted before the check runs and after it runs. The count of files whose content changed is reported together with the count of findings.",
+    "Cargo builds the check from the repository. The build result and the number of the three named ast-grep libraries (ast-grep-core, ast-grep-config, ast-grep-language) present in the build's library list are reported.",
+    "The check runs with `python`, `python3`, `node` and `npm` replaced by stand-ins that fail and record each call. The check still reports the known duplicate pair, and the number of recorded calls to those stand-ins is reported.",
+    "The existing Python duplicate report runs on a Python file that holds two copies of one function. It still names that duplicate group.",
+    "Each of the six TypeScript shape-rewrite rule files still carries its rule name line, and the ASP202 rule file still names ASP202."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A throwaway Cargo workspace holds two crates. Each crate holds one copy of the same function. The report names both crates."
+    },
+    {
+      "id": "c2",
+      "text": "A Rust file holds two functions with the same body shape but different function names, different variable names and different literal values. The check reports them as one duplicate pair."
+    },
+    {
+      "id": "c3",
+      "text": "A Cargo workspace holds only functions with different bodies. The check reports nothing."
+    },
+    {
+      "id": "c4",
+      "text": "The check runs on a workspace with a known duplicate pair. Every printed finding line reads as a file path, a colon, a line number, a colon, a space, and an ASP code with three digits. The count of lines that do not read that way is reported."
+    },
+    {
+      "id": "c5",
+      "text": "Every file of a workspace with a known duplicate pair is fingerprinted before the check runs and after it runs. The count of files whose content changed is reported together with the count of findings."
+    },
+    {
+      "id": "c6",
+      "text": "Cargo builds the check from the repository. The build result and the number of the three named ast-grep libraries (ast-grep-core, ast-grep-config, ast-grep-language) present in the build's library list are reported."
+    },
+    {
+      "id": "c7",
+      "text": "The check runs with `python`, `python3`, `node` and `npm` replaced by stand-ins that fail and record each call. The check still reports the known duplicate pair, and the number of recorded calls to those stand-ins is reported."
+    },
+    {
+      "id": "c8",
+      "text": "The existing Python duplicate report runs on a Python file that holds two copies of one function. It still names that duplicate group."
+    },
+    {
+      "id": "c9",
+      "text": "Each of the six TypeScript shape-rewrite rule files still carries its rule name line, and the ASP202 rule file still names ASP202."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C1",
+      "description": "A throwaway Cargo workspace holds two crates. Each crate holds one copy of the same function. The report names both crates.",
+      "proves": "The check reads the whole workspace, not one crate, so a duplicate pair split across two crates still appears.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_cross_crate_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "distinct_crates_in_report",
+          "op": "ge",
+          "value": 2
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C2",
+      "description": "A Rust file holds two functions with the same body shape but different function names, different variable names and different literal values. The check reports them as one duplicate pair.",
+      "proves": "The check reports two Rust functions whose normalized bodies are identical, as the Python detector does for Python.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_detect_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "reported_pair_count",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C3",
+      "description": "A Cargo workspace holds only functions with different bodies. The check reports nothing.",
+      "proves": "The check stays silent when the workspace holds no duplicate pair, so its report is not noise.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_clean_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "finding_line_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C4",
+      "description": "The check runs on a workspace with a known duplicate pair. Every printed finding line reads as a file path, a colon, a line number, a colon, a space, and an ASP code with three digits. The count of lines that do not read that way is reported.",
+      "proves": "Each finding prints as `path:line: ASPnnn`, so a person or an editor can jump to the reported line.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_format_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "finding_line_count",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "malformed_line_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C5",
+      "description": "Every file of a workspace with a known duplicate pair is fingerprinted before the check runs and after it runs. The count of files whose content changed is reported together with the count of findings.",
+      "proves": "The check reports the duplicates and edits nothing, so it is safe to run on a working tree.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_readonly_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "finding_line_count",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "changed_file_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C6",
+      "description": "Cargo builds the check from the repository. The build result and the number of the three named ast-grep libraries (ast-grep-core, ast-grep-config, ast-grep-language) present in the build's library list are reported.",
+      "proves": "The check is a cargo-built Rust program, and it uses the three ast-grep libraries the request names.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_cargo_deps_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "cargo_build_exit",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "astgrep_crates_in_graph",
+          "op": "eq",
+          "value": 3
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C7",
+      "description": "The check runs with `python`, `python3`, `node` and `npm` replaced by stand-ins that fail and record each call. The check still reports the known duplicate pair, and the number of recorded calls to those stand-ins is reported.",
+      "proves": "The check needs no Python runtime and no Node runtime, so the consumer gate can run it without them.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_rust_dup_no_python_no_node_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "finding_line_count",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "stub_invocation_count",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C8",
+      "description": "The existing Python duplicate report runs on a Python file that holds two copies of one function. It still names that duplicate group.",
+      "proves": "The Python rules keep their present behaviour, so the new Rust check did not disturb them.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/asp_python_duplicates_regression_probe.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "python_group_count",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 300,
+      "clause_id": "c8"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "C9",
+      "description": "Each of the six TypeScript shape-rewrite rule files still carries its rule name line, and the ASP202 rule file still names ASP202.",
+      "proves": "The TypeScript rules are still in place, so the new Rust check did not remove or rename them.",
+      "pattern": "^id: ",
+      "additional_patterns": [
+        "ASP202"
+      ],
+      "files": [
+        "typescript/ast-grep-rules/map-fusion.yml",
+        "typescript/ast-grep-rules/filter-fusion.yml",
+        "typescript/ast-grep-rules/eta-reduce-arrow.yml",
+        "typescript/ast-grep-rules/redundant-await-return.yml",
+        "typescript/ast-grep-rules/redundant-ternary-bool-true.yml",
+        "typescript/ast-grep-rules/redundant-ternary-bool-false.yml",
+        "typescript/rules/asp202-min-assertions.js"
+      ],
+      "count": {
+        "unit": "files_without_match",
+        "op": "eq",
+        "value": 0
+      },
+      "clause_id": "c9"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/asp_python_duplicates_regression_probe.sh",
+    "scripts/asp_rust_dup_cargo_deps_probe.sh",
+    "scripts/asp_rust_dup_clean_probe.sh",
+    "scripts/asp_rust_dup_cross_crate_probe.sh",
+    "scripts/asp_rust_dup_detect_probe.sh",
+    "scripts/asp_rust_dup_format_probe.sh",
+    "scripts/asp_rust_dup_no_python_no_node_probe.sh",
+    "scripts/asp_rust_dup_readonly_probe.sh"
+  ]
+}
