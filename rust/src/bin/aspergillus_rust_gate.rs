@@ -241,17 +241,23 @@ fn scan_workspace(
                 blocking,
             },
         ));
-        for (line, rule_id, blocking) in purity::assertion_density_findings(&source) {
-            findings.push(Finding {
-                path: shown.clone(),
-                line,
-                rule_id: rule_id.to_string(),
-                blocking,
-            });
+        let is_core = core_declaration.is_core(relative);
+        // ASP202 (assertion density) is scoped to the imperative shell: a
+        // pure, fully-typed core function earns its correctness statically,
+        // so the runtime-assert floor applies only outside the declared
+        // core.
+        if !is_core {
+            for (line, rule_id, blocking) in purity::assertion_density_findings(&source) {
+                findings.push(Finding {
+                    path: shown.clone(),
+                    line,
+                    rule_id: rule_id.to_string(),
+                    blocking,
+                });
+            }
         }
         // ASP205 (impure function) fires inside the declared functional
         // core: I/O in the core is the finding.
-        let is_core = core_declaration.is_core(relative);
         if is_core {
             for (line, rule_id, blocking) in purity::impure_function_findings(&source) {
                 findings.push(Finding {

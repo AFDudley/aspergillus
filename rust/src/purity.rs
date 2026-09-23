@@ -101,6 +101,21 @@ const ASSERT_MACRO_NAMES: &[&str] = &[
     "debug_assert_ne",
 ];
 
+/// Call names ASP202 counts as an assertion form, matched on the callee's
+/// last path segment (parity with the Python rule's `ASSERTION_METHOD_NAMES`):
+/// `ok_or`/`ok_or_else` turn an `Option` into a checked `Result`;
+/// `try_from`/`try_new`/`from_str`/`parse` are validating constructors that
+/// reject bad input by returning an `Err`. Each is a precondition the author
+/// enforces at a boundary, the Rust analogue of NASA `assert(cond)`.
+const ASSERT_CALL_NAMES: &[&str] = &[
+    "ok_or",
+    "ok_or_else",
+    "try_from",
+    "try_new",
+    "from_str",
+    "parse",
+];
+
 /// Direct-child kinds of a function body counted as a logic statement:
 /// a binding, an assignment or other bare expression, a return, or a
 /// control-flow construct. Mirrors the Python sibling's
@@ -168,6 +183,9 @@ fn function_signal<D: Doc>(func: &Node<'_, D>) -> FunctionSignal {
                     let is_io = IO_UNAMBIGUOUS_NAMES.contains(&name.as_str())
                         || (IO_QUALIFIED_ONLY_NAMES.contains(&name.as_str())
                             && is_qualified_io_call(node));
+                    if ASSERT_CALL_NAMES.contains(&name.as_str()) {
+                        assert_count += 1;
+                    }
                     if is_io {
                         io_calls.push(name);
                     }
@@ -183,6 +201,14 @@ fn function_signal<D: Doc>(func: &Node<'_, D>) -> FunctionSignal {
                         assert_count += 1;
                     }
                 }
+            } else if kind == "try_expression" {
+                // The `?` operator is a checked precondition on the wrapped
+                // expression: propagate-the-error-or-continue.
+                assert_count += 1;
+            } else if kind == "return_expression" && returns_err(node) {
+                // A `return Err(..)` guard clause is NASA `assert(cond)`:
+                // `if bad { return Err(..) }` enforces a precondition.
+                assert_count += 1;
             }
         });
     }
@@ -197,6 +223,14 @@ fn function_signal<D: Doc>(func: &Node<'_, D>) -> FunctionSignal {
         logic_count,
         is_test: is_test_function(func),
     }
+}
+
+/// True when `node` (a `return_expression`) directly returns a call to
+/// `Err(..)` — the `return Err(..)` guard-clause assertion form.
+fn returns_err<D: Doc>(node: &Node<'_, D>) -> bool {
+    node.children().any(|child| {
+        child.kind() == "call_expression" && call_callee_name(&child).as_deref() == Some("Err")
+    })
 }
 
 /// Whether `func` is a test function: it carries a `#[test]`-style
@@ -313,18 +347,22 @@ fn last_segment<D: Doc>(node: &Node<'_, D>) -> String {
     }
 }
 
-/// ASP202: a function longer than `MIN_LINES` with fewer than
-/// `MIN_ASSERTS` assert-like macro invocations. Mirrors
-/// `LowAssertionDensity`. Rust has no dynamic-parameter escape hatch —
-/// every parameter is statically typed — so unlike the Python sibling
-/// this check applies the assertion-density floor to any function past
-/// the line threshold, not only an imperative-shell subset.
+/// ASP202: a non-test function longer than `MIN_LINES` with fewer than
+/// `MIN_ASSERTS` recognized assertion forms. Mirrors `LowAssertionDensity`.
+/// An assertion form is an assert-family macro, the `?` operator, a
+/// `return Err(..)` guard clause, `ok_or`/`ok_or_else`, or a validating
+/// constructor (`try_from`/`try_new`/`from_str`/`parse`) — the Rust
+/// analogues of NASA `assert(cond)` and the Python rule's raise-guards and
+/// `ASSERTION_METHOD_NAMES`. The gate runs this only over the imperative
+/// shell (files outside the declared functional core): a pure, fully-typed
+/// core function earns its correctness statically, so demanding two runtime
+/// asserts there mis-prescribes the shell mechanism onto the core.
 pub fn assertion_density_findings(source: &str) -> Vec<(usize, &'static str, bool)> {
     const MIN_LINES: usize = 5;
     const MIN_ASSERTS: usize = 2;
     scan_functions(source)
         .into_iter()
-        .filter(|f| f.line_count > MIN_LINES && f.assert_count < MIN_ASSERTS)
+        .filter(|f| !f.is_test && f.line_count > MIN_LINES && f.assert_count < MIN_ASSERTS)
         .map(|f| (f.line, "ASP202", true))
         .collect()
 }
@@ -376,6 +414,30 @@ mod tests {
     #[test]
     fn two_asserts_satisfy_asp202() {
         let source = "fn transfer(a: i32, b: i32, c: i32) -> i32 {\n    assert!(a >= 0);\n    assert!(b >= 0);\n    let x = a + b;\n    let y = x + c;\n    let z = y - a;\n    let w = z * 2;\n    w\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn two_question_marks_satisfy_asp202() {
+        let source = "fn parse_two(a: &str, b: &str) -> Result<i32, std::num::ParseIntError> {\n    let x = a.parse::<i32>()?;\n    let y = b.parse::<i32>()?;\n    let z = x + y;\n    let w = z * 2;\n    let v = w - 1;\n    Ok(v)\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn two_return_err_guards_satisfy_asp202() {
+        let source = "fn checked(a: i32, b: i32) -> Result<i32, String> {\n    if a < 0 {\n        return Err(\"a\".to_string());\n    }\n    if b < 0 {\n        return Err(\"b\".to_string());\n    }\n    Ok(a + b)\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn ok_or_and_a_validating_constructor_satisfy_asp202() {
+        let source = "fn build(raw: Option<&str>) -> Result<i32, String> {\n    let text = raw.ok_or(\"missing\")?;\n    let value = i32::from_str(text).map_err(|_| \"bad\")?;\n    let doubled = value * 2;\n    let shifted = doubled - 1;\n    Ok(shifted)\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_test_function_with_no_asserts_is_exempt_from_asp202() {
+        let source = "#[test]\nfn checks() {\n    let a = 1;\n    let b = a + 1;\n    let c = b + 1;\n    let d = c + 1;\n    let e = d + 1;\n}\n";
         assert_eq!(assertion_density_findings(source), Vec::new());
     }
 
