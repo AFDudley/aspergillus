@@ -1,0 +1,453 @@
+{
+  "id": "derived-asp-b7b.2",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust consumer can make ASP202, ASP204, ASP205 and ASP206 blocking and every finding is a real instance of the rule's intent, so the rules can gate commits without flagging correct code and without being evaded by common Rust forms.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories adopting Aspergillus (first consumer lobaria), and the workers refactoring code to satisfy the rules.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. ASP205 and ASP206 know the imperative shell: a consumer declares which paths are functional core (for example in a config file the gate reads, as TypeScript layouts do), and a function that performs I/O in the shell is legal; I/O inside the declared core is the finding. Their I/O detection no longer matches bare method names that collide with domain methods: `book.open()` on an in-memory book, `json5::read(text)` over a &str, `mpsc` `send`/`recv`, a domain `create`/`accept` constructor are not I/O. It sees I/O inside closures (`iter().for_each(|p| std::fs::write(..))`), `writeln!`/`write!` to a file, `dbg!`, `flush`, `sync_all`, `std::process::exit`. ASP202 follows the Python rule's refinement (asp-070, asp-da5): it scopes to imperative-shell functions, and counts `?`, `return Err(..)` guard clauses, `ok_or`/`ok_or_else`, validating constructors and assert macros as assertions; test functions are exempt as in Python. ASP204 flags a loop with no statically determinable bound, including `while true`, and does not flag a `loop` whose exit is bounded by a counter or an iterator. Every one of the four is blocking and has committed violating and satisfying fixture pairs covering the cases above.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run over lobaria integrated with --exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**' and lobaria's core declaration: these verified false positives produce no finding: shell/src/machine.rs:990 `create`, shell/src/capture.rs:506 `decode_worker` (mpsc send/recv), backtest/src/replay.rs:223 `open_tokens`, chart/src/lib.rs:52 `load` (json5::read), statechart/src/array.rs:20 `serialize` (ASP202), and the ASP206 satisfying fixture's shell wrapper under ASP205. These probes produce a finding: `fn persist(ps: &[&str]) { ps.iter().for_each(|p| std::fs::write(p, b\"\").unwrap()); }` declared in a core path (ASP205), `fn f(w: &mut std::fs::File) { writeln!(w, \"x\").unwrap(); }` in core (ASP205), `fn spin() { while true {} }` (ASP204). `loop { if n >= 10 { break; } n += 1; }` produces no ASP204 finding. statechart (lobaria's pure core) still has 0 ASP205 and 0 ASP206 findings. cargo test, cargo clippy -D warnings and cargo fmt --check pass in rust/; docs/design.md and docs/rust-rules.md describe each rule as implemented.\nWhat are the non-goals / constraints? What must this NOT do? Not ASP501/ASP502 or rules not yet ported (a sibling pebble ports those). Not lobaria's code changes (a lobaria pebble applies the rules). Not a Python or TypeScript change. No report-only rule: each of the four is blocking once correct.\nAny examples or references? (links, prior art, a similar thing you like) Verification 2026-09-23 (cloud agents VerifyASP202, VerifyASP205_206, VerifySingleFileRules, VerifyDupRules, VerifyLobariaGate; aspergillus integrated 019f8b9, lobaria integrated d0269c7): ASP202 1493 findings on lobaria, 1250 (84%) on pure functions, counts only assert!/assert_eq!/assert_ne!/debug_assert*; ASP205 278 findings, 0 in the pure core, >=25 pure functions flagged by name collision, and the crate's own ASP206/satisfying fixture still fires ASP205; ASP206 114 findings, ~84% in bins/oracles/tests, <=11 real FC/IS debt; ASP204 16 findings, 12 bounded by construction, `while true` missed. Python references: python/src/aspergillus/rules/level2.py (_is_imperative_shell, LowAssertionDensity, ImpureFunction, MixedIOAndLogic), design.md ASP205/206 and TypeScript eslint-plugin-boundaries.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: In the Rust implementation of Aspergillus (the rust/ tree), make rule ASP202 (low assertion density) correct and blocking. Follow the refinement the Python rule received in asp-070 and asp-da5.\n\nASP202 scopes to imperative-shell functions. It reads the consumer's declaration of which repository paths are the functional core, the same declaration ASP205 and ASP206 read. ASP202 counts these forms as assertions: the `?` operator, a `return Err(..)` guard clause, `ok_or`, `ok_or_else`, a validating constructor, and the assert macros. Test functions are exempt, as they are in Python.\n\nASP202 gets committed violating and satisfying fixture pairs that cover the cases above. ASP202 is blocking.\n\nAcceptance a person can check without reading code: run the gate over lobaria integrated with `--exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**'` and lobaria's core declaration. The verified false positive statechart/src/array.rs:20 `serialize` produces no ASP202 finding. In rust/, `cargo test`, `cargo clippy -D warnings` and `cargo fmt --check` pass. docs/design.md and docs/rust-rules.md describe ASP202 as implemented.\n\nConstraints: do not change lobaria's code, because a lobaria pebble applies the rules. Do not change the Python implementation or the TypeScript implementation. Do not port ASP501, ASP502, or other rules that are not yet ported, because a sibling pebble ports those. No report-only mode: ASP202 is blocking once it is correct.\n\nReferences: the Python implementation in python/src/aspergillus/rules/level2.py (`_is_imperative_shell`, `LowAssertionDensity`) and design.md. The 2026-09-23 verification (cloud agents VerifyASP202 and VerifyLobariaGate, aspergillus integrated 019f8b9, lobaria integrated d0269c7) measured ASP202 at 1493 findings on lobaria, 1250 of them (84%) on pure functions, and counted only assert!, assert_eq!, assert_ne! and debug_assert*. Priority P1.",
+  "restatement": "Aspergillus checks the ASP rules on Rust source in the rust/ tree. The ASP202 rule measures assertion density. Today the Rust ASP202 rule is too blunt. A measurement on 2026-09-23 ran it over lobaria and got 1493 findings. 1250 of those findings (84 percent) sat on pure functions. The rule counted only assert!, assert_eq!, assert_ne! and the debug_assert macros. A person verified one of the false findings at statechart/src/array.rs line 20, on the function serialize.\n\nThis request gives the Rust ASP202 rule the same refinement the Python rule got in asp-070 and asp-da5.\n\nFirst, scope. ASP202 applies only to a function in the imperative shell. The consumer declares which repository paths hold its functional core. ASP202 reads that declaration. ASP205 and ASP206 read the same declaration. A function inside a declared core path gets no ASP202 finding.\n\nSecond, counting. ASP202 counts each of these Rust forms as an assertion: the ? operator, a return Err(..) guard clause, ok_or, ok_or_else, a validating constructor, and the assert macros.\n\nThird, tests. A test function gets no ASP202 finding. The Python rule exempts test functions in the same way.\n\nFourth, evidence. The repository carries committed Rust fixture pairs. Each pair has one file that breaks the rule and one file that obeys it. The pairs cover the core scope case, each assertion form above, and the test exemption.\n\nFifth, severity. ASP202 is blocking. A run that finds an ASP202 violation fails. ASP202 has no report-only mode.\n\nA person checks the result without reading code. The person runs the Rust gate over the integrated lobaria workspace. The person passes --exclude 'scripts/oracles/fixtures/**' and --exclude 'vendored/**', and lobaria's own core declaration. The gate reports no ASP202 finding on statechart/src/array.rs line 20, the function serialize. In the rust/ tree, cargo test passes, cargo clippy with -D warnings passes, and cargo fmt --check passes. docs/design.md and docs/rust-rules.md describe ASP202 as implemented and blocking. Neither document still calls it manual, planned, or report-only.\n\nThe work stays inside the Rust tree, its fixtures, and the documents. It changes no file of lobaria, because a separate lobaria pebble applies the rules there. It changes no file of the Python implementation and no file of the TypeScript implementation. It ports no further rule: ASP501, ASP502 and the other unported rules belong to a sibling pebble.",
+  "restatement_clauses": [
+    {
+      "id": "C1",
+      "text": "The Rust ASP202 rule scopes to imperative-shell functions. It reads the consumer's declaration of which repository paths are the functional core, the same declaration ASP205 and ASP206 read. A function inside a declared core path gets no ASP202 finding."
+    },
+    {
+      "id": "C2",
+      "text": "The Rust ASP202 rule counts each of these forms as an assertion: the `?` operator, a `return Err(..)` guard clause, `ok_or`, `ok_or_else`, a validating constructor, and the assert macros."
+    },
+    {
+      "id": "C3",
+      "text": "The Rust ASP202 rule exempts test functions, as the Python rule does. A test function gets no ASP202 finding."
+    },
+    {
+      "id": "C4",
+      "text": "The repository carries committed Rust fixture pairs for ASP202. Each pair holds one file that violates the rule and one file that satisfies it. The pairs cover the functional-core scope case, each of the six assertion forms, and the test-function exemption."
+    },
+    {
+      "id": "C5",
+      "text": "ASP202 is blocking. A run over a violating file fails with a non-zero exit status. A run over a satisfying file succeeds. ASP202 has no report-only mode."
+    },
+    {
+      "id": "C6",
+      "text": "A run of the gate over lobaria integrated, with `--exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**'` and lobaria's core declaration, produces no ASP202 finding on statechart/src/array.rs:20 `serialize`."
+    },
+    {
+      "id": "C7",
+      "text": "In rust/, `cargo test` passes, and its ASP202 tests detect a fault injected into the code they cover."
+    },
+    {
+      "id": "C8",
+      "text": "In rust/, `cargo clippy -D warnings` passes and `cargo fmt --check` passes."
+    },
+    {
+      "id": "C9",
+      "text": "docs/design.md and docs/rust-rules.md describe ASP202 as implemented and blocking. Neither document describes ASP202 as manual, planned, or report-only."
+    },
+    {
+      "id": "C10",
+      "text": "The work changes no file of lobaria, no file of the Python implementation, and no file of the TypeScript implementation."
+    },
+    {
+      "id": "C11",
+      "text": "The work ports no rule that is not yet ported. The Rust source names no ASP501 rule and no ASP502 rule."
+    }
+  ],
+  "goal": "Make the Rust ASP202 low-assertion-density rule scope to imperative-shell code, count the Rust assertion forms, exempt tests, ship fixture pairs, and run as a blocking check.",
+  "acceptance_criteria": [
+    "A report runs the ASP202, ASP205 and ASP206 checks over stored Rust examples together with a declaration of which folders hold the functional core. It counts the ASP202 findings that fall inside the declared core folders, the ASP202 findings outside them, and how many of the three rules stayed silent inside the declared core. No ASP202 finding falls inside the declared core, at least one falls outside it, and all three rules stayed silent inside it.",
+    "A report runs the ASP202 check over one stored Rust example for each of the six guard forms: the question-mark operator, an early return of an error, ok_or, ok_or_else, a validating constructor, and the assert macros. It counts the forms it checked and the forms the rule failed to credit as a guard. It checked six forms and failed to credit none of them.",
+    "A report runs the ASP202 check over stored Rust test functions that carry no guard at all. It counts the test functions it checked and the findings the rule reported on them. It checked at least one test function and the rule reported no finding.",
+    "A report finds the stored ASP202 Rust example pairs, checks that each pair keeps both its files in the repository history, and runs the rule over both files of every pair. It counts the pairs, the pairs with a missing file, the pairs not saved in the repository history, and the pairs where the rule gave the wrong answer on either file. There are at least eight pairs, and the other three counts are zero.",
+    "A report runs the gate twice: once over a stored Rust example that breaks ASP202, and once over a stored example that obeys it. It records the exit status of each run and whether the tool lists ASP202 as a blocking rule. The failing run exits non-zero, the passing run exits zero, and the tool lists ASP202 as blocking.",
+    "A report runs the gate over the integrated lobaria workspace, skipping the folders 'scripts/oracles/fixtures' and 'vendored', and using lobaria's own declaration of its core folders. It counts the Rust files it read and the ASP202 findings on the function serialize at statechart/src/array.rs line 20. It read at least one hundred files and reported no finding on that function.",
+    "The Rust test suite of the aspergillus package passes, and its ASP202 tests catch a fault deliberately introduced into the code they cover.",
+    "A report runs the Rust linter with warnings treated as errors, and the Rust formatter in check mode, inside the rust/ folder. It records the result of each. Both report no problem.",
+    "Both the design document and the Rust rules document carry a line that names ASP202 and calls it blocking.",
+    "Neither the design document nor the Rust rules document still calls ASP202 manual, planned, not started, or report-only.",
+    "A report compares the current work against the branch it started from and counts the changed files under the Python folder and under the TypeScript folder. It also counts the changed files in the lobaria checkout. All three counts are zero.",
+    "No Rust source file names ASP501 or ASP502."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A report runs the ASP202, ASP205 and ASP206 checks over stored Rust examples together with a declaration of which folders hold the functional core. It counts the ASP202 findings that fall inside the declared core folders, the ASP202 findings outside them, and how many of the three rules stayed silent inside the declared core. No ASP202 finding falls inside the declared core, at least one falls outside it, and all three rules stayed silent inside it."
+    },
+    {
+      "id": "c2",
+      "text": "A report runs the ASP202 check over one stored Rust example for each of the six guard forms: the question-mark operator, an early return of an error, ok_or, ok_or_else, a validating constructor, and the assert macros. It counts the forms it checked and the forms the rule failed to credit as a guard. It checked six forms and failed to credit none of them."
+    },
+    {
+      "id": "c3",
+      "text": "A report runs the ASP202 check over stored Rust test functions that carry no guard at all. It counts the test functions it checked and the findings the rule reported on them. It checked at least one test function and the rule reported no finding."
+    },
+    {
+      "id": "c4",
+      "text": "A report finds the stored ASP202 Rust example pairs, checks that each pair keeps both its files in the repository history, and runs the rule over both files of every pair. It counts the pairs, the pairs with a missing file, the pairs not saved in the repository history, and the pairs where the rule gave the wrong answer on either file. There are at least eight pairs, and the other three counts are zero."
+    },
+    {
+      "id": "c5",
+      "text": "A report runs the gate twice: once over a stored Rust example that breaks ASP202, and once over a stored example that obeys it. It records the exit status of each run and whether the tool lists ASP202 as a blocking rule. The failing run exits non-zero, the passing run exits zero, and the tool lists ASP202 as blocking."
+    },
+    {
+      "id": "c6",
+      "text": "A report runs the gate over the integrated lobaria workspace, skipping the folders 'scripts/oracles/fixtures' and 'vendored', and using lobaria's own declaration of its core folders. It counts the Rust files it read and the ASP202 findings on the function serialize at statechart/src/array.rs line 20. It read at least one hundred files and reported no finding on that function."
+    },
+    {
+      "id": "c7",
+      "text": "The Rust test suite of the aspergillus package passes, and its ASP202 tests catch a fault deliberately introduced into the code they cover."
+    },
+    {
+      "id": "c8",
+      "text": "A report runs the Rust linter with warnings treated as errors, and the Rust formatter in check mode, inside the rust/ folder. It records the result of each. Both report no problem."
+    },
+    {
+      "id": "c9",
+      "text": "Both the design document and the Rust rules document carry a line that names ASP202 and calls it blocking."
+    },
+    {
+      "id": "c10",
+      "text": "Neither the design document nor the Rust rules document still calls ASP202 manual, planned, not started, or report-only."
+    },
+    {
+      "id": "c11",
+      "text": "A report compares the current work against the branch it started from and counts the changed files under the Python folder and under the TypeScript folder. It also counts the changed files in the lobaria checkout. All three counts are zero."
+    },
+    {
+      "id": "c12",
+      "text": "No Rust source file names ASP501 or ASP502."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C1",
+      "description": "A report runs the ASP202, ASP205 and ASP206 checks over stored Rust examples together with a declaration of which folders hold the functional core. It counts the ASP202 findings that fall inside the declared core folders, the ASP202 findings outside them, and how many of the three rules stayed silent inside the declared core. No ASP202 finding falls inside the declared core, at least one falls outside it, and all three rules stayed silent inside it.",
+      "proves": "Proves ASP202 only judges shell code, and reads the same declaration of core folders that ASP205 and ASP206 read, as the restatement requires.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_asp202_core_scope.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "asp202_findings_inside_declared_core",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "asp202_findings_outside_declared_core",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "rules_honouring_core_declaration",
+          "op": "eq",
+          "value": 3
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c1"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C2",
+      "description": "A report runs the ASP202 check over one stored Rust example for each of the six guard forms: the question-mark operator, an early return of an error, ok_or, ok_or_else, a validating constructor, and the assert macros. It counts the forms it checked and the forms the rule failed to credit as a guard. It checked six forms and failed to credit none of them.",
+      "proves": "Proves ASP202 credits every guard form the restatement lists, not only the assert macros.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_asp202_assertion_forms.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "assertion_forms_checked",
+          "op": "eq",
+          "value": 6
+        },
+        {
+          "observe": "stdout_json",
+          "field": "forms_not_counted_as_assertion",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c2"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C3",
+      "description": "A report runs the ASP202 check over stored Rust test functions that carry no guard at all. It counts the test functions it checked and the findings the rule reported on them. It checked at least one test function and the rule reported no finding.",
+      "proves": "Proves ASP202 exempts test functions, matching the Python rule.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_asp202_test_functions.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "test_functions_checked",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_in_test_functions",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C4",
+      "description": "A report finds the stored ASP202 Rust example pairs, checks that each pair keeps both its files in the repository history, and runs the rule over both files of every pair. It counts the pairs, the pairs with a missing file, the pairs not saved in the repository history, and the pairs where the rule gave the wrong answer on either file. There are at least eight pairs, and the other three counts are zero.",
+      "proves": "Proves the repository stores committed example pairs covering the core scope case, the six guard forms and the test exemption, and that each pair behaves as the restatement requires.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_asp202_fixture_pairs.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "fixture_pairs",
+          "op": "ge",
+          "value": 8
+        },
+        {
+          "observe": "stdout_json",
+          "field": "pairs_with_missing_file",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "untracked_fixture_files",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "pairs_with_wrong_verdict",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C5",
+      "description": "A report runs the gate twice: once over a stored Rust example that breaks ASP202, and once over a stored example that obeys it. It records the exit status of each run and whether the tool lists ASP202 as a blocking rule. The failing run exits non-zero, the passing run exits zero, and the tool lists ASP202 as blocking.",
+      "proves": "Proves ASP202 stops a run that contains a violation, and that it carries no report-only setting.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_asp202_blocking.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "exit_code_on_violating_fixture",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "exit_code_on_satisfying_fixture",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "asp202_blocking",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C6",
+      "description": "A report runs the gate over the integrated lobaria workspace, skipping the folders 'scripts/oracles/fixtures' and 'vendored', and using lobaria's own declaration of its core folders. It counts the Rust files it read and the ASP202 findings on the function serialize at statechart/src/array.rs line 20. It read at least one hundred files and reported no finding on that function.",
+      "proves": "Proves the known wrong finding a person verified on 2026-09-23 is gone when the gate runs over the real consumer workspace.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_asp202_on_lobaria.py",
+        "args": [
+          "--exclude",
+          "scripts/oracles/fixtures/**",
+          "--exclude",
+          "vendored/**"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "rust_files_scanned",
+          "op": "ge",
+          "value": 100
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_on_statechart_array_serialize",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c6"
+    },
+    {
+      "type": "mutation_gated_test",
+      "restatement_clause_id": "C7",
+      "description": "The Rust test suite of the aspergillus package passes, and its ASP202 tests catch a fault deliberately introduced into the code they cover.",
+      "proves": "Proves the Rust tests for ASP202 pass and really test the rule, rather than passing while checking nothing.",
+      "package": "aspergillus",
+      "test": "asp202",
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C8",
+      "description": "A report runs the Rust linter with warnings treated as errors, and the Rust formatter in check mode, inside the rust/ folder. It records the result of each. Both report no problem.",
+      "proves": "Proves the new Rust code is clean under the project's linter and formatter, as the restatement requires.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_rust_clippy_and_fmt.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "clippy_exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "fmt_check_exit_code",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c8"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "C9",
+      "description": "Both the design document and the Rust rules document carry a line that names ASP202 and calls it blocking.",
+      "proves": "Proves a reader of either document learns that ASP202 is implemented for Rust and stops a run.",
+      "pattern": "ASP202[^\\n]*blocking",
+      "files": [
+        "docs/design.md",
+        "docs/rust-rules.md"
+      ],
+      "count": {
+        "unit": "files_without_match",
+        "op": "eq",
+        "value": 0
+      },
+      "clause_id": "c9"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "C9",
+      "description": "Neither the design document nor the Rust rules document still calls ASP202 manual, planned, not started, or report-only.",
+      "proves": "Proves the old placeholder wording for ASP202 is gone from both documents.",
+      "pattern": "ASP202[^\\n]*(Manual|manual|planned|not started|report-only)",
+      "additional_patterns": [
+        "(Manual|manual|planned|not started|report-only)[^\\n]*ASP202",
+        "\\|\\s*202\\s*\\|[^\\n]*(Manual|manual|planned)"
+      ],
+      "files": [
+        "docs/design.md",
+        "docs/rust-rules.md"
+      ],
+      "clause_id": "c10"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "C10",
+      "description": "A report compares the current work against the branch it started from and counts the changed files under the Python folder and under the TypeScript folder. It also counts the changed files in the lobaria checkout. All three counts are zero.",
+      "proves": "Proves the work stays inside the Rust tree, its examples and the documents, and leaves lobaria, Python and TypeScript untouched.",
+      "when": {
+        "interpreter": "python3",
+        "script": "scripts/report_untouched_trees.py",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "python_files_changed",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "typescript_files_changed",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "lobaria_files_changed",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c11"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "C11",
+      "description": "No Rust source file names ASP501 or ASP502.",
+      "proves": "Proves this work ports only ASP202, and leaves the other unported rules to the separate task that owns them.",
+      "pattern": "ASP501",
+      "additional_patterns": [
+        "ASP502"
+      ],
+      "files": [
+        "rust/**/*.rs",
+        "rust/**/*.toml",
+        "rust/**/*.yml"
+      ],
+      "clause_id": "c12"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/report_asp202_assertion_forms.py",
+    "scripts/report_asp202_blocking.py",
+    "scripts/report_asp202_core_scope.py",
+    "scripts/report_asp202_fixture_pairs.py",
+    "scripts/report_asp202_on_lobaria.py",
+    "scripts/report_asp202_test_functions.py",
+    "scripts/report_rust_clippy_and_fmt.py",
+    "scripts/report_untouched_trees.py"
+  ]
+}
