@@ -27,3 +27,7 @@ path = "src/bin/aspergillus_rust_gate.rs"
 [[bin]]
 name = "aspergillus-rust-dup-check"
 path = "src/bin/aspergillus_rust_dup_check.rs"
+
+[[bin]]
+name = "aspergillus-rust-dup-type-check"
+path = "src/bin/aspergillus_rust_dup_type_check.rs"

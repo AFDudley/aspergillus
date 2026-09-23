@@ -23,3 +23,18 @@ reports a finding. Report-only: it never rewrites a scanned file.
 
 Usage: `cargo run --manifest-path rust/Cargo.toml --bin
 aspergillus-rust-dup-check -- [WORKSPACE_DIR]` (default: `.`).
+
+`aspergillus_rust_dup_type_check.rs` — the `aspergillus-rust-dup-type-check`
+binary's CLI: the imperative shell for the whole-workspace duplicate-type
+check. Walks the target workspace's `*.rs` files and crate roots via
+`rust_source_files`/`crate_roots` (`../workspace.rs`), calls
+`aspergillus_rust_gate::duplicate_types::type_occurrences` and
+`duplicate_groups` (the pure core in `../duplicate_types.rs`) to find
+every struct or enum concept declared under the same name and shape in
+more than one crate, drops any pair an `--allowlist FILE` names, prints
+each occurrence as `path:line: ASP502`, and exits non-zero when it reports
+a finding. Report-only: it never rewrites a scanned file.
+
+Usage: `cargo run --manifest-path rust/Cargo.toml --bin
+aspergillus-rust-dup-type-check -- [WORKSPACE_DIR] [--allowlist FILE]`
+(default workspace: `.`).

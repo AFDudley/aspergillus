@@ -10,8 +10,9 @@ use ast_grep_config::{RuleConfig, Severity};
 use ast_grep_language::{LanguageExt, SupportLang};
 
 pub mod clippy;
-pub mod purity;
+pub mod duplicate_types;
 pub mod duplicates;
+pub mod purity;
 pub mod workspace;
 
 /// One finding: a rule id at one 1-based line of one file, and whether the

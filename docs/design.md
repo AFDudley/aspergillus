@@ -443,6 +443,22 @@ grouping facts across the whole corpus.
   pattern). Core logic is pure (`duplicates.py`); `__main__.py` is the
   imperative shell. Proven against exophial's pre/post-exo-c3a test tree (the
   22 duplicated `_git()` helpers). Pebble: asp-21d.
+- **`aspergillus-rust-dup-type-check [WORKSPACE_DIR] [--allowlist FILE]`**
+  (`rust/`) — the Rust analogue for TYPES rather than functions: reports a
+  struct or enum declared in more than one crate of a Cargo workspace under
+  the same name and the same shape (field count for a tuple struct, the
+  field-name list for a named-field struct, the variant-name list for an
+  enum — never a field's own type or visibility, so `Nanos(i64)` and
+  `Nanos(pub u64)` are the same concept). A concept confined to one crate is
+  not reported. The `--allowlist` file accepts one type name per line, `#`
+  comments, matching `check-duplicates`'s format. Core logic is pure
+  (`rust/src/duplicate_types.rs`); the binary
+  (`rust/src/bin/aspergillus_rust_dup_type_check.rs`) is the imperative
+  shell. Verified against the real `lobaria` workspace at commit `a027fb9`
+  (`rust/fixtures/lobaria-a027fb9/`, a verbatim copy of the real files that
+  commit needs — see its `PROVENANCE.md` — and `scripts/oracle/`): reports
+  `Nanos` and `Receipt`, stays silent about `Refused`, `Carried`, `Hit` and
+  `Finding`. Pebble: asp-ce6.4.
 
 ## What this is NOT
 

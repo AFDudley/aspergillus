@@ -14,12 +14,23 @@ The `aspergillus-rust-gate` crate. Functional core / imperative shell split:
   body; `duplicate_groups` buckets occurrences by that body across every
   scanned file; `findings_for_groups` renders a group as `ASP501` findings.
   No file, process, or exit code appears here.
-- `workspace.rs` — the imperative shell shared by both binaries:
+- `duplicate_types.rs` — the pure core of the whole-workspace duplicate-type
+  check. Given an already-read source string and its crate id,
+  `type_occurrences` walks its ast-grep parse tree and returns each struct
+  or enum's declared name and shape fingerprint; `duplicate_groups` buckets
+  occurrences by `(name, shape)` and keeps only a group spanning more than
+  one crate; `apply_allowlist` drops a group whose type name is in an
+  `--allowlist` file; `findings_for_groups` renders a group as `ASP502`
+  findings. No file, process, or exit code appears here.
+- `workspace.rs` — the imperative shell shared by every binary:
   `rust_source_files` walks a Cargo workspace's `*.rs` files, skipping
-  `target/` and hidden directories.
+  `target/` and hidden directories; `crate_roots` walks the same tree for
+  every directory holding a `Cargo.toml`, so the duplicate-type check can
+  tell which crate a file belongs to.
 - `bin/` — the CLI entry points; see `bin/CLAUDE.md`.
 
 `bin/aspergillus_rust_gate.rs` calls `lib.rs`, `clippy.rs`, and
 `workspace.rs`. `bin/aspergillus_rust_dup_check.rs` calls `duplicates.rs`
-and `workspace.rs`. See each binary's own doc comment for how a consumer
-runs it.
+and `workspace.rs`. `bin/aspergillus_rust_dup_type_check.rs` calls
+`duplicate_types.rs` and `workspace.rs`. See each binary's own doc comment
+for how a consumer runs it.
