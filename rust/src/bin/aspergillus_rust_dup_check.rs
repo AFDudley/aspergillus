@@ -9,7 +9,8 @@
 //! Exits non-zero when it reports a finding.
 //!
 //! Usage: `cargo run --manifest-path rust/Cargo.toml --bin
-//! aspergillus-rust-dup-check -- [WORKSPACE_DIR]` (default: `.`).
+//! aspergillus-rust-dup-check -- [WORKSPACE_DIR] [--exclude GLOB]...`
+//! (default: `.`).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -17,21 +18,37 @@ use std::process::ExitCode;
 use aspergillus_rust_gate::duplicates::{
     duplicate_groups, findings_for_groups, function_occurrences,
 };
-use aspergillus_rust_gate::workspace::rust_source_files;
+use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 
 /// Matches the Python reference's `check-duplicates --min-lines` default:
 /// a function spanning fewer lines is excluded from clone detection.
 const DEFAULT_MIN_LINES: usize = 5;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() > 1 {
-        eprintln!("usage: aspergillus-rust-dup-check [WORKSPACE_DIR]   (default: .)");
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let (exclude_patterns, remaining) = match take_excludes(raw_args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-dup-check: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    if remaining.len() > 1 {
+        eprintln!(
+            "usage: aspergillus-rust-dup-check [WORKSPACE_DIR] [--exclude GLOB]...   (default: .)"
+        );
         return ExitCode::from(2);
     }
-    let workspace_dir = PathBuf::from(args.first().map_or(".", String::as_str));
+    let excludes = match build_excludes(&exclude_patterns) {
+        Ok(excludes) => excludes,
+        Err(why) => {
+            eprintln!("aspergillus-rust-dup-check: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let workspace_dir = PathBuf::from(remaining.first().map_or(".", String::as_str));
 
-    let files = rust_source_files(&workspace_dir);
+    let files = rust_source_files(&workspace_dir, &excludes);
     let mut occurrences = Vec::new();
     for path in &files {
         let source = match std::fs::read_to_string(path) {

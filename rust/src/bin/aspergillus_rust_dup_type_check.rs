@@ -9,8 +9,8 @@
 //! reports a finding.
 //!
 //! Usage: `cargo run --manifest-path rust/Cargo.toml --bin
-//! aspergillus-rust-dup-type-check -- [WORKSPACE_DIR] [--allowlist FILE]`
-//! (default workspace: `.`).
+//! aspergillus-rust-dup-type-check -- [WORKSPACE_DIR] [--allowlist FILE]
+//! [--exclude GLOB]...` (default workspace: `.`).
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -19,14 +19,34 @@ use std::process::ExitCode;
 use aspergillus_rust_gate::duplicate_types::{
     apply_allowlist, crate_id_for_path, duplicate_groups, findings_for_groups, type_occurrences,
 };
-use aspergillus_rust_gate::workspace::{crate_roots, rust_source_files};
+use aspergillus_rust_gate::workspace::{
+    build_excludes, crate_roots, rust_source_files, take_excludes,
+};
 
 fn main() -> ExitCode {
-    let (workspace_dir, allowlist_path) = match parse_args(std::env::args().skip(1).collect()) {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let (exclude_patterns, remaining) = match take_excludes(raw_args) {
         Ok(parsed) => parsed,
         Err(why) => {
             eprintln!("aspergillus-rust-dup-type-check: {why}");
-            eprintln!("usage: aspergillus-rust-dup-type-check [WORKSPACE_DIR] [--allowlist FILE]");
+            return ExitCode::from(2);
+        }
+    };
+    let excludes = match build_excludes(&exclude_patterns) {
+        Ok(excludes) => excludes,
+        Err(why) => {
+            eprintln!("aspergillus-rust-dup-type-check: {why}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let (workspace_dir, allowlist_path) = match parse_args(remaining) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-dup-type-check: {why}");
+            eprintln!(
+                "usage: aspergillus-rust-dup-type-check [WORKSPACE_DIR] [--allowlist FILE] [--exclude GLOB]..."
+            );
             return ExitCode::from(2);
         }
     };
@@ -43,7 +63,7 @@ fn main() -> ExitCode {
     };
 
     let roots = crate_roots(&workspace_dir);
-    let files = rust_source_files(&workspace_dir);
+    let files = rust_source_files(&workspace_dir, &excludes);
     let mut occurrences = Vec::new();
     for path in &files {
         let source = match std::fs::read_to_string(path) {

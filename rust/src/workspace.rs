@@ -6,12 +6,47 @@
 
 use std::path::{Path, PathBuf};
 
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use walkdir::WalkDir;
 
-/// Every `*.rs` file under `workspace_dir`, skipping `target/` and any
-/// hidden directory, in path order - so a workspace of many crates is
-/// read whole, not one crate only.
-pub fn rust_source_files(workspace_dir: &Path) -> Vec<PathBuf> {
+/// Builds a matcher for a repeatable `--exclude <glob>` option: each
+/// pattern is a workspace-relative, gitignore/fnmatch-style glob (so
+/// `scripts/oracles/fixtures/**` names a whole subtree). An empty pattern
+/// list matches nothing, so passing no `--exclude` flag excludes nothing.
+pub fn build_excludes(patterns: &[String]) -> Result<GlobSet, String> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        let glob = Glob::new(pattern).map_err(|e| format!("--exclude {pattern}: {e}"))?;
+        builder.add(glob);
+    }
+    builder.build().map_err(|e| format!("--exclude: {e}"))
+}
+
+/// Extracts every `--exclude <glob>` pair from `args`, in encounter order,
+/// leaving every other argument in its original relative order. A binary
+/// calls this once, before its own argument parsing, so the same
+/// repeatable option works the same way across every binary.
+pub fn take_excludes(args: Vec<String>) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut excludes = Vec::new();
+    let mut remaining = Vec::new();
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--exclude" {
+            let value = iter.next().ok_or("--exclude needs a GLOB argument")?;
+            excludes.push(value);
+        } else {
+            remaining.push(arg);
+        }
+    }
+    Ok((excludes, remaining))
+}
+
+/// Every `*.rs` file under `workspace_dir`, skipping `target/`, any hidden
+/// directory, and any file whose workspace-relative path matches `excludes`,
+/// in path order - so a workspace of many crates is read whole, not one
+/// crate only, and a consumer's own rule-violating fixture subtree never
+/// enters the scan.
+pub fn rust_source_files(workspace_dir: &Path, excludes: &GlobSet) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = WalkDir::new(workspace_dir)
         .into_iter()
         .filter_entry(|entry| {
@@ -22,6 +57,7 @@ pub fn rust_source_files(workspace_dir: &Path) -> Vec<PathBuf> {
         .filter(|entry| entry.file_type().is_file())
         .map(walkdir::DirEntry::into_path)
         .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .filter(|p| !excludes.is_match(p.strip_prefix(workspace_dir).unwrap_or(p)))
         .collect();
     files.sort();
     files

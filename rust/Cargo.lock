@@ -18,6 +18,7 @@ dependencies = [
  "ast-grep-config",
  "ast-grep-core",
  "ast-grep-language",
+ "globset",
  "serde_json",
  "tree-sitter",
  "tree-sitter-language",

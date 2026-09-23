@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use ast_grep_config::{from_yaml_string, GlobalRules, RuleConfig};
 use ast_grep_language::SupportLang;
 
-use aspergillus_rust_gate::workspace::rust_source_files;
+use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Finding};
 
 /// The rule directory shipped alongside this crate, resolved at compile
@@ -20,12 +20,28 @@ use aspergillus_rust_gate::{clippy, exit_status, purity, source_findings, Findin
 const RULES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/ast-grep-rules");
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() > 1 {
-        eprintln!("usage: aspergillus-rust-gate [WORKSPACE_DIR]   (default: .)");
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let (exclude_patterns, remaining) = match take_excludes(raw_args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    if remaining.len() > 1 {
+        eprintln!(
+            "usage: aspergillus-rust-gate [WORKSPACE_DIR] [--exclude GLOB]...   (default: .)"
+        );
         return ExitCode::from(2);
     }
-    let workspace_dir = PathBuf::from(args.first().map_or(".", String::as_str));
+    let excludes = match build_excludes(&exclude_patterns) {
+        Ok(excludes) => excludes,
+        Err(why) => {
+            eprintln!("aspergillus-rust-gate: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let workspace_dir = PathBuf::from(remaining.first().map_or(".", String::as_str));
 
     let rules = match load_rules(Path::new(RULES_DIR)) {
         Ok(rules) => rules,
@@ -35,7 +51,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let (mut findings, scanned) = match scan_workspace(&rules, &workspace_dir) {
+    let (mut findings, scanned) = match scan_workspace(&rules, &workspace_dir, &excludes) {
         Ok(result) => result,
         Err(why) => {
             eprintln!("aspergillus-rust-gate: input error: {why}");
@@ -44,7 +60,7 @@ fn main() -> ExitCode {
     };
 
     match clippy::clippy_findings(&workspace_dir) {
-        Ok(hits) => findings.extend(hits),
+        Ok(hits) => findings.extend(hits.into_iter().filter(|f| !excludes.is_match(&f.path))),
         Err(why) => {
             eprintln!("aspergillus-rust-gate: clippy error: {why}");
             return ExitCode::from(2);
@@ -94,8 +110,9 @@ fn load_rules(dir: &Path) -> Result<Vec<RuleConfig<SupportLang>>, String> {
 fn scan_workspace(
     rules: &[RuleConfig<SupportLang>],
     workspace_dir: &Path,
+    excludes: &globset::GlobSet,
 ) -> Result<(Vec<Finding>, usize), String> {
-    let files = rust_source_files(workspace_dir);
+    let files = rust_source_files(workspace_dir, excludes);
     let mut findings = Vec::new();
     for path in &files {
         let source =

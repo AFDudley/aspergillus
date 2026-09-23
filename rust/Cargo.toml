@@ -19,6 +19,10 @@ ast-grep-config = "=0.40.0"
 ast-grep-language = "=0.40.0"
 serde_json = "1"
 walkdir = "2"
+# Gitignore/fnmatch-style glob matching for --exclude. Already resolved in
+# Cargo.lock as a transitive dependency of `ignore`, so pinning it directly
+# adds no new crate to the build.
+globset = "0.4"
 
 [[bin]]
 name = "aspergillus-rust-gate"

@@ -24,9 +24,14 @@ The `aspergillus-rust-gate` crate. Functional core / imperative shell split:
   findings. No file, process, or exit code appears here.
 - `workspace.rs` — the imperative shell shared by every binary:
   `rust_source_files` walks a Cargo workspace's `*.rs` files, skipping
-  `target/` and hidden directories; `crate_roots` walks the same tree for
+  `target/`, hidden directories, and any file whose workspace-relative
+  path matches a `--exclude` glob; `crate_roots` walks the same tree for
   every directory holding a `Cargo.toml`, so the duplicate-type check can
-  tell which crate a file belongs to.
+  tell which crate a file belongs to. `take_excludes` extracts every
+  `--exclude GLOB` pair from a binary's raw argument list, and
+  `build_excludes` compiles the extracted patterns into a `GlobSet`
+  (gitignore/fnmatch-style, e.g. `scripts/oracles/fixtures/**`) —
+  pebble asp-f4c.
 - `bin/` — the CLI entry points; see `bin/CLAUDE.md`.
 
 `bin/aspergillus_rust_gate.rs` calls `lib.rs`, `clippy.rs`, and

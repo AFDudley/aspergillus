@@ -36,5 +36,19 @@ each occurrence as `path:line: ASP502`, and exits non-zero when it reports
 a finding. Report-only: it never rewrites a scanned file.
 
 Usage: `cargo run --manifest-path rust/Cargo.toml --bin
-aspergillus-rust-dup-type-check -- [WORKSPACE_DIR] [--allowlist FILE]`
-(default workspace: `.`).
+aspergillus-rust-dup-type-check -- [WORKSPACE_DIR] [--allowlist FILE]
+[--exclude GLOB]...` (default workspace: `.`).
+
+Every one of the three binaries above also accepts a repeatable
+`--exclude GLOB` flag (pebble asp-f4c): each calls
+`workspace::take_excludes` on its raw arguments before its own flag
+parsing, then `workspace::build_excludes` to compile the extracted
+patterns, then passes the result to `workspace::rust_source_files` so a
+file whose workspace-relative path matches a glob is never read. A file
+the binary never reads produces no finding from it, and — since a
+duplicate group's members come only from scanned files — a concept whose
+only OTHER declaration sat under an excluded path stops being a
+cross-crate duplicate at all, not just an unreported one.
+`aspergillus_rust_gate.rs` additionally filters `clippy::clippy_findings`'s
+result by the same excludes after the fact, since `cargo clippy` compiles
+the whole workspace regardless of which files the file walker skips.
