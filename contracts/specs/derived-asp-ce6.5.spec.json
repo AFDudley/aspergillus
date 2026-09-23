@@ -1,0 +1,241 @@
+{
+  "id": "derived-asp-ce6.5",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust workspace that adopts Aspergillus gets every ASP rule checked mechanically on commit, the same way Python and TypeScript consumers do, including two whole-workspace checks: the same function body defined twice, and the same concept declared as a type in more than one crate.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories that adopt Aspergillus (first consumer: lobaria, a Cargo workspace of 33 crates), and the exophial workers committing into them.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. A consumer copies or depends on aspergillus/rust (as it does today for rust/configs/clippy.toml) and runs the Rust rules over its workspace; each finding prints as `path:line: ASPnnn` and a finding in a blocking rule fails the run. docs/design.md's Rust column names, for every rule of Levels 2 and 3 and every ASP4xx rule that applies to Rust, the enforcing check: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/ (the engine TypeScript already uses under typescript/ast-grep-rules/), or a whole-workspace check; a rule the Rust language already enforces names the language feature, and a rule that does not apply to Rust says why. No entry reads 'Manual', 'planned' or 'Module structure'. A duplicate-function check reports two Rust functions whose normalized bodies are identical, as `aspergillus check-duplicates` does for Python. A duplicate-type check reports a struct or enum declared in one crate whose concept a type in another crate of the same workspace already declares, with an allowlist for intended cases.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run against lobaria integrated a027fb9, the duplicate-type check reports the three declarations of Nanos (statechart/src/units.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) and of Receipt (statechart/src/edge.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) as findings. The ASP202, ASP204, ASP205 and ASP206 Rust checks each report a finding on a committed Rust fixture that violates the rule and none on a committed fixture that satisfies it, for every rule that has a Rust check. docs/design.md's Rust column has no 'Manual', 'planned' or 'Module structure' entry. A Rust consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language), with no Python or Node runtime in its gate path.\nWhat are the non-goals / constraints? What must this NOT do? Not a change to the Python or TypeScript rules. Not autofix: report-only, as the other languages are. Not a dylint compiler plugin as the required engine: ast-grep YAML plus the ast-grep crates is the engine lobaria already runs (lobaria chart/src/ast_grep_gate.rs, lob-979). The duplicate-type check does not flag two types that share only a name when their shapes differ (lobaria's per-module Refused, Carried, Hit and Finding types are distinct types with local meaning).\nAny examples or references? (links, prior art, a similar thing you like) aspergillus docs/design.md sections 'Level 2', 'Level 3', 'Catalog rules ASP4xx', 'Whole-project CLI tools' (check-duplicates, asp-21d); typescript/ast-grep-rules/*.yml; lobaria chart/src/ast_grep_gate.rs and scripts/gates/core-types-rules/*.yml (ast-grep YAML rules run on ast-grep-core/config/language 0.40.0 from Rust); lobaria integrated a027fb9: 454 pub type declarations carry 384 distinct names, 45 names declared more than once.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: The Rust column of aspergillus docs/design.md must name the enforcing check for every rule of Levels 2 and 3, and for every ASP4xx catalog rule that applies to Rust. Each entry names one of three kinds of check: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/, or a whole-workspace check. An entry for a rule that the Rust language already enforces names the language feature. An entry for a rule that does not apply to Rust says why. Acceptance a person can check without reading code: no entry in the Rust column reads 'Manual', 'planned' or 'Module structure'. The affected sections are 'Level 2', 'Level 3', 'Catalog rules ASP4xx' and 'Whole-project CLI tools' (check-duplicates, asp-21d). This deliverable changes documentation only. It does not change the Python rules or the TypeScript rules.",
+  "restatement": "The design document docs/design.md lists the aspergillus rules in tables. Each table has one column per language. Today the Rust column is incomplete. Some cells say 'Manual', some say 'Manual (planned dylint rule)', and two say 'Module structure'. Those words name no check. A reader cannot learn from them how Rust code gets the rule enforced. The ASP4xx catalog tables carry no Rust column at all. The 'Whole-project CLI tools' section describes the check-duplicates tool (pebble asp-21d) for Python only. This work completes the Rust column. Every rule of Level 2 and Level 3, and every ASP4xx catalog rule, gets a Rust entry that names one concrete enforcing check. The entry names a clippy lint, or a declarative ast-grep YAML rule under rust/ast-grep-rules/, or a whole-workspace check command. If the Rust language itself already enforces the rule, the entry names that language feature. If the rule does not apply to Rust, the entry states the reason. The 'Whole-project CLI tools' section gains the same treatment for check-duplicates. A person checks the result without reading any code: no entry in the Rust column of these sections reads 'Manual', 'planned' or 'Module structure'. The work touches the document only. The Python column and the TypeScript column keep the entries they have now, and no rule implementation changes.",
+  "restatement_clauses": [
+    {
+      "id": "C1",
+      "text": "In the 'Level 2 \u2014 Blocking' table, the Rust cell of each of the six rows ASP201 to ASP206 names a clippy lint (a `clippy::` name), or an ast-grep YAML rule path under rust/ast-grep-rules/, or a whole-workspace check command (a `cargo ` command or a workspace check), or the Rust language feature that already enforces the rule, or the reason the rule does not apply to Rust."
+    },
+    {
+      "id": "C2",
+      "text": "In the 'Level 3 \u2014 Warning' table, the Rust cell of each of the four rows ASP301 to ASP304 names a clippy lint, or an ast-grep YAML rule path under rust/ast-grep-rules/, or a whole-workspace check command, or the Rust language feature that already enforces the rule, or the reason the rule does not apply to Rust. No Rust cell stays a bare dash."
+    },
+    {
+      "id": "C3",
+      "text": "Each of the fifteen ASP4xx catalog rules (ASP401 to ASP404, ASP406 to ASP414, ASP416 and ASP417) has a table row that names its Rust enforcement: a clippy lint, an ast-grep YAML rule path under rust/ast-grep-rules/, a whole-workspace check command, the Rust language feature, or the reason the rule does not apply to Rust."
+    },
+    {
+      "id": "C4",
+      "text": "The 'Whole-project CLI tools (cross-file, not LintRules)' section names Rust and names the concrete Rust check for the check-duplicates tool (pebble asp-21d): a clippy lint, an ast-grep YAML rule under rust/ast-grep-rules/, or a whole-workspace command."
+    },
+    {
+      "id": "C5",
+      "text": "No entry in the Rust column of the 'Level 2', 'Level 3', ASP4xx catalog and 'Whole-project CLI tools' sections reads 'Manual', 'planned' or 'Module structure'."
+    },
+    {
+      "id": "C6",
+      "text": "The work changes documentation only. The Python column and the TypeScript column keep their present entries: `LowAssertionDensity`, `UnboundedLoop`, `ImpureFunction`, `MixedIOAndLogic`, `eslint-plugin-boundaries` and `functional/no-loop-statements` all stay in docs/design.md."
+    }
+  ],
+  "goal": "Fill the Rust column of docs/design.md so every Level 2, Level 3, ASP4xx catalog and whole-project-CLI rule names its Rust enforcement, with no entry left reading 'Manual', 'planned' or 'Module structure'.",
+  "acceptance_criteria": [
+    "In the design document, all six rules of the Level 2 table (ASP201 through ASP206) show a Rust entry that names a real check: a clippy lint name, an ast-grep rule file under rust/ast-grep-rules/, a cargo or workspace command, the Rust language feature, or the reason the rule does not apply.",
+    "In the design document, all four rules of the Level 3 table (ASP301 through ASP304) show a Rust entry that names a real check, the Rust language feature, or the reason the rule does not apply. No Rust entry is left as a bare dash.",
+    "In the design document, at least fifteen ASP4xx catalog rule rows show a Rust entry that names a clippy lint, an ast-grep rule file under rust/ast-grep-rules/, a cargo or workspace command, the Rust language feature, or the reason the rule does not apply. Fifteen is the number of ASP4xx catalog rules.",
+    "The 'Whole-project CLI tools' section of the design document mentions Rust and also names a concrete Rust check for the duplicate-function tool: a clippy lint, a cargo or workspace command, or an ast-grep rule file under rust/ast-grep-rules/.",
+    "No table row in the 'Level 2 \u2014 Blocking' section of the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'.",
+    "No table row in the 'Level 3 \u2014 Warning' section of the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'.",
+    "No ASP4xx catalog rule row in the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'.",
+    "The 'Whole-project CLI tools' section of the design document contains no 'Manual', no 'planned' and no 'Module structure'.",
+    "The design document still names all six present Python and TypeScript enforcers: LowAssertionDensity, UnboundedLoop, ImpureFunction, MixedIOAndLogic, eslint-plugin-boundaries and functional/no-loop-statements."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "In the design document, all six rules of the Level 2 table (ASP201 through ASP206) show a Rust entry that names a real check: a clippy lint name, an ast-grep rule file under rust/ast-grep-rules/, a cargo or workspace command, the Rust language feature, or the reason the rule does not apply."
+    },
+    {
+      "id": "c2",
+      "text": "In the design document, all four rules of the Level 3 table (ASP301 through ASP304) show a Rust entry that names a real check, the Rust language feature, or the reason the rule does not apply. No Rust entry is left as a bare dash."
+    },
+    {
+      "id": "c3",
+      "text": "In the design document, at least fifteen ASP4xx catalog rule rows show a Rust entry that names a clippy lint, an ast-grep rule file under rust/ast-grep-rules/, a cargo or workspace command, the Rust language feature, or the reason the rule does not apply. Fifteen is the number of ASP4xx catalog rules."
+    },
+    {
+      "id": "c4",
+      "text": "The 'Whole-project CLI tools' section of the design document mentions Rust and also names a concrete Rust check for the duplicate-function tool: a clippy lint, a cargo or workspace command, or an ast-grep rule file under rust/ast-grep-rules/."
+    },
+    {
+      "id": "c5",
+      "text": "No table row in the 'Level 2 \u2014 Blocking' section of the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'."
+    },
+    {
+      "id": "c6",
+      "text": "No table row in the 'Level 3 \u2014 Warning' section of the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'."
+    },
+    {
+      "id": "c7",
+      "text": "No ASP4xx catalog rule row in the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'."
+    },
+    {
+      "id": "c8",
+      "text": "The 'Whole-project CLI tools' section of the design document contains no 'Manual', no 'planned' and no 'Module structure'."
+    },
+    {
+      "id": "c9",
+      "text": "The design document still names all six present Python and TypeScript enforcers: LowAssertionDensity, UnboundedLoop, ImpureFunction, MixedIOAndLogic, eslint-plugin-boundaries and functional/no-loop-statements."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "grep",
+      "description": "In the design document, all six rules of the Level 2 table (ASP201 through ASP206) show a Rust entry that names a real check: a clippy lint name, an ast-grep rule file under rust/ast-grep-rules/, a cargo or workspace command, the Rust language feature, or the reason the rule does not apply.",
+      "proves": "Proves that the Level 2 part of the Rust column is complete, as the restatement requires.",
+      "restatement_clause_id": "C1",
+      "pattern": "^\\| ASP20[1-6] \\|([^|]*\\|){3}[^|]*(clippy::|rust/ast-grep-rules/|cargo |workspace|[Ll]anguage|does not apply|no Rust equivalent|not applicable)",
+      "files": [
+        "docs/design.md"
+      ],
+      "section": "Level 2 \u2014 Blocking",
+      "count": {
+        "unit": "lines",
+        "op": "eq",
+        "value": 6
+      },
+      "clause_id": "c1"
+    },
+    {
+      "type": "grep",
+      "description": "In the design document, all four rules of the Level 3 table (ASP301 through ASP304) show a Rust entry that names a real check, the Rust language feature, or the reason the rule does not apply. No Rust entry is left as a bare dash.",
+      "proves": "Proves that the Level 3 part of the Rust column is complete, as the restatement requires.",
+      "restatement_clause_id": "C2",
+      "pattern": "^\\| ASP30[1-4] \\|([^|]*\\|){3}[^|]*(clippy::|rust/ast-grep-rules/|cargo |workspace|[Ll]anguage|does not apply|no Rust equivalent|not applicable)",
+      "files": [
+        "docs/design.md"
+      ],
+      "section": "Level 3 \u2014 Warning",
+      "count": {
+        "unit": "lines",
+        "op": "eq",
+        "value": 4
+      },
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep",
+      "description": "In the design document, at least fifteen ASP4xx catalog rule rows show a Rust entry that names a clippy lint, an ast-grep rule file under rust/ast-grep-rules/, a cargo or workspace command, the Rust language feature, or the reason the rule does not apply. Fifteen is the number of ASP4xx catalog rules.",
+      "proves": "Proves that every ASP4xx catalog rule now carries its Rust enforcement, as the restatement requires.",
+      "restatement_clause_id": "C3",
+      "pattern": "^\\| ASP4[0-9][0-9] \\|.*(clippy::|rust/ast-grep-rules/|cargo |workspace|[Ll]anguage|does not apply|no Rust equivalent|not applicable)",
+      "files": [
+        "docs/design.md"
+      ],
+      "count": {
+        "unit": "lines",
+        "op": "ge",
+        "value": 15
+      },
+      "clause_id": "c3"
+    },
+    {
+      "type": "grep",
+      "description": "The 'Whole-project CLI tools' section of the design document mentions Rust and also names a concrete Rust check for the duplicate-function tool: a clippy lint, a cargo or workspace command, or an ast-grep rule file under rust/ast-grep-rules/.",
+      "proves": "Proves that the whole-project CLI section tells a reader how the check-duplicates rule is enforced for Rust.",
+      "restatement_clause_id": "C4",
+      "pattern": "[Rr]ust",
+      "files": [
+        "docs/design.md"
+      ],
+      "section": "Whole-project CLI tools (cross-file, not LintRules)",
+      "additional_patterns": [
+        "clippy::",
+        "cargo ",
+        "rust/ast-grep-rules/"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "ge",
+        "value": 2
+      },
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep_absent",
+      "description": "No table row in the 'Level 2 \u2014 Blocking' section of the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'.",
+      "proves": "Proves the acceptance a person can check by eye, for the Level 2 table.",
+      "restatement_clause_id": "C5",
+      "pattern": "^\\|.*\\bManual\\b",
+      "files": [
+        "docs/design.md"
+      ],
+      "section": "Level 2 \u2014 Blocking",
+      "additional_patterns": [
+        "^\\|.*\\bplanned\\b",
+        "^\\|.*Module structure"
+      ],
+      "clause_id": "c5"
+    },
+    {
+      "type": "grep_absent",
+      "description": "No table row in the 'Level 3 \u2014 Warning' section of the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'.",
+      "proves": "Proves the acceptance a person can check by eye, for the Level 3 table.",
+      "restatement_clause_id": "C5",
+      "pattern": "^\\|.*\\bManual\\b",
+      "files": [
+        "docs/design.md"
+      ],
+      "section": "Level 3 \u2014 Warning",
+      "additional_patterns": [
+        "^\\|.*\\bplanned\\b",
+        "^\\|.*Module structure"
+      ],
+      "clause_id": "c6"
+    },
+    {
+      "type": "grep_absent",
+      "description": "No ASP4xx catalog rule row in the design document contains the word 'Manual', the word 'planned', or the words 'Module structure'.",
+      "proves": "Proves the acceptance a person can check by eye, for the ASP4xx catalog tables.",
+      "restatement_clause_id": "C5",
+      "pattern": "^\\| ASP4[0-9][0-9] \\|.*\\bManual\\b",
+      "files": [
+        "docs/design.md"
+      ],
+      "additional_patterns": [
+        "^\\| ASP4[0-9][0-9] \\|.*\\bplanned\\b",
+        "^\\| ASP4[0-9][0-9] \\|.*Module structure"
+      ],
+      "clause_id": "c7"
+    },
+    {
+      "type": "grep_absent",
+      "description": "The 'Whole-project CLI tools' section of the design document contains no 'Manual', no 'planned' and no 'Module structure'.",
+      "proves": "Proves the acceptance a person can check by eye, for the whole-project CLI section.",
+      "restatement_clause_id": "C5",
+      "pattern": "\\bManual\\b",
+      "files": [
+        "docs/design.md"
+      ],
+      "section": "Whole-project CLI tools (cross-file, not LintRules)",
+      "additional_patterns": [
+        "\\bplanned\\b",
+        "Module structure"
+      ],
+      "clause_id": "c8"
+    },
+    {
+      "type": "grep",
+      "description": "The design document still names all six present Python and TypeScript enforcers: LowAssertionDensity, UnboundedLoop, ImpureFunction, MixedIOAndLogic, eslint-plugin-boundaries and functional/no-loop-statements.",
+      "proves": "Proves the work left the Python column and the TypeScript column alone, as the restatement requires.",
+      "restatement_clause_id": "C6",
+      "pattern": "LowAssertionDensity",
+      "files": [
+        "docs/design.md"
+      ],
+      "additional_patterns": [
+        "UnboundedLoop",
+        "ImpureFunction",
+        "MixedIOAndLogic",
+        "eslint-plugin-boundaries",
+        "functional/no-loop-statements"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 6
+      },
+      "clause_id": "c9"
+    }
+  ]
+}
