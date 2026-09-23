@@ -1,0 +1,10 @@
+id: ASP204
+language: rust
+severity: warning
+message: |
+  A `loop { ... }` has no statically-determinable iteration bound. Prefer
+  an iterator, a bounded `for` range, or a `while` over a checked
+  condition. See docs/design.md, "Level 2 — Blocking", ASP204 (no
+  unbounded loops).
+rule:
+  kind: loop_expression

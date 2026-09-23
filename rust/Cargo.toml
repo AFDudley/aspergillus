@@ -1,0 +1,25 @@
+[package]
+name = "aspergillus-rust-gate"
+version = "0.1.0"
+edition = "2021"
+description = "The Aspergillus Rust gate: it runs the declarative ast-grep rules under ast-grep-rules/ and the reference clippy lints over a Cargo workspace, and reports each finding as path:line: ASPnnn."
+license = "MIT"
+
+[dependencies]
+# Pinned so the resolved graph builds on rustc 1.88: tree-sitter-language
+# 0.1.8 and later require rustc 1.90, past this toolchain.
+tree-sitter = "=0.25.10"
+tree-sitter-language = "=0.1.5"
+# The ast-grep engine. A consumer runs the rules with these three published
+# libraries, not the ast-grep CLI, so no Node runtime enters the gate path.
+# Pinned to 0.40.0, the version lobaria (the first consumer) already runs;
+# its tree-sitter dependency (^0.25.4) is satisfiable by the pin above.
+ast-grep-core = "=0.40.0"
+ast-grep-config = "=0.40.0"
+ast-grep-language = "=0.40.0"
+serde_json = "1"
+walkdir = "2"
+
+[[bin]]
+name = "aspergillus-rust-gate"
+path = "src/bin/aspergillus_rust_gate.rs"

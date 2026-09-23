@@ -27,3 +27,4 @@ node_modules/
 .worktrees/
 .claude/worktrees/
 .scratch/
+/rust/target/
