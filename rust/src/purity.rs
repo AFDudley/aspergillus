@@ -343,6 +343,16 @@ fn last_segment<D: Doc>(node: &Node<'_, D>) -> String {
             .field("name")
             .map(|f| f.text().into_owned())
             .unwrap_or_default(),
+        // A turbofish call — `s.parse::<u32>()`, `T::try_from::<_>(x)` —
+        // parses as a `generic_function` wrapping the real callee in its
+        // `function` field plus `type_arguments`. Resolve the wrapped
+        // callee so the method/segment name (`parse`, `try_from`) is seen,
+        // not the whole `s.parse::<u32>` text: the turbofish form is the
+        // same validating call as its bare form (asp-b7b ASP202 defect).
+        "generic_function" => node
+            .field("function")
+            .map(|f| last_segment(&f))
+            .unwrap_or_default(),
         _ => node.text().into_owned(),
     }
 }
@@ -459,6 +469,25 @@ mod tests {
     #[test]
     fn an_io_function_with_ok_or_and_a_validating_constructor_satisfies_asp202() {
         let source = "fn dump(path: &str, raw: Option<&str>) -> Result<(), String> {\n    let text = raw.ok_or(\"missing\")?;\n    let value = i32::from_str(text).map_err(|_| \"bad\")?;\n    std::fs::write(path, value.to_string()).map_err(|e| e.to_string())?;\n    let doubled = value * 2;\n    let _shifted = doubled - 1;\n    Ok(())\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn an_io_function_with_two_turbofish_parse_guards_satisfies_asp202() {
+        // `s.parse::<T>()` is the SAME validating call as bare `s.parse()`;
+        // the turbofish parses as a `generic_function`, which must still be
+        // counted as an assertion form (asp-b7b ASP202 defect, reported by
+        // LobApply2 via Main). Two turbofish parses reach the floor.
+        let source = "fn dump(path: &str, a: &str, b: &str) {\n    let x = a.parse::<u32>().unwrap();\n    let y = b.parse::<u32>().unwrap();\n    let z = x + y;\n    let w = z + 1;\n    std::fs::write(path, format!(\"{w}\")).unwrap();\n}\n";
+        assert_eq!(assertion_density_findings(source), Vec::new());
+    }
+
+    #[test]
+    fn a_shell_function_whose_only_guard_is_a_turbofish_parse_question_mark_is_silent() {
+        // Main's fixture: a shell fn whose only guard is
+        // `let n = s.parse::<u32>()?;` must NOT fire — the turbofish parse
+        // and the `?` are two assertion forms.
+        let source = "fn store(path: &str, s: &str) -> std::io::Result<()> {\n    let n = s.parse::<u32>().map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;\n    let m = n + 1;\n    let _k = m + 1;\n    std::fs::write(path, m.to_string())?;\n    Ok(())\n}\n";
         assert_eq!(assertion_density_findings(source), Vec::new());
     }
 
