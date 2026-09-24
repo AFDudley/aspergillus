@@ -49,6 +49,18 @@ use ast_grep_language::{LanguageExt, SupportLang};
 /// - **Guarded arms are skipped.** Two arms with the same body but
 ///   different `if`-guards are distinct transitions, so an arm carrying a
 ///   pattern guard is neither reported nor seeds a duplicate.
+/// - **Divergent-typed bindings are skipped.** Two arms whose bodies are
+///   token-identical are redundant only when they can actually collapse
+///   into one `A | B => body` arm. With no type inference available, that
+///   is proven syntactically: the arms must bind the same identifiers
+///   through the same enum-variant path, or bind nothing at all. Arms that
+///   capture a payload through *different* variant paths
+///   (`Self::Data(shred) => shred.header()` vs
+///   `Self::Coding(shred) => shred.header()`) bind values that may have
+///   different types, so the merged or-pattern would fail to compile
+///   (E0409); such a pair is neither reported nor seeds a duplicate. Arms
+///   that bind nothing (`A => f(), B => f()`) or bind through the *same*
+///   variant path still fire.
 pub fn fsm_redundant_branch_findings(source: &str) -> Vec<(usize, &'static str, bool)> {
     let root = SupportLang::Rust.ast_grep(source);
     let mut findings = Vec::new();
@@ -69,7 +81,7 @@ fn redundant_arms<D: Doc>(match_expr: &Node<'_, D>) -> Vec<(usize, &'static str,
     let Some(body) = match_expr.field("body") else {
         return out;
     };
-    let mut seen: Vec<String> = Vec::new();
+    let mut seen: Vec<(String, String)> = Vec::new();
     for arm in body.children() {
         if arm.kind() != "match_arm" {
             continue;
@@ -92,7 +104,14 @@ fn redundant_arms<D: Doc>(match_expr: &Node<'_, D>) -> Vec<(usize, &'static str,
         if is_trivial_body(&value) {
             continue;
         }
-        let signature = token_signature(&value);
+        // A body signature alone is not enough: two arms may share a body
+        // yet capture their operands through different variant paths, so the
+        // captured values can differ in type and the arms cannot merge into
+        // one `A | B => body` (E0409). Pair the body signature with a
+        // binding signature — the identifiers each pattern captures and the
+        // variant path it captures them through — so only arms that would
+        // actually collapse are treated as redundant.
+        let signature = (token_signature(&value), binding_signature(&pattern));
         if seen.contains(&signature) {
             out.push((arm.start_pos().line().saturating_add(1), "ASP411", true));
         } else {
@@ -121,6 +140,62 @@ fn collect_leaf_tokens<D: Doc>(node: &Node<'_, D>, tokens: &mut Vec<String>) {
     }
     for child in children {
         collect_leaf_tokens(&child, tokens);
+    }
+}
+
+/// A signature of the identifiers an arm pattern captures and the variant
+/// path each is captured through, canonical and blind to source order:
+/// `Self::Data(shred)` -> `shred@Self::Data`, `(E::Data(x), true)` ->
+/// `x@E::Data`, a bare `A` or a wildcard `_` -> the empty string. Two arms
+/// with the same binding signature capture the same names through the same
+/// variant paths, so an `A | B => body` merge binds each name to one type
+/// and compiles; a differing signature means a merge could bind a name to
+/// two types (E0409), so the arms are not redundant.
+fn binding_signature<D: Doc>(pattern: &Node<'_, D>) -> String {
+    let mut binds: Vec<String> = Vec::new();
+    collect_pattern_bindings(pattern, None, &mut binds);
+    binds.sort();
+    binds.dedup();
+    binds.join("\u{1f}")
+}
+
+/// Walk a pattern, recording each captured identifier as `name@variant_path`
+/// where `variant_path` is the enclosing tuple-struct or struct pattern's
+/// type (`Self::Data`, `E::S`). An identifier captured outside any such
+/// pattern — a bare top-level binding, which binds the whole scrutinee to a
+/// single type — carries no variant path and is not recorded, since it never
+/// introduces a per-variant type divergence.
+fn collect_pattern_bindings<D: Doc>(node: &Node<'_, D>, path: Option<&str>, out: &mut Vec<String>) {
+    match node.kind().as_ref() {
+        // A variant/struct pattern rebinds the path for the operands it
+        // destructures: its own `type` child names the variant, and every
+        // other child is a sub-pattern captured through that variant.
+        "tuple_struct_pattern" | "struct_pattern" => {
+            let type_node = node.field("type");
+            let variant = type_node.as_ref().map(|t| t.text().trim().to_string());
+            for child in node.children() {
+                if let Some(t) = &type_node {
+                    if child.range() == t.range() {
+                        continue;
+                    }
+                }
+                collect_pattern_bindings(&child, variant.as_deref(), out);
+            }
+        }
+        // A captured identifier: `shred` in `Self::Data(shred)`, or the
+        // shorthand field in `E::S { field }`.
+        "identifier" | "shorthand_field_identifier" => {
+            if let Some(p) = path {
+                out.push(format!("{}@{}", node.text().trim(), p));
+            }
+        }
+        // Any other node (tuple patterns, reference patterns, field names,
+        // literals, `_`) carries the current path into its children.
+        _ => {
+            for child in node.children() {
+                collect_pattern_bindings(&child, path, out);
+            }
+        }
     }
 }
 
@@ -589,6 +664,53 @@ mod tests {
         assert_eq!(
             asp411(
                 "fn f(s: State) -> i32 {\n    match s {\n        State::A => { let x = step(s); x + 1 }\n        State::B => { let x = step(s); x + 1 }\n    }\n}\n"
+            ),
+            vec![4]
+        );
+    }
+
+    #[test]
+    fn identical_bodies_binding_different_variant_paths_are_silent() {
+        // `shred` binds a DataShred in one arm and a CodingShred in the
+        // other; the merged `Self::Data(shred) | Self::Coding(shred)` fails
+        // to compile (E0409), so the arms are not redundant.
+        assert!(asp411(
+            "fn f(e: E) -> u32 {\n    match e {\n        Self::Data(shred) => shred.header(),\n        Self::Coding(shred) => shred.header(),\n    }\n}\n"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn identical_bodies_binding_the_same_variant_path_are_flagged() {
+        // Both arms capture `x` through `E::Data`, so the merge binds `x` to
+        // one type and compiles — a genuine redundancy.
+        assert_eq!(
+            asp411(
+                "fn f(e: E, b: bool) -> u32 {\n    match (e, b) {\n        (E::Data(x), true) => x.count_ones(),\n        (E::Data(x), false) => x.count_ones(),\n    }\n}\n"
+            ),
+            vec![4]
+        );
+    }
+
+    #[test]
+    fn identical_bodies_with_no_bindings_are_flagged() {
+        // Neither arm captures anything, so `A | B => step()` compiles: the
+        // second arm is redundant.
+        assert_eq!(
+            asp411(
+                "fn f(s: State) -> i32 {\n    match s {\n        State::A => step(s),\n        State::B => step(s),\n    }\n}\n"
+            ),
+            vec![4]
+        );
+    }
+
+    #[test]
+    fn identical_bodies_binding_wildcards_under_different_variants_are_flagged() {
+        // `_` captures nothing, so `Self::Data(_) | Self::Coding(_) => log()`
+        // compiles regardless of the payload types.
+        assert_eq!(
+            asp411(
+                "fn f(e: E) -> u32 {\n    match e {\n        Self::Data(_) => log(),\n        Self::Coding(_) => log(),\n    }\n}\n"
             ),
             vec![4]
         );

@@ -1,0 +1,33 @@
+{
+  "id": "asp-f1f",
+  "goal": "ASP411 reports two identical-bodied match arms as redundant only when they can actually merge into one `A | B => body` arm: they bind nothing, or bind the same identifiers through the same enum-variant path. Arms that capture a payload through different variant paths (`Self::Data(shred)` vs `Self::Coding(shred)`) are no longer reported (violating fires, satisfying clean).",
+  "acceptance_criteria": [
+    "ASP411 violating fixture is committed: it holds a no-binding identical-arm pair and a same-variant-path identical-arm pair, both of which must still fire.",
+    "ASP411 satisfying fixture is committed: it holds the divergent-binding shape (`Self::Data(shred) => shred.header()` beside `Self::Coding(shred) => shred.header()`, distinct payload types with their own inherent `header`), which must now stay silent.",
+    "the gate fires ASP411 on its violating fixture and exits 1",
+    "the gate is silent for ASP411 on its satisfying fixture and exits 0"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP411 violating fixture is committed",
+      "path": "rust/fixtures/ASP411/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP411 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP411/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP411 on its violating fixture and exits 1",
+      "command": ["scripts/asp_rule_probe.sh", "ASP411", "violating"]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP411 on its satisfying fixture and exits 0",
+      "command": ["scripts/asp_rule_probe.sh", "ASP411", "satisfying"]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. ASP411 (`rust/src/fsm.rs::fsm_redundant_branch_findings`) flags a `match` arm whose body structurally duplicates an earlier arm's body. Its port compared arm bodies as leaf-token sequences only, so it reported arms that are token-identical yet cannot merge: `Self::Data(shred) => shred.header()` beside `Self::Coding(shred) => shred.header()` binds `shred` to a different payload type in each arm, and the merged or-pattern `Self::Data(shred) | Self::Coding(shred)` fails to compile (E0409 / E0308 mismatched types). This spec pins the fix: two identical-bodied arms are redundant only when they bind nothing, or bind the same identifiers through the same enum-variant path (decided syntactically, since the gate has no type inference); arms capturing through different variant paths are not reported. The no-binding pair (`A => f(), B => f()`) and the same-variant-path pair still fire, so the rule stays blocking and is not weakened beyond the defect. Graded deterministically against the integration branch via the committed violating/satisfying fixture pair. Lobaria evidence (integrated, `--exclude 'scripts/oracles/fixtures/**' --exclude 'vendored/**' --core-config aspergillus.toml`): before the fix ASP411 raised 6 findings, ALL of them this same divergent-typed-binding false positive, none mergeable (verified by rustc): statechart/src/wire.rs:407 (DataShred vs CodingShred), backtest/src/corpus_cache.rs:68 (ReconstructionError vs ReplayError), backtest/src/reconstruction.rs:72 (String vs CorpusError), backtest/src/reconstruction.rs:351 (NotCarried vs CarryRefused), backtest/src/stream.rs:52 and :53 (ReconstructionError vs ReplayError vs CarryError). After the fix ASP411 raises 0 findings on lobaria: the port had produced only false positives there, and every one is correctly silenced while the rule still fires on the committed violating fixture's two mergeable shapes."
+}
