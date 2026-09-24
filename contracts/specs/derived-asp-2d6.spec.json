@@ -66,8 +66,8 @@
     "ASP501 satisfying fixture is committed",
     "the gate fires ASP501 on its violating fixture and exits 1",
     "the gate is silent for ASP501 on its satisfying fixture and exits 0",
-    "ASP502 violating fixture is committed",
-    "ASP502 satisfying fixture is committed",
+    "ASP502 violating fixture is committed (crate-a of the duplicate pair)",
+    "ASP502 satisfying fixture is committed (crate-a of the duplicate pair)",
     "the gate fires ASP502 on its violating fixture and exits 1",
     "the gate is silent for ASP502 on its satisfying fixture and exits 0",
     "design.md marks ASP302 as a language feature (Option<T>, no null)",
@@ -528,13 +528,13 @@
     },
     {
       "type": "file_exists",
-      "description": "ASP502 violating fixture is committed",
-      "path": "rust/fixtures/ASP502/violating/src/lib.rs"
+      "description": "ASP502 violating fixture is committed (crate-a of the duplicate pair)",
+      "path": "rust/fixtures/ASP502/violating/crate-a/src/lib.rs"
     },
     {
       "type": "file_exists",
-      "description": "ASP502 satisfying fixture is committed",
-      "path": "rust/fixtures/ASP502/satisfying/src/lib.rs"
+      "description": "ASP502 satisfying fixture is committed (crate-a of the duplicate pair)",
+      "path": "rust/fixtures/ASP502/satisfying/crate-a/src/lib.rs"
     },
     {
       "type": "command",
