@@ -19,6 +19,13 @@ const FORCED_LINTS: &[(&str, &str, &str)] = &[
     ("clippy::expect_used", "deny", "ASP301"),
     ("clippy::panic", "deny", "ASP301"),
     ("clippy::redundant_closure", "deny", "ASP403"),
+    // ASP303: a fallible `Result` swallowed into a success sentinel. Both
+    // the `let _ = <Result>` discard (clippy::let_underscore_must_use) and
+    // a bare must-use `Result` expression statement (rustc's
+    // unused_must_use) drop the error before a caller can observe it.
+    // Forced to `deny` so the discard is blocking, not a warning.
+    ("clippy::let_underscore_must_use", "deny", "ASP303"),
+    ("unused_must_use", "deny", "ASP303"),
 ];
 
 /// Run `cargo clippy` over `workspace_dir` with the forced lints above, and
@@ -130,6 +137,31 @@ mod tests {
                 rule_id: "ASP301".to_string(),
                 blocking: true,
             }]
+        );
+    }
+
+    #[test]
+    fn both_must_use_discards_map_to_asp303() {
+        // The clippy `let _ =` discard and rustc's bare-statement
+        // unused_must_use both surface as ASP303, both blocking.
+        let clippy_discard = r#"{"reason":"compiler-message","message":{"code":{"code":"clippy::let_underscore_must_use"},"level":"error","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":7}]}}"#;
+        let bare_discard = r#"{"reason":"compiler-message","message":{"code":{"code":"unused_must_use"},"level":"error","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":11}]}}"#;
+        assert_eq!(
+            parse_messages(&format!("{clippy_discard}\n{bare_discard}")),
+            vec![
+                Finding {
+                    path: "src/lib.rs".to_string(),
+                    line: 7,
+                    rule_id: "ASP303".to_string(),
+                    blocking: true,
+                },
+                Finding {
+                    path: "src/lib.rs".to_string(),
+                    line: 11,
+                    rule_id: "ASP303".to_string(),
+                    blocking: true,
+                },
+            ]
         );
     }
 

@@ -1,0 +1,40 @@
+rule:
+  pattern: $RECV.map_err(|_| $BODY)
+# The wildcard closure parameter throws the source error away. The `map_err`
+# receiver is excluded when its value comes from a standard fallible
+# *conversion* — `try_from` / `try_into` / `parse` / `from_str` /
+# `from_str_radix` (directly, or through an intervening combinator such as
+# `.map(...)`). Those std errors (`TryFromIntError`, `ParseIntError`,
+# `TryFromSliceError`, ...) carry no diagnostic evidence for the caller, so
+# remapping them to a domain error is idiomatic, correct Rust — not an
+# evidence discard. What remains: a `|_|` that drops a source error which
+# actually carried evidence (a panic payload, a decode/IO cause, a rich domain
+# error).
+constraints:
+  RECV:
+    not:
+      any:
+        - pattern: $T::try_from($$$A)
+        - pattern: $X.try_into()
+        - pattern: $X.parse()
+        - pattern: $X.parse::<$$$T>()
+        - pattern: $T::from_str($$$A)
+        - pattern: $T::from_str_radix($$$A)
+        - has:
+            stopBy: end
+            any:
+              - pattern: $T::try_from($$$A)
+              - pattern: $X.try_into()
+              - pattern: $X.parse()
+              - pattern: $X.parse::<$$$T>()
+              - pattern: $T::from_str($$$A)
+              - pattern: $T::from_str_radix($$$A)
+id: ASP304
+language: rust
+severity: error
+message: |
+  `map_err(|_| ...)` discards the source error — the wildcard closure
+  parameter throws away the captured evidence before surfacing a new error.
+  Bind the source (`|e| ...`) and fold it into the surfaced error, or carry it
+  forward with `?`/`From`. See docs/rust-rules.md, ASP304 (failure discards
+  evidence).
