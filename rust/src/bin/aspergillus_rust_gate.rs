@@ -16,7 +16,8 @@ use aspergillus_rust_gate::core_declaration::{
 };
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 use aspergillus_rust_gate::{
-    clippy, exit_status, loops, purity, source_findings, tupling, worker_wrapper, Finding,
+    anti_special_casing, clippy, exit_status, in_process_e2e, loops, purity, shell_to_self,
+    source_findings, tupling, worker_wrapper, Finding,
 };
 
 fn main() -> ExitCode {
@@ -269,6 +270,55 @@ fn scan_workspace(
                 blocking,
             });
         }
+        // ASP408 (anti-special-casing) is a gaming DETECTOR over
+        // implementation code — a hardcoded-answer branch or a CI/test-env
+        // defeat device is debt anywhere in the tree, core or shell. Test
+        // code is exempt: a `tests/` path holds fixtures, not gaming (the
+        // analyzer also skips any `#[cfg(test)]`/`#[test]` scope itself).
+        if !is_test_path(relative) {
+            for (line, rule_id, blocking) in
+                anti_special_casing::anti_special_casing_findings(&source)
+            {
+                findings.push(Finding {
+                    path: shown.clone(),
+                    line,
+                    rule_id: rule_id.to_string(),
+                    blocking,
+                });
+            }
+        }
+        // ASP409 (shell-to-self) fires in implementation code that
+        // re-invokes its OWN package via subprocess. A `build.rs`
+        // (legitimately drives cargo) and any `tests/` path (where a
+        // `CARGO_BIN_EXE_*` spawn IS the correct e2e boundary — see ASP410)
+        // are exempt. The owning package name is resolved from the nearest
+        // ancestor `Cargo.toml`; when unknown, the `cargo run -p <self>`
+        // shape cannot be confirmed and does not fire.
+        if !is_test_path(relative) && !is_build_script(relative) {
+            let own_package = own_package_name(path, workspace_dir);
+            for (line, rule_id, blocking) in
+                shell_to_self::shell_to_self_findings(&source, own_package.as_deref())
+            {
+                findings.push(Finding {
+                    path: shown.clone(),
+                    line,
+                    rule_id: rule_id.to_string(),
+                    blocking,
+                });
+            }
+        }
+        // ASP410 (in-process e2e) fires on an e2e-named `#[test]` under a
+        // `tests/` directory that never crosses a process boundary. The
+        // analyzer self-filters to `tests/` paths, so it is called for every
+        // file with its workspace-relative path.
+        for (line, rule_id, blocking) in in_process_e2e::in_process_e2e_findings(&source, &shown) {
+            findings.push(Finding {
+                path: shown.clone(),
+                line,
+                rule_id: rule_id.to_string(),
+                blocking,
+            });
+        }
         let is_core = core_declaration.is_core(relative);
         // ASP202 (assertion density) is scoped to the imperative shell: a
         // pure, fully-typed core function earns its correctness statically,
@@ -324,4 +374,39 @@ fn scan_workspace(
 /// test, not shell debt to lift into the core.
 fn is_test_path(relative: &Path) -> bool {
     relative.components().any(|c| c.as_os_str() == "tests")
+}
+
+/// Whether `relative` is a crate's `build.rs` build script. A build script
+/// legitimately drives cargo, so ASP409 (shell-to-self) exempts it.
+fn is_build_script(relative: &Path) -> bool {
+    relative.file_name().is_some_and(|n| n == "build.rs")
+}
+
+/// The `[package].name` declared by the nearest ancestor `Cargo.toml` of
+/// `file_path`, searched from the file's own directory up to and including
+/// `workspace_dir`. `None` when no ancestor manifest declares a package
+/// name (e.g. a virtual workspace root, or an unreadable/unparseable
+/// manifest) — ASP409's `cargo run -p <self>` shape then cannot confirm the
+/// self match and stays silent.
+fn own_package_name(file_path: &Path, workspace_dir: &Path) -> Option<String> {
+    let mut dir = file_path.parent();
+    while let Some(current) = dir {
+        let manifest = current.join("Cargo.toml");
+        if let Ok(text) = std::fs::read_to_string(&manifest) {
+            if let Ok(value) = toml::from_str::<toml::Value>(&text) {
+                if let Some(name) = value
+                    .get("package")
+                    .and_then(|package| package.get("name"))
+                    .and_then(toml::Value::as_str)
+                {
+                    return Some(name.to_string());
+                }
+            }
+        }
+        if current == workspace_dir {
+            break;
+        }
+        dir = current.parent();
+    }
+    None
 }

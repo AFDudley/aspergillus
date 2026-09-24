@@ -9,12 +9,15 @@
 use ast_grep_config::{RuleConfig, Severity};
 use ast_grep_language::{LanguageExt, SupportLang};
 
+pub mod anti_special_casing;
 pub mod clippy;
 pub mod core_declaration;
 pub mod duplicate_types;
 pub mod duplicates;
+pub mod in_process_e2e;
 pub mod loops;
 pub mod purity;
+pub mod shell_to_self;
 pub mod tupling;
 pub mod worker_wrapper;
 pub mod workspace;
