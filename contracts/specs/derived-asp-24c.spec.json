@@ -1,0 +1,164 @@
+{
+  "id": "asp-24c",
+  "goal": "Gate enforces the FSM family ASP411/413/414/416; ASP412/415/417 stated N/A.",
+  "acceptance_criteria": [
+    "ASP411 violating fixture is committed",
+    "ASP411 satisfying fixture is committed",
+    "the gate fires ASP411 on its violating fixture and exits 1",
+    "the gate is silent for ASP411 on its satisfying fixture and exits 0",
+    "ASP413 violating fixture is committed",
+    "ASP413 satisfying fixture is committed",
+    "the gate fires ASP413 on its violating fixture and exits 1",
+    "the gate is silent for ASP413 on its satisfying fixture and exits 0",
+    "ASP414 violating fixture is committed",
+    "ASP414 satisfying fixture is committed",
+    "the gate fires ASP414 on its violating fixture and exits 1",
+    "the gate is silent for ASP414 on its satisfying fixture and exits 0",
+    "ASP416 violating fixture is committed",
+    "ASP416 satisfying fixture is committed",
+    "the gate fires ASP416 on its violating fixture and exits 1",
+    "the gate is silent for ASP416 on its satisfying fixture and exits 0",
+    "design.md marks ASP412 does-not-apply with a named-feature reason",
+    "design.md marks ASP415 does-not-apply with a named-feature reason",
+    "design.md marks ASP417 does-not-apply with a named-feature reason"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP411 violating fixture is committed",
+      "path": "rust/fixtures/ASP411/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP411 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP411/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP411 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP411",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP411 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP411",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP413 violating fixture is committed",
+      "path": "rust/fixtures/ASP413/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP413 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP413/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP413 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP413",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP413 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP413",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP414 violating fixture is committed",
+      "path": "rust/fixtures/ASP414/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP414 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP414/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP414 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP414",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP414 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP414",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP416 violating fixture is committed",
+      "path": "rust/fixtures/ASP416/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP416 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP416/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP416 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP416",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP416 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP416",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP412 does-not-apply with a named-feature reason",
+      "pattern": "ASP412.*named-feature",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP415 does-not-apply with a named-feature reason",
+      "pattern": "ASP415.*named-feature",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP417 does-not-apply with a named-feature reason",
+      "pattern": "ASP417.*named-feature",
+      "files": [
+        "docs/design.md"
+      ]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. This spec pins that the rule(s) named in the goal are enforced (blocking, with committed violating/satisfying fixtures) or documented as not-applicable in docs/design.md, graded deterministically against the integration branch."
+}
