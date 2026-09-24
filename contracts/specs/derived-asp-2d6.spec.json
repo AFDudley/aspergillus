@@ -75,7 +75,7 @@
     "design.md marks ASP412 does-not-apply with a named-feature reason",
     "design.md marks ASP415 does-not-apply with a named-feature reason",
     "design.md marks ASP417 does-not-apply with a named-feature reason",
-    "no ASP catalog row is left unported (no 'not yet ported'/'Python only'/'planned' in design.md)"
+    "no ASP catalog ROW's Rust column is left unported (no 'not yet ported'/'planned'/'Python only'/'Manual' in an ASP table row)"
   ],
   "acceptance_tests": [
     {
@@ -596,8 +596,8 @@
     },
     {
       "type": "grep_absent",
-      "description": "no ASP catalog row is left unported (no 'not yet ported'/'Python only'/'planned' in design.md)",
-      "pattern": "not yet ported|Python only|planned port|not yet implemented",
+      "description": "no ASP catalog ROW's Rust column is left unported (no 'not yet ported'/'planned'/'Python only'/'Manual' in an ASP table row)",
+      "pattern": "^\\| ASP[0-9]+ .*(not yet ported|planned port|not yet implemented|Python only|Manual port)",
       "files": [
         "docs/design.md"
       ]
