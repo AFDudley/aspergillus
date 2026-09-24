@@ -124,7 +124,15 @@ fn main() -> ExitCode {
         };
 
     match clippy::clippy_findings(&workspace_dir) {
-        Ok(hits) => findings.extend(hits.into_iter().filter(|f| !excludes.is_match(&f.path))),
+        // The five clippy-backed rules (ASP201/301/303/403/413) get the same
+        // test-code exemption the AST analyzers do: a finding under a
+        // `tests/` path, in a `#[test]` fn, or in a `#[cfg(test)]` module is
+        // test infrastructure, not production debt (see `is_clippy_test_exempt`).
+        Ok(hits) => findings.extend(
+            hits.into_iter()
+                .filter(|f| !excludes.is_match(&f.path))
+                .filter(|f| !is_clippy_test_exempt(&workspace_dir, f)),
+        ),
         Err(why) => {
             eprintln!("aspergillus-rust-gate: clippy error: {why}");
             return ExitCode::from(2);
@@ -394,6 +402,27 @@ fn scan_workspace(
 /// test, not shell debt to lift into the core.
 fn is_test_path(relative: &Path) -> bool {
     relative.components().any(|c| c.as_os_str() == "tests")
+}
+
+/// Whether a clippy-backed finding is exempt test code, applying the same
+/// exemption the gate's AST analyzers do (ASP202/ASP206): a finding under a
+/// `tests/` path (`is_test_path`), or one whose reported line sits inside a
+/// `#[test]` function or `#[cfg(test)]` module. The five clippy-backed rules
+/// (ASP201/301/303/403/413) hold PRODUCTION code to a standard test
+/// infrastructure is exempt from — a discarded `Result` or a `_` match arm
+/// in a test is the test, not shipped debt. The finding's `path` is the
+/// workspace-relative file cargo reported; when it cannot be read (a
+/// generated or since-deleted source), the finding is NOT exempted — the
+/// gate keeps the finding rather than silently dropping it.
+fn is_clippy_test_exempt(workspace_dir: &Path, finding: &Finding) -> bool {
+    let relative = Path::new(&finding.path);
+    if is_test_path(relative) {
+        return true;
+    }
+    match std::fs::read_to_string(workspace_dir.join(relative)) {
+        Ok(source) => anti_special_casing::line_in_test_scope(&source, finding.line),
+        Err(_) => false,
+    }
 }
 
 /// Whether `relative` is a crate's `build.rs` build script. A build script

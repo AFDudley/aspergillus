@@ -55,13 +55,13 @@ fixture pair:
 
 | ASP    | Tooling                                                                   |
 | ------ | ------------------------------------------------------------------------- |
-| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `deny`                 |
+| ASP201 | `clippy::too_many_lines` (threshold 60), forced at `warn`, blocking       |
 | ASP202 | `src/purity.rs::assertion_density_findings` (gate check)                  |
 | ASP204 | `ast-grep-rules/asp204-no-infinite-loop.yml` (severity `error`)           |
 | ASP205 | `src/purity.rs::impure_function_findings` (gate check)                    |
 | ASP206 | `src/purity.rs::mixed_io_logic_findings` (gate check)                     |
-| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `deny`             |
-| ASP403 | `clippy::redundant_closure`, forced at `deny`                             |
+| ASP301 | `clippy::unwrap_used`/`expect_used`/`panic`, forced at `warn`, blocking   |
+| ASP403 | `clippy::redundant_closure`, forced at `warn`, blocking                   |
 | ASP404 | `ast-grep-rules/asp404-redundant-conditional-bool.yml` (severity `error`) |
 
 ASP203 (no safe `static mut`), ASP302 (no `null`) and ASP413 (`match`
@@ -82,8 +82,45 @@ ASP502. Its acceptance is verified against the real `lobaria` workspace at
 commit `a027fb9` — see `fixtures/lobaria-a027fb9/PROVENANCE.md` and
 `../scripts/oracle/`.
 
-The gate treats a finding as blocking exactly when the underlying tool
-reports it at `error` level: an ast-grep rule with `severity: error`, a
-clippy lint the gate forces to `deny`, or a gate check that returns
-`blocking: true`. Every Aspergillus Rust rule reports as blocking, so a
-gate run with any finding exits non-zero.
+The gate treats a finding as blocking exactly when the rule is a blocking
+rule: an ast-grep rule with `severity: error`, a gate check that returns
+`blocking: true`, or a clippy-backed rule (all five block). Every Aspergillus
+Rust rule reports as blocking, so a gate run with any finding exits non-zero.
+
+## Clippy-backed rules: determinism and the test exemption
+
+Five rules are backed by clippy lints run over the same workspace —
+ASP201 (`too_many_lines`), ASP301 (`unwrap`/`expect`/`panic`), ASP303
+(`let_underscore_must_use`/`unused_must_use`), ASP403 (`redundant_closure`)
+and ASP413 (`wildcard_enum_match_arm`). `src/clippy.rs` forces each lint at
+`-W` (warn), never `-D` (deny), and assigns the finding its blocking
+severity itself rather than reading clippy's emitted level.
+
+Warn — not deny — is what makes the gate's clippy counts DETERMINISTIC and
+COMPLETE across a cold, warm or already-checked target dir:
+
+- A denied lint is emitted as an `error`, which fails the crate's build.
+  cargo then never checks the crates that depend on it, so their findings
+  vanish — a cold run reports FEWER clippy findings than a warm one. At
+  `warn` every crate compiles, so every crate (and everything downstream of
+  it) is checked and reports.
+- cargo caches a compilation unit's warnings and REPLAYS them, verbatim in
+  the JSON stream, whenever the unit is unchanged; it does not replay a
+  build error. So at `warn` a warm or repeated run re-emits exactly the
+  diagnostics a cold run produced, and the counts are identical run to run.
+
+The cost is a full clippy CHECK of every workspace crate the first time the
+gate runs against a given target dir (a denied cascade would have stopped
+at the first violating crate). That is a `cargo clippy --all-targets` check,
+not a codegen build, and it reuses the target dir's cached dependency
+artifacts; every subsequent run against that dir is a fast warning REPLAY.
+No separate gate-owned target dir, source `touch`, or per-run `RUSTFLAGS`
+churn is needed — cargo's own warning cache carries the determinism.
+
+The five clippy-backed rules get the SAME test-code exemption the AST
+analyzers apply (ASP202/ASP206): a finding under a `tests/` path, in a
+`#[test]` function, or in a `#[cfg(test)]` module is test infrastructure,
+not shipped debt, and is dropped. The gate applies it in
+`is_clippy_test_exempt` (`src/bin/aspergillus_rust_gate.rs`), reusing
+`is_test_path` for the path component and `anti_special_casing::line_in_test_scope`
+for the `#[test]`/`#[cfg(test)]` scope.

@@ -30,3 +30,7 @@ node_modules/
 /rust/target/
 rust/fixtures/*/*/target/
 rust/fixtures/*/*/Cargo.lock
+# The ASP303-determinism fixture is a multi-crate workspace, so its build
+# artifacts sit one level shallower than the violating/satisfying pairs.
+rust/fixtures/**/target/
+rust/fixtures/**/Cargo.lock

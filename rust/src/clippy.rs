@@ -2,35 +2,54 @@
 //!
 //! Runs `cargo clippy` as a subprocess over a workspace and turns its JSON
 //! diagnostics into `Finding`s. The mapping from a clippy lint to an ASP
-//! id, the lint level the gate forces, and the subprocess call itself all
-//! live here — the imperative shell, kept apart from the pure core above.
+//! id, the blocking severity the gate assigns it, and the subprocess call
+//! itself all live here — the imperative shell, kept apart from the pure
+//! core above.
+//!
+//! The forced lints are passed at `warn`, not `deny`, for a DETERMINISTIC,
+//! COMPLETE diagnostic stream. Two cargo behaviours drive that choice.
+//! First, a `deny`d lint is emitted as an `error`, which makes the crate
+//! FAIL to build: cargo then never checks the crates that depend on it, so
+//! their diagnostics are dropped and a cold run reports FEWER findings than
+//! a warm one (the asp-b33 undercount). At `warn` every crate compiles, so
+//! every crate — and every crate downstream of it — is checked and reports.
+//! Second, cargo CACHES a unit's warnings and REPLAYS them (verbatim, in
+//! the JSON stream) on a later run when the unit is unchanged; it does NOT
+//! replay a build error. So at `warn` a warm or already-checked target dir
+//! re-emits exactly the same diagnostics a cold one does, and the gate's
+//! counts are identical across cold, warm and repeated runs. The gate no
+//! longer trusts clippy's emitted level for blocking: it assigns each
+//! forced lint its OWN severity (see [`FORCED_LINTS`]).
 
 use std::path::Path;
 use std::process::Command;
 
 use crate::Finding;
 
-/// The clippy lints the gate forces on, the level it forces them to, and
-/// the ASP id each reports as. Every lint the gate forces is at `deny`, so
-/// every one reports as `error` (blocking).
-const FORCED_LINTS: &[(&str, &str, &str)] = &[
-    ("clippy::too_many_lines", "deny", "ASP201"),
-    ("clippy::unwrap_used", "deny", "ASP301"),
-    ("clippy::expect_used", "deny", "ASP301"),
-    ("clippy::panic", "deny", "ASP301"),
-    ("clippy::redundant_closure", "deny", "ASP403"),
+/// The clippy lints the gate forces on, whether a hit BLOCKS the run, and
+/// the ASP id each reports as. Every forced lint is enabled at `warn` on
+/// the command line (so no crate fails to build and cargo can cache and
+/// replay the diagnostic — see the module docs); the `blocking` column is
+/// the gate's OWN severity for the rule, independent of the `warning` level
+/// clippy then emits. All five clippy-backed rules block.
+const FORCED_LINTS: &[(&str, bool, &str)] = &[
+    ("clippy::too_many_lines", true, "ASP201"),
+    ("clippy::unwrap_used", true, "ASP301"),
+    ("clippy::expect_used", true, "ASP301"),
+    ("clippy::panic", true, "ASP301"),
+    ("clippy::redundant_closure", true, "ASP403"),
     // ASP303: a fallible `Result` swallowed into a success sentinel. Both
     // the `let _ = <Result>` discard (clippy::let_underscore_must_use) and
     // a bare must-use `Result` expression statement (rustc's
     // unused_must_use) drop the error before a caller can observe it.
-    // Forced to `deny` so the discard is blocking, not a warning.
-    ("clippy::let_underscore_must_use", "deny", "ASP303"),
-    ("unused_must_use", "deny", "ASP303"),
+    // Blocking so the discard fails the run, not merely warns.
+    ("clippy::let_underscore_must_use", true, "ASP303"),
+    ("unused_must_use", true, "ASP303"),
     // ASP413 (FsmEnumDispatchExhaustive): a `_` wildcard arm over an
     // enum-typed match defeats the compiler's exhaustiveness check — adding
     // a variant later silently falls through instead of failing to compile.
-    // Forced to `deny` so enum dispatch must list its variants.
-    ("clippy::wildcard_enum_match_arm", "deny", "ASP413"),
+    // Blocking so enum dispatch must list its variants.
+    ("clippy::wildcard_enum_match_arm", true, "ASP413"),
 ];
 
 /// Run `cargo clippy` over `workspace_dir` with the forced lints above, and
@@ -38,6 +57,11 @@ const FORCED_LINTS: &[(&str, &str, &str)] = &[
 /// ids. An `Err` means `cargo clippy` itself could not run (e.g. the
 /// directory holds no `Cargo.toml`); a clippy diagnostic is always
 /// reported as a `Finding`, never as an `Err`.
+///
+/// Every forced lint is passed at `-W` (warn): a warned lint never fails a
+/// crate's build, so cargo checks the whole workspace and caches+replays
+/// each unit's diagnostics, making the finding set identical on a cold,
+/// warm or repeated target dir (see the module docs).
 pub fn clippy_findings(workspace_dir: &Path) -> Result<Vec<Finding>, String> {
     let mut args = vec![
         "clippy".to_string(),
@@ -45,8 +69,8 @@ pub fn clippy_findings(workspace_dir: &Path) -> Result<Vec<Finding>, String> {
         "--message-format=json".to_string(),
         "--".to_string(),
     ];
-    for (lint, level, _) in FORCED_LINTS {
-        args.push(format!("-{}", cap_flag(level)));
+    for (lint, _, _) in FORCED_LINTS {
+        args.push("-W".to_string());
         args.push((*lint).to_string());
     }
     let output = Command::new("cargo")
@@ -58,26 +82,23 @@ pub fn clippy_findings(workspace_dir: &Path) -> Result<Vec<Finding>, String> {
     Ok(parse_messages(&stdout))
 }
 
-fn cap_flag(level: &str) -> &'static str {
-    if level == "deny" {
-        "D"
-    } else {
-        "W"
-    }
-}
-
-fn lint_to_asp(code: &str) -> Option<&'static str> {
+/// The ASP id and gate-assigned blocking severity for a clippy lint code,
+/// or `None` when the gate does not force that lint. The severity is the
+/// gate's own (the [`FORCED_LINTS`] `blocking` column), NOT the `warning`
+/// level clippy emits under `-W`.
+fn lint_to_finding(code: &str) -> Option<(&'static str, bool)> {
     FORCED_LINTS
         .iter()
         .find(|(lint, _, _)| *lint == code)
-        .map(|(_, _, asp)| *asp)
+        .map(|(_, blocking, asp)| (*asp, *blocking))
 }
 
 /// Parse cargo's `--message-format=json` stream (one JSON object per
 /// stdout line) into findings for the lints this gate forces on. Any other
 /// diagnostic — a compiler warning, a clippy lint this gate does not
 /// force — is not this gate's concern and is skipped; it is never reported
-/// under an ASP id it does not own.
+/// under an ASP id it does not own. A forced lint's blocking severity is
+/// the gate's own, not the `warning` level clippy emits it at under `-W`.
 fn parse_messages(stdout: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
     for line in stdout.lines() {
@@ -97,10 +118,9 @@ fn parse_messages(stdout: &str) -> Vec<Finding> {
         else {
             continue;
         };
-        let Some(rule_id) = lint_to_asp(code) else {
+        let Some((rule_id, blocking)) = lint_to_finding(code) else {
             continue;
         };
-        let blocking = message.get("level").and_then(|l| l.as_str()) == Some("error");
         let Some(spans) = message.get("spans").and_then(|s| s.as_array()) else {
             continue;
         };
@@ -131,8 +151,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_forced_lint_maps_to_its_asp_id_and_blocking_level() {
-        let line = r#"{"reason":"compiler-message","message":{"code":{"code":"clippy::unwrap_used"},"level":"error","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":3}]}}"#;
+    fn a_warned_forced_lint_still_blocks_under_its_gate_severity() {
+        // Under `-W` clippy emits the lint at `warning`, yet the gate
+        // assigns ASP301 its own blocking severity — the finding still
+        // blocks, decoupled from clippy's emitted level.
+        let line = r#"{"reason":"compiler-message","message":{"code":{"code":"clippy::unwrap_used"},"level":"warning","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":3}]}}"#;
         let findings = parse_messages(line);
         assert_eq!(
             findings,
@@ -148,9 +171,10 @@ mod tests {
     #[test]
     fn both_must_use_discards_map_to_asp303() {
         // The clippy `let _ =` discard and rustc's bare-statement
-        // unused_must_use both surface as ASP303, both blocking.
-        let clippy_discard = r#"{"reason":"compiler-message","message":{"code":{"code":"clippy::let_underscore_must_use"},"level":"error","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":7}]}}"#;
-        let bare_discard = r#"{"reason":"compiler-message","message":{"code":{"code":"unused_must_use"},"level":"error","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":11}]}}"#;
+        // unused_must_use both surface as ASP303, both blocking, even though
+        // `-W` emits them at `warning` level.
+        let clippy_discard = r#"{"reason":"compiler-message","message":{"code":{"code":"clippy::let_underscore_must_use"},"level":"warning","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":7}]}}"#;
+        let bare_discard = r#"{"reason":"compiler-message","message":{"code":{"code":"unused_must_use"},"level":"warning","spans":[{"is_primary":true,"file_name":"src/lib.rs","line_start":11}]}}"#;
         assert_eq!(
             parse_messages(&format!("{clippy_discard}\n{bare_discard}")),
             vec![

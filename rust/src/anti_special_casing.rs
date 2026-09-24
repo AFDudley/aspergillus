@@ -72,6 +72,22 @@ pub fn anti_special_casing_findings(source: &str) -> Vec<(usize, &'static str, b
     findings
 }
 
+/// Whether the 1-based source `line` sits inside a `#[test]` function or a
+/// `#[cfg(test)]` module — the test seam. The gate uses this to exempt a
+/// clippy-backed finding (ASP201/301/303/403/413) reported at a test-scope
+/// line, mirroring the `#[cfg(test)]`/`#[test]` exemption these AST analyzers
+/// already apply per node (and the gate's `is_test_path` exemption for a
+/// `tests/`-directory file). Over-matching only SUPPRESSES a finding, never
+/// adds one, so an ambiguous parse stays a conservative false negative.
+pub fn line_in_test_scope(source: &str, line: usize) -> bool {
+    let root = SupportLang::Rust.ast_grep(source);
+    let target = line.saturating_sub(1);
+    let found = root.root().dfs().any(|node| {
+        node.start_pos().line() <= target && target <= node.end_pos().line() && in_test_scope(&node)
+    });
+    found
+}
+
 /// Detector A: `if <a> == <specific literal>` whose consequence yields a
 /// specific literal constant.
 fn is_hardcoded_answer_branch<D: Doc>(if_expr: &Node<'_, D>) -> bool {
@@ -273,6 +289,25 @@ mod tests {
             .into_iter()
             .map(|(line, _, _)| line)
             .collect()
+    }
+
+    #[test]
+    fn line_in_test_scope_spots_cfg_test_module_and_test_fn_bodies() {
+        // A `#[cfg(test)]` module: every line of its body is test scope, the
+        // lines outside it are not.
+        let cfg = "pub fn prod() -> u32 {\n    0\n}\n#[cfg(test)]\nmod tests {\n    fn helper() {\n        let _ = prod();\n    }\n}\n";
+        assert!(!line_in_test_scope(cfg, 2), "prod() body is production");
+        assert!(
+            line_in_test_scope(cfg, 7),
+            "the `let _ =` is inside #[cfg(test)]"
+        );
+        // A `#[test]` function directly (no enclosing test module).
+        let attr = "#[test]\nfn checks() {\n    let _ = maybe();\n}\nfn maybe() -> Result<(), ()> {\n    Ok(())\n}\n";
+        assert!(line_in_test_scope(attr, 3), "inside the #[test] fn");
+        assert!(
+            !line_in_test_scope(attr, 6),
+            "the production fn below is not"
+        );
     }
 
     #[test]
