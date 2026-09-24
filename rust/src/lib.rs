@@ -14,6 +14,7 @@ pub mod clippy;
 pub mod core_declaration;
 pub mod duplicate_types;
 pub mod duplicates;
+pub mod fsm;
 pub mod in_process_e2e;
 pub mod loops;
 pub mod purity;

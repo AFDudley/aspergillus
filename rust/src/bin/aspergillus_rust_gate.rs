@@ -16,7 +16,7 @@ use aspergillus_rust_gate::core_declaration::{
 };
 use aspergillus_rust_gate::workspace::{build_excludes, rust_source_files, take_excludes};
 use aspergillus_rust_gate::{
-    anti_special_casing, clippy, exit_status, in_process_e2e, loops, purity, shell_to_self,
+    anti_special_casing, clippy, exit_status, fsm, in_process_e2e, loops, purity, shell_to_self,
     source_findings, tupling, worker_wrapper, Finding,
 };
 
@@ -318,6 +318,26 @@ fn scan_workspace(
                 rule_id: rule_id.to_string(),
                 blocking,
             });
+        }
+        // ASP411/414/416 (FSM family) are structural implementation-code
+        // findings — a match with redundant arm bodies, a stringly-typed
+        // dispatch shadowing a same-file enum, or a validate-not-parse
+        // function signature — not core-scoped. A `tests/` path is exempt
+        // (fixtures and helpers, not production dispatch), matching the
+        // other structural detectors above.
+        if !is_test_path(relative) {
+            for (line, rule_id, blocking) in fsm::fsm_redundant_branch_findings(&source)
+                .into_iter()
+                .chain(fsm::fsm_stringly_dispatch_findings(&source))
+                .chain(fsm::fsm_validate_not_parse_findings(&source))
+            {
+                findings.push(Finding {
+                    path: shown.clone(),
+                    line,
+                    rule_id: rule_id.to_string(),
+                    blocking,
+                });
+            }
         }
         let is_core = core_declaration.is_core(relative);
         // ASP202 (assertion density) is scoped to the imperative shell: a

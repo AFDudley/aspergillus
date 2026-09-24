@@ -26,6 +26,11 @@ const FORCED_LINTS: &[(&str, &str, &str)] = &[
     // Forced to `deny` so the discard is blocking, not a warning.
     ("clippy::let_underscore_must_use", "deny", "ASP303"),
     ("unused_must_use", "deny", "ASP303"),
+    // ASP413 (FsmEnumDispatchExhaustive): a `_` wildcard arm over an
+    // enum-typed match defeats the compiler's exhaustiveness check — adding
+    // a variant later silently falls through instead of failing to compile.
+    // Forced to `deny` so enum dispatch must list its variants.
+    ("clippy::wildcard_enum_match_arm", "deny", "ASP413"),
 ];
 
 /// Run `cargo clippy` over `workspace_dir` with the forced lints above, and
