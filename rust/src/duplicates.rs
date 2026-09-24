@@ -28,6 +28,15 @@ pub const RULE_ID: &str = "ASP501";
 /// reference's `_NAME_PLACEHOLDER`.
 const IDENTIFIER_PLACEHOLDER: &str = "_ID";
 
+/// The type-ERASED normalization additionally collapses every distinguishing
+/// TYPE or constructor name - a kept-exact identifier or `type_identifier`
+/// that is UpperCamelCase by Rust convention - to this placeholder. Two
+/// functions whose only difference is the newtype they construct (e.g.
+/// `InstructionCount::new` vs `LookupCount::new`) then normalize identically
+/// under type erasure while staying distinct under the exact normalization -
+/// the signature of a parallel typed variant, not a copied block.
+const TYPE_PLACEHOLDER: &str = "_TYPE";
+
 /// The default minimum line span a whole function or a duplicated statement
 /// window must cover to be reported - the shell's `--min-lines` floor, kept
 /// here so both the whole-body and the spine paths share one meaning.
@@ -45,6 +54,24 @@ pub const DEFAULT_MIN_STATEMENTS: usize = 3;
 /// distinct spines collide.
 const STATEMENT_SEPARATOR: char = '\u{0}';
 
+/// The idiomatic ROLE a top-level statement plays, insofar as the spine
+/// pass cares. Only the three shapes of the guard/copy/sort preamble are
+/// distinguished; every other statement is `Other`. A window that is
+/// exactly `[EarlyReturnGuard, SliceCopy, Sort]` is the common
+/// "bail-if-empty, take a sorted copy" idiom two analytics routines share
+/// by coincidence, never a deliberately copied block worth one helper.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StatementRole {
+    /// `if <cond> { return <expr>; }` with no `else` - an early-return guard.
+    EarlyReturnGuard,
+    /// `let <pat> = <expr>.to_vec();` - a defensive slice copy.
+    SliceCopy,
+    /// `<expr>.sort...(...);` - an in-place sort.
+    Sort,
+    /// Any statement the preamble idiom does not name.
+    Other,
+}
+
 /// One top-level statement of a function body, rendered under the same
 /// type-2 normalization the whole-body signature uses, with its source
 /// span. The `text` sequence across a function is its statement SPINE - the
@@ -53,6 +80,8 @@ const STATEMENT_SEPARATOR: char = '\u{0}';
 pub struct NormalizedStatement {
     /// The statement's type-2 normalized text.
     pub text: String,
+    /// The idiomatic role this statement plays in a shared preamble.
+    pub role: StatementRole,
     /// The 1-based line the statement starts on.
     pub start_line: usize,
     /// The 1-based line the statement ends on.
@@ -71,6 +100,12 @@ pub struct FunctionOccurrence {
     pub n_lines: usize,
     /// The function's whole normalized text (signature and body).
     pub normalized_body: String,
+    /// The function's whole text under TYPE-ERASED normalization: as
+    /// `normalized_body`, but with every UpperCamelCase type/constructor
+    /// name collapsed too. Two occurrences sharing this string differ only
+    /// in the types they name - parallel typed variants, whose shared spine
+    /// windows a single helper could not hoist without erasing a newtype.
+    pub type_erased_body: String,
     /// The function's top-level body statements, each type-2 normalized,
     /// in source order - the spine the fragment detector slides over.
     pub statements: Vec<NormalizedStatement>,
@@ -131,26 +166,162 @@ fn mark_name_path(node: &RNode<'_>, protected: &mut HashSet<usize>) {
 /// while every other token - literals, keywords, punctuation, type
 /// names, field names, and callee/macro names - stays exact.
 fn normalize(node: &RNode<'_>) -> String {
+    render_normalized(node, false)
+}
+
+/// Renders `node` under TYPE-ERASED normalization: as `normalize`, but
+/// every kept-exact UpperCamelCase token - a type name, enum/struct
+/// constructor, or `Self` - collapses to `_TYPE` as well. Two functions
+/// that differ only in the newtype they construct share this rendering yet
+/// stay distinct under `normalize`.
+fn normalize_type_erased(node: &RNode<'_>) -> String {
+    render_normalized(node, true)
+}
+
+fn render_normalized(node: &RNode<'_>, erase_types: bool) -> String {
     let mut protected = HashSet::new();
     mark_callee_identifiers(node, &mut protected);
     let mut tokens = Vec::new();
-    render(node, &protected, &mut tokens);
+    render(node, &protected, erase_types, &mut tokens);
     tokens.join(" ")
 }
 
-fn render(node: &RNode<'_>, protected: &HashSet<usize>, tokens: &mut Vec<String>) {
+/// Whether a kept-exact token names a type or constructor: a
+/// `type_identifier` leaf, or any token whose first character is an ASCII
+/// uppercase letter (Rust's UpperCamelCase convention for types, enum
+/// variants, and struct constructors). Variable-position identifiers have
+/// already collapsed to `_ID` before this is consulted, and `SCREAMING`
+/// consts render as `_ID` too, so only genuine type/constructor names reach
+/// the uppercase test.
+fn is_type_token(node: &RNode<'_>, text: &str) -> bool {
+    node.kind().as_ref() == "type_identifier"
+        || text.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+}
+
+fn render(
+    node: &RNode<'_>,
+    protected: &HashSet<usize>,
+    erase_types: bool,
+    tokens: &mut Vec<String>,
+) {
     if is_leaf(node) {
         let piece = if node.kind().as_ref() == "identifier" && !protected.contains(&node.node_id())
         {
             IDENTIFIER_PLACEHOLDER.to_string()
         } else {
-            node.text().into_owned()
+            let text = node.text();
+            if erase_types && is_type_token(node, &text) {
+                TYPE_PLACEHOLDER.to_string()
+            } else {
+                text.into_owned()
+            }
         };
         tokens.push(piece);
         return;
     }
     for child in node.children() {
-        render(&child, protected, tokens);
+        render(&child, protected, erase_types, tokens);
+    }
+}
+
+/// The inner expression of an `expression_statement`, or `node` itself when
+/// it is not one. The trailing `;` and any comments are skipped.
+fn statement_expression<'r>(node: &RNode<'r>) -> Option<RNode<'r>> {
+    if node.kind().as_ref() == "expression_statement" {
+        node.children().find(|child| {
+            !matches!(
+                child.kind().as_ref(),
+                ";" | "line_comment" | "block_comment"
+            )
+        })
+    } else {
+        Some(node.clone())
+    }
+}
+
+/// Whether `expr` is a method call `<receiver>.<name>(...)` whose method
+/// name is one of `names`.
+fn is_method_call(expr: &RNode<'_>, names: &[&str]) -> bool {
+    if expr.kind().as_ref() != "call_expression" {
+        return false;
+    }
+    let Some(function) = expr.field("function") else {
+        return false;
+    };
+    if function.kind().as_ref() != "field_expression" {
+        return false;
+    }
+    function.field("field").is_some_and(|field| {
+        field.kind().as_ref() == "field_identifier" && names.contains(&field.text().as_ref())
+    })
+}
+
+/// Whether `node` is `if <cond> { return <expr>; }` with no `else` - an
+/// early-return guard whose sole effect is to bail out.
+fn is_early_return_guard(node: &RNode<'_>) -> bool {
+    let Some(expr) = statement_expression(node) else {
+        return false;
+    };
+    if expr.kind().as_ref() != "if_expression" || expr.field("alternative").is_some() {
+        return false;
+    }
+    let Some(block) = expr.field("consequence") else {
+        return false;
+    };
+    let mut inner = block.children().filter(|child| {
+        !matches!(
+            child.kind().as_ref(),
+            "{" | "}" | "line_comment" | "block_comment"
+        )
+    });
+    let Some(only) = inner.next() else {
+        return false;
+    };
+    if inner.next().is_some() {
+        return false;
+    }
+    statement_expression(&only).is_some_and(|e| e.kind().as_ref() == "return_expression")
+}
+
+/// Whether `node` is `let <pat> = <expr>.to_vec();` - a defensive copy of a
+/// slice into an owned, sortable `Vec`.
+fn is_slice_copy(node: &RNode<'_>) -> bool {
+    node.kind().as_ref() == "let_declaration"
+        && node
+            .field("value")
+            .is_some_and(|value| is_method_call(&value, &["to_vec"]))
+}
+
+/// Whether `node` is an in-place sort call `<expr>.sort...(...);`.
+fn is_sort(node: &RNode<'_>) -> bool {
+    statement_expression(node).is_some_and(|expr| {
+        is_method_call(
+            &expr,
+            &[
+                "sort",
+                "sort_by",
+                "sort_unstable",
+                "sort_by_key",
+                "sort_unstable_by",
+                "sort_unstable_by_key",
+            ],
+        )
+    })
+}
+
+/// Classifies a top-level statement into the one preamble role it plays, or
+/// `Other`. Only the guard/copy/sort shapes are named; the sliding-window
+/// pass uses them to recognize the "bail-if-empty, take a sorted copy"
+/// idiom two routines share by coincidence.
+fn classify_statement(node: &RNode<'_>) -> StatementRole {
+    if is_early_return_guard(node) {
+        StatementRole::EarlyReturnGuard
+    } else if is_slice_copy(node) {
+        StatementRole::SliceCopy
+    } else if is_sort(node) {
+        StatementRole::Sort
+    } else {
+        StatementRole::Other
     }
 }
 
@@ -172,6 +343,7 @@ fn statement_spine(function: &RNode<'_>) -> Vec<NormalizedStatement> {
         })
         .map(|statement| NormalizedStatement {
             text: normalize(&statement),
+            role: classify_statement(&statement),
             start_line: statement.start_pos().line().saturating_add(1),
             end_line: statement.end_pos().line().saturating_add(1),
         })
@@ -200,6 +372,7 @@ pub fn function_occurrences(path: &str, source: &str, min_lines: usize) -> Vec<F
                 line: start,
                 n_lines,
                 normalized_body: normalize(&node),
+                type_erased_body: normalize_type_erased(&node),
                 statements: statement_spine(&node),
             })
         })
@@ -258,6 +431,20 @@ fn window_covered(covered: &[(usize, usize)], start: usize, end: usize) -> bool 
     covered.iter().any(|&(lo, hi)| lo <= start && end <= hi)
 }
 
+/// Whether `window` is exactly the guard/copy/sort preamble idiom:
+/// `if <empty> { return … }; let <v> = <slice>.to_vec(); <v>.sort…();`.
+/// This three-statement opener is shared by unrelated slice-statistics
+/// routines as convention, not as a deliberately copied block.
+fn is_sort_preamble_idiom(window: &[NormalizedStatement]) -> bool {
+    matches!(
+        window,
+        [guard, copy, sort]
+            if guard.role == StatementRole::EarlyReturnGuard
+                && copy.role == StatementRole::SliceCopy
+                && sort.role == StatementRole::Sort
+    )
+}
+
 /// Every duplicated statement-spine FRAGMENT across the scanned functions,
 /// as one blocking `Finding` per member at the window's first-statement
 /// line.
@@ -277,6 +464,15 @@ fn window_covered(covered: &[(usize, usize)], start: usize, end: usize) -> bool 
 /// `min_statements` statements long. Matches stay exact under type-2
 /// normalization (identifier renaming and literal values only), matching
 /// the whole-body equivalence, which keeps the fragment path as FP-averse.
+///
+/// Two further precision gates keep short coincidental spines from being
+/// reported as clones. A window shared only by PARALLEL TYPED VARIANTS -
+/// functions with one identical type-ERASED whole body, so their sole
+/// difference is the newtype they construct - is skipped: a single helper
+/// could not replace them without erasing that type. And a window that is
+/// exactly the guard/copy/sort PREAMBLE IDIOM (`if empty return; let v =
+/// s.to_vec(); v.sort…()`) is skipped: unrelated slice-statistics routines
+/// share it by convention, not by copying.
 fn fragment_findings(
     occurrences: &[FunctionOccurrence],
     min_lines: usize,
@@ -331,6 +527,29 @@ fn fragment_findings(
                 by_function.entry(index).or_insert(start);
             }
             if by_function.len() < 2 {
+                continue;
+            }
+            // Parallel typed variants: if every function sharing this window
+            // has the same TYPE-ERASED whole body, they differ only in the
+            // types they name (e.g. two `push` methods whose sole difference
+            // is the count newtype they construct). One helper could not
+            // replace them without erasing that newtype, so their shared
+            // spine is not a clone worth hoisting.
+            let (&rep_index, &rep_start) = by_function.iter().next().expect("len >= 2 checked");
+            let variant_signature = candidates[rep_index].type_erased_body.as_str();
+            if by_function
+                .keys()
+                .all(|&index| candidates[index].type_erased_body == variant_signature)
+            {
+                continue;
+            }
+            // Common preamble idiom: `if empty return; sorted = copy; sort`.
+            // Two analytics routines that compute unrelated statistics share
+            // this three-statement opener by coincidence; hoisting it needs a
+            // cross-module `sorted_copy` helper for three trivial lines.
+            if is_sort_preamble_idiom(
+                &candidates[rep_index].statements[rep_start..rep_start + length],
+            ) {
                 continue;
             }
             let n_lines = by_function
@@ -518,6 +737,7 @@ fn add_totals_tripled(first: i32, second: i32) -> i32 {
                 line: 3,
                 n_lines: 4,
                 normalized_body: "same".to_string(),
+                type_erased_body: "same".to_string(),
                 statements: Vec::new(),
             },
             FunctionOccurrence {
@@ -525,6 +745,7 @@ fn add_totals_tripled(first: i32, second: i32) -> i32 {
                 line: 7,
                 n_lines: 4,
                 normalized_body: "same".to_string(),
+                type_erased_body: "same".to_string(),
                 statements: Vec::new(),
             },
         ]];
@@ -656,5 +877,146 @@ fn sum_pair(left: i32, right: i32) -> i32 {
         // One finding per function, at the signature line - the whole-body
         // path only. The fragment path does not restate the same pair.
         assert_eq!(rendered, vec!["lib.rs:2: ASP501", "lib.rs:9: ASP501"]);
+    }
+
+    #[test]
+    fn parallel_typed_variants_differing_only_in_a_constructor_are_not_a_fragment() {
+        // Two `push` methods identical but for the count newtype each
+        // constructs; their shared four-statement spine is not a clone one
+        // helper could hoist without erasing that newtype.
+        let source = r#"
+fn push_a(&mut self, span: SpanA) -> Result<(), Refusal> {
+    let at = usize::from(self.count.get());
+    let slot = self.spans.get_mut(at).ok_or(Refusal::Full)?;
+    *slot = span;
+    let next = self
+        .count
+        .get()
+        .checked_add(1)
+        .ok_or(Refusal::Full)?;
+    self.count = CountA::new(next);
+    Ok(())
+}
+
+fn push_b(&mut self, span: SpanB) -> Result<(), Refusal> {
+    let at = usize::from(self.count.get());
+    let slot = self.spans.get_mut(at).ok_or(Refusal::Full)?;
+    *slot = span;
+    let next = self
+        .count
+        .get()
+        .checked_add(1)
+        .ok_or(Refusal::Full)?;
+    self.count = CountB::new(next);
+    Ok(())
+}
+"#;
+        let occurrences = occurrences_from(&[("wire.rs", source)]);
+        // The count newtypes differ, so there is no whole-body clone.
+        assert!(duplicate_groups(&occurrences).is_empty());
+        let findings = duplicate_findings(&occurrences, DEFAULT_MIN_LINES, DEFAULT_MIN_STATEMENTS);
+        assert_eq!(findings, Vec::new());
+    }
+
+    #[test]
+    fn a_genuine_four_statement_setup_shared_by_different_functions_still_fires() {
+        // The same window size and line span as the parallel-variant case,
+        // but the two functions genuinely diverge (distinct callees, not a
+        // type path), so their shared setup block is a real clone.
+        let left = r#"
+fn offline(path: &Path) -> Result<String, String> {
+    let observations = replay(path)?;
+    let mint = graduated_mint(path)?;
+    let mut simulator = simulator();
+    for observation in &observations {
+        simulator.observe(observation);
+    }
+    let valued = simulator.open_value().is_some();
+    Ok(format!("{valued}"))
+}
+"#;
+        let right = r#"
+fn entered(path: &Path) -> Result<u64, String> {
+    let observations = replay(path)?;
+    let mint = graduated_mint(path)?;
+    let mut simulator = simulator();
+    for observation in &observations {
+        simulator.observe(observation);
+    }
+    let leg = simulator.fill(mint)?;
+    Ok(leg.tokens())
+}
+"#;
+        let occurrences = occurrences_from(&[("a.rs", left), ("b.rs", right)]);
+        assert!(duplicate_groups(&occurrences).is_empty());
+        let findings = duplicate_findings(&occurrences, DEFAULT_MIN_LINES, DEFAULT_MIN_STATEMENTS);
+        let rendered: Vec<String> = findings.iter().map(Finding::render).collect();
+        assert_eq!(rendered, vec!["a.rs:3: ASP501", "b.rs:3: ASP501"]);
+    }
+
+    #[test]
+    fn the_guard_copy_sort_preamble_idiom_is_not_a_fragment() {
+        // Two analytics routines computing unrelated statistics share the
+        // `if empty return; sorted copy; sort` opener by convention.
+        let left = r#"
+fn stats(latencies: &[f64]) -> Option<Summary> {
+    if latencies.is_empty() {
+        return None;
+    }
+    let mut sorted = latencies.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    Some(Summary { count: sorted.len() })
+}
+"#;
+        let right = r#"
+fn median(returns: &[f64]) -> Option<f64> {
+    if returns.is_empty() {
+        return None;
+    }
+    let mut sorted = returns.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let n = sorted.len();
+    sorted.get(n / 2).copied()
+}
+"#;
+        let occurrences = occurrences_from(&[("summary.rs", left), ("stat.rs", right)]);
+        assert!(duplicate_groups(&occurrences).is_empty());
+        let findings = duplicate_findings(&occurrences, DEFAULT_MIN_LINES, DEFAULT_MIN_STATEMENTS);
+        assert_eq!(findings, Vec::new());
+    }
+
+    #[test]
+    fn a_six_statement_copied_block_in_otherwise_different_functions_still_fires() {
+        // A copied run this long inside two otherwise-different functions is
+        // deliberate reuse: neither precision gate applies, so it fires.
+        let left = r#"
+fn ingest(rows: &[Row]) -> Report {
+    let head = first_marker();
+    let mut acc = 0u64;
+    let scale = load_scale();
+    let width = rows.len() as u64;
+    let total = acc + width;
+    let scaled = total * scale;
+    let adjusted = scaled + head;
+    Report::new(adjusted)
+}
+"#;
+        let right = r#"
+fn summarize(cells: &[Cell]) -> Summary {
+    let extra = other_source();
+    let mut acc = 0u64;
+    let scale = load_scale();
+    let width = cells.len() as u64;
+    let total = acc + width;
+    let scaled = total * scale;
+    let adjusted = scaled + extra;
+    finalize(adjusted)
+}
+"#;
+        let occurrences = occurrences_from(&[("left.rs", left), ("right.rs", right)]);
+        assert!(duplicate_groups(&occurrences).is_empty());
+        let findings = duplicate_findings(&occurrences, DEFAULT_MIN_LINES, DEFAULT_MIN_STATEMENTS);
+        let rendered: Vec<String> = findings.iter().map(Finding::render).collect();
+        assert_eq!(rendered, vec!["left.rs:4: ASP501", "right.rs:4: ASP501"]);
     }
 }
