@@ -30,8 +30,8 @@ spec_dir: "contracts/specs"
 # today; the extra tiers/rows activate for free once specs commit a difficulty_class.
 worker_model:
   tiers:
-    default: "sonnet"
-    frontier: "opus"
+    default: "claude-sonnet-5"
+    frontier: "claude-opus-5"
   routing:
     default: default
 
