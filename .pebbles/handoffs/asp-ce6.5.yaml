@@ -1,0 +1,34 @@
+status: completed
+pebble_id: asp-ce6.5
+summary: >
+  Filled the Rust column of docs/design.md for every Level 2 rule (ASP201-206),
+  every Level 3 rule (ASP301-304), all fifteen ASP4xx catalog rules (ASP401-404,
+  ASP406-414, ASP416-417), and the Whole-project CLI tools section, so no entry
+  reads Manual, planned, or Module structure. Each entry names one concrete
+  check: a clippy lint, an ast-grep YAML rule path under rust/ast-grep-rules/,
+  a whole-workspace cargo command, the Rust language feature that already
+  enforces the rule, or the stated reason the rule does not apply to Rust.
+  Grounded every entry in the real Rust gate, purity checks, and
+  duplicate-function/duplicate-type checkers already committed on sibling
+  branches worker/asp-ce6-1 through worker/asp-ce6-4 (rust/src/purity.rs,
+  rust/ast-grep-rules/asp203-no-static-mut.yml,
+  rust/ast-grep-rules/asp204-no-infinite-loop.yml, rust/src/duplicates.rs,
+  rust/src/duplicate_types.rs) rather than inventing checks that do not exist.
+  Left the Python and TypeScript columns untouched. Verified by running each
+  of the spec's nine grep/grep_absent acceptance tests as a Python regex
+  script against the finished docs/design.md (all nine pass) and by running
+  pre-commit (prettier reformatted the tables; a second run passed clean).
+cost: "~90k tokens"
+commits:
+  - "747f64a32b0451fc2fe28a79c7f23afe3483b0e6"
+verify_transcript:
+  hooks:
+    - name: pre-commit
+      outcome: passed
+      duration_s: 3
+e2e_exempt:
+  category: docs
+  reason: >
+    Documentation-only change naming the Rust enforcement for existing
+    rule rows; acceptance is nine grep/grep_absent checks over
+    docs/design.md, not a runnable behavior to drive outside-in.

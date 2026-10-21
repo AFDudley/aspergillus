@@ -1,0 +1,41 @@
+{
+  "id": "asp-2d6.3",
+  "goal": "ASP203 has a committed violating+satisfying fixture pair the gate enforces.",
+  "acceptance_criteria": [
+    "ASP203 violating fixture is committed",
+    "ASP203 satisfying fixture is committed",
+    "the gate fires ASP203 on its violating fixture and exits 1",
+    "the gate is silent for ASP203 on its satisfying fixture and exits 0"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP203 violating fixture is committed",
+      "path": "rust/fixtures/ASP203/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP203 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP203/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP203 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP203",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP203 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP203",
+        "satisfying"
+      ]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. This spec pins that the rule(s) named in the goal are enforced (blocking, with committed violating/satisfying fixtures) or documented as not-applicable in docs/design.md, graded deterministically against the integration branch."
+}

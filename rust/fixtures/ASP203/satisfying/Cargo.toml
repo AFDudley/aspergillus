@@ -1,0 +1,4 @@
+[package]
+name = "asp203-satisfying"
+version = "0.1.0"
+edition = "2021"

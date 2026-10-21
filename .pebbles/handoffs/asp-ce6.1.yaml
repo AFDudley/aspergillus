@@ -1,0 +1,90 @@
+status: completed
+pebble_id: asp-ce6.1
+summary: >
+  Added the aspergillus-rust-gate crate under rust/. It loads the
+  declarative ast-grep rules under rust/ast-grep-rules/ (ASP203
+  no-static-mut, severity error; ASP204 no-infinite-loop, severity
+  warning) with the published ast-grep-core, ast-grep-config and
+  ast-grep-language 0.40.0 libraries — the same version and libraries
+  lobaria already runs, no ast-grep CLI, no Node runtime. It also runs
+  the reference clippy lints (too_many_lines, unwrap_used, expect_used,
+  panic) as a cargo subprocess and maps each lint code to an ASP id. A
+  finding blocks the run exactly when the underlying tool reports it at
+  error level: an ast-grep rule with severity error, or a clippy lint
+  the gate forces to deny (unwrap_used, expect_used, panic); too_many_lines
+  stays forced at warn, matching the existing severity-flip workflow in
+  rust/configs/cargo-lints.toml. Every finding prints as
+  `path:line: ASPnnn`. The gate reads only; it writes no file in the
+  scanned workspace. No dylint dependency anywhere in rust/. Verified by
+  building the crate offline against the cached registry (rustc 1.88,
+  ast-grep 0.40.0, tree-sitter 0.25.10 pinned to match lobaria's
+  toolchain constraint), running its 5 unit tests, running
+  `cargo clippy -D warnings` and `cargo fmt --check` clean on the crate
+  itself, and writing 8 scripts/oracles/*.sh probes that build the real
+  binary and drive it over throwaway fixture Cargo workspaces: a clean
+  fixture (0 findings, exit 0), a fixture with a static mut and an
+  unwrap (2 blocking findings, exit 1), a clippy-only fixture (a
+  .expect() call, 1 finding with no ast-grep rule involved), a PATH with
+  python/python3/node/npm/npx directories stripped (gate still finds and
+  reports), and a source-hash-before/after check (no file changed). A
+  9th probe (python_and_typescript_rules_still_pass.sh) confirms the
+  existing Python suite (310 passed, 0 failed) and TypeScript suite (60
+  passed, 0 failed) are unaffected. All 12 of the linked spec's
+  acceptance tests were checked directly: the 8 behavior probes above,
+  plus the 4 static checks (rust/ast-grep-rules/ exists; both rule files
+  carry a top-level `rule:` key; no file under rust/ mentions dylint;
+  rust/Cargo.toml names all three ast-grep libraries at exactly 0.40.0).
+  Two new source directories (rust/src/, rust/src/bin/, and
+  scripts/oracles/) each carry a CLAUDE.md per the repo's
+  claude-md-coverage pre-commit hook; rust/ast-grep-rules/ holds only
+  YAML and is exempt from that hook. docs/design.md is untouched —
+  its Rust column's ASP202/ASP205/ASP206 entries and the duplicate-type
+  check are out of this pebble's restatement clauses and spec, and are
+  left to the sibling decomposed pebbles that own them.
+cost: ~120k tokens
+commits:
+  - "7eb7913709a4238d96a5af19cfe7d1e3f1989753"
+verify_transcript:
+  hooks:
+    - name: claude-md-coverage
+      outcome: passed
+      duration_s: 0.2
+    - name: trailing-whitespace
+      outcome: passed
+      duration_s: 0.1
+    - name: end-of-file-fixer
+      outcome: passed
+      duration_s: 0.1
+    - name: check-yaml
+      outcome: passed
+      duration_s: 0.1
+    - name: check-added-large-files
+      outcome: passed
+      duration_s: 0.1
+    - name: check-merge-conflict
+      outcome: passed
+      duration_s: 0.1
+    - name: check-case-conflict
+      outcome: passed
+      duration_s: 0.1
+    - name: mixed-line-ending
+      outcome: passed
+      duration_s: 0.1
+    - name: eslint
+      outcome: skipped
+      duration_s: 0.0
+    - name: prettier
+      outcome: passed
+      duration_s: 1.0
+e2e_gate:
+  spec: contracts/specs/derived-asp-ce6.1.spec.json
+  command: >-
+    for s in rust_gate_runs_over_cargo_workspace rust_gate_finding_line_format
+    rust_gate_blocking_finding_fails_run rust_gate_clean_workspace_passes
+    rust_gate_runs_without_python_or_node rust_gate_reports_clippy_findings
+    rust_gate_does_not_modify_sources; do bash scripts/oracles/$s.sh
+    --report-json; done && bash
+    scripts/oracles/python_and_typescript_rules_still_pass.sh --report-json
+  result: passed
+  ran_at_sha: "7eb7913709a4238d96a5af19cfe7d1e3f1989753"
+  mocks_in_path: false

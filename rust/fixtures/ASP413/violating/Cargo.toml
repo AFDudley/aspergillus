@@ -1,0 +1,8 @@
+[package]
+name = "asp413-violating"
+version = "0.1.0"
+edition = "2021"
+
+# Own workspace root so cargo clippy runs standalone when the fixture is
+# nested inside the gate crate's workspace.
+[workspace]
