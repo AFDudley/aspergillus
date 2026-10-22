@@ -1,0 +1,62 @@
+name: Integrate
+
+# The reducer (exophiald) advances `integrated`. This fast-forwards `main`
+# onto it. Adapted from exophial's own ff-main-from-integrated.yml: that
+# workflow pushes with a deploy key because exophial's own `main` carries a
+# ruleset that blocks GITHUB_TOKEN. aspergillus's `main` carries no branch
+# protection and no ruleset (checked with `gh api repos/AFDudley/aspergillus/
+# branches/main/protection` and `.../rulesets`, both empty), so the default
+# GITHUB_TOKEN can push it directly. No release job: aspergillus does not
+# publish a wheel/release from this push.
+
+on:
+  push:
+    branches:
+      - integrated
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fast-forward:
+    runs-on: ubuntu-latest
+    concurrency:
+      # One fast-forward at a time; a queued run would race the ref it advances.
+      group: ff-main
+      cancel-in-progress: false
+    outputs:
+      sha: ${{ steps.ff.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fast-forward main onto integrated
+        id: ff
+        run: |
+          set -euo pipefail
+          git fetch origin main integrated
+
+          INTEGRATED=$(git rev-parse origin/integrated)
+          MAIN=$(git rev-parse origin/main)
+          echo "integrated = ${INTEGRATED}"
+          echo "main       = ${MAIN}"
+          echo "sha=${INTEGRATED}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${INTEGRATED}" = "${MAIN}" ]; then
+            echo "Already equal; nothing to fast-forward."
+            exit 0
+          fi
+
+          # Checked explicitly so the failure names the real problem rather than
+          # surfacing as a bare push rejection.
+          if ! git merge-base --is-ancestor "${MAIN}" "${INTEGRATED}"; then
+            echo "::error::main (${MAIN}) is NOT an ancestor of integrated (${INTEGRATED})."
+            echo "::error::Someone wrote to main directly. Refusing to merge or force."
+            exit 1
+          fi
+
+          git push origin "${INTEGRATED}:refs/heads/main"
+          echo "main fast-forwarded to ${INTEGRATED}"
