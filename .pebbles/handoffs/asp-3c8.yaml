@@ -28,71 +28,89 @@ summary: >
   import/order error (init.ts imported ./layouts.js after ./wrappers.js).
 
   A first gate run after that fix failed all four behavior clauses with
-  exit_code=127. Diagnosis found the real cause: the exophial gate re-runs
-  acceptance oracles in a child process with a hermetic PATH built from an
-  explicit toolchain allowlist (ansible/dependencies.yml
-  oracle_toolchain_binaries: uv, git, bash, sh, pb, check-jsonschema,
-  pre-commit, claude, bun). node, npm, and npx are not on that list and live
-  under ~/.nvm, a directory none of the allowed binaries resolve through, so
-  they are absent from the oracle's PATH even though they are on the host's
-  interactive PATH — the hooks (invoked via node_modules/.bin/eslint's
-  `#!/usr/bin/env node` shebang) and scripts/verify_precommit_manual.sh's
-  `npm install` bootstrap both depended on a binary the gate cannot see.
-  bun is on the allowlist and is a standalone JS runtime, not a node
-  wrapper, so it does not need node present to run a package's binaries.
-  Changed both hook entries to `bun node_modules/.bin/eslint ...` / `bun
-  node_modules/.bin/prettier ...`, and changed the verify script's bootstrap
-  to `bun install --frozen-lockfile --ignore-scripts` (ignore-scripts avoids
-  triggering the root package's `prepare` script, which itself shells out
-  to node to build the unrelated aspergillus-ts CLI — not needed for
-  linting). Replaced package-lock.json with a committed bun.lock at the
-  repo root, matching the lockfile convention typescript/cli and
-  typescript/rules already use.
+  exit_code=127. Diagnosis found the gate re-runs acceptance oracles in a
+  child process with a hermetic PATH built from an explicit toolchain
+  allowlist (ansible/dependencies.yml oracle_toolchain_binaries); node, npm,
+  and npx were not on it and live under ~/.nvm, so the eslint/prettier hook
+  entries (invoked via node_modules/.bin/eslint's node shebang) and
+  scripts/verify_precommit_manual.sh's `npm install` bootstrap both
+  depended on a binary the gate could not see, even though both worked when
+  run by hand. bun was already on the allowlist and is a standalone JS
+  runtime, not a node wrapper, so it does not need node present to run a
+  package's binaries. Changed both hook entries to `bun
+  node_modules/.bin/eslint ...` / `bun node_modules/.bin/prettier ...`,
+  changed the verify script's bootstrap to `bun install --frozen-lockfile
+  --ignore-scripts`, and replaced package-lock.json with a committed
+  bun.lock at the repo root (matching the lockfile convention
+  typescript/cli and typescript/rules already use).
 
-  Verified by running scripts/verify_precommit_manual.sh in all four modes
-  twice: once normally, and once with
-  `env -i HOME="$HOME" PATH=/usr/bin:~/.local/bin:~/.bun/bin bash
-  scripts/verify_precommit_manual.sh <mode>` — a PATH containing only the
-  directories the toolchain allowlist's binaries actually resolve through,
-  with node, npm, and npx entirely absent. Both runs pass identically:
+  A second gate run still failed, now with exit_code=1 instead of 127.
+  Diagnosis (by the integrating/dispatching side, recorded on the pebble
+  bus) found a second, independent oracle-environment gap: pre-commit's own
+  Python package is a `pip install --user` under
+  ~/.local/lib/python3.12/site-packages, which is HOME-relative — the
+  oracle child's scratch HOME hid it, so `pre-commit` itself crashed with
+  ModuleNotFoundError on every invocation inside the gate, regardless of
+  which tool the hooks themselves used. (The earlier bun-based fix was
+  necessary but not sufficient — c8/c9's bare nonzero-exit assertions
+  passed vacuously against this crash, while c1/c6's exit_code==0 and
+  prettier_exit_code==0 assertions correctly caught it.) Separately, the
+  four exophial-vendored local hooks (exophial-check-claude-md,
+  exophial-check-subtree-edits, exophial-reroute-main-commit,
+  exophial-session-trailer) are console scripts under ~/.local/bin, also
+  not on the oracle's toolchain allowlist. Both gaps were closed at the
+  exophial dispatch level (not an aspergillus-repo change) by setting
+  EXOPHIAL_ORACLE_DATA_DIRS=.local/lib/python3.12/site-packages (exposes
+  pre-commit's site-packages to the oracle child) and extending
+  EXOPHIAL_ORACLE_TOOLCHAIN_BINARIES with node, npm, npx, and the four
+  exophial-check-*/reroute-main-commit/session-trailer names. This session
+  confirmed both variables are present with the expected values in its own
+  process environment, and re-ran the full verification suite against the
+  current branch tip with them in effect.
+
+  Verified in this session: `pre-commit run --all-files --hook-stage
+  manual` passes all ten hooks cleanly against the current worktree, and
+  `scripts/verify_precommit_manual.sh` passes in all four modes:
   --full-run (pre_commit_exit_code 0), --prettier-clean (prettier_exit_code
   0, modified_tracked_files 0), --eslint-catches-error (adds a real
   unused-variable TypeScript file, eslint_exit_code_with_error 1,
   clean_files_checked 20), --prettier-catches-misformat (adds a real
   misformatted TypeScript file, prettier_exit_code_with_misformat 1,
-  clean_files_checked 25). Also reproduced the original failure directly:
-  `pre-commit run --all-files --hook-stage manual` against the pre-fix
-  commit 8eb332d exits 1, with both eslint and prettier hooks reporting
-  Failed and prettier rewriting docs/design.md, several
-  contracts/specs/*.json files, and .pebbles/handoffs/*.yaml.
-cost: ~145k tokens
+  clean_files_checked 25). Earlier sessions additionally verified the
+  bun-only hook/bootstrap path passes under a PATH stripped of node/npm/npx
+  entirely, and that the pre-fix commit 8eb332d reproduces the original
+  bug directly (`pre-commit run --all-files --hook-stage manual` exits 1,
+  prettier rewriting docs/design.md, several contracts/specs/*.json files,
+  and .pebbles/handoffs/*.yaml).
+cost: ~165k tokens
 commits:
   - "16a2f273362b00ce318707761bb5e6859547c564"
   - "c4ca9c629a69c025ddde59ea0065825437f0a2b4"
   - "8b34f0cd6f2373c2a7e476d631ff709c35dabc8e"
   - "c745b22812f8a8760b56368852759418136f4698"
+  - "ae987fafbd31129720978681875f7c7c69872b70"
 verify_transcript:
   hooks:
     - name: pre-commit run --all-files --hook-stage manual (this commit)
       outcome: passed
       duration_s: 3
-    - name: "scripts/verify_precommit_manual.sh --full-run (hermetic PATH, no node/npm/npx)"
+    - name: scripts/verify_precommit_manual.sh --full-run
       outcome: passed
       duration_s: 6
-    - name: "scripts/verify_precommit_manual.sh --prettier-clean (hermetic PATH, no node/npm/npx)"
+    - name: scripts/verify_precommit_manual.sh --prettier-clean
       outcome: passed
-      duration_s: 5
-    - name: "scripts/verify_precommit_manual.sh --eslint-catches-error (hermetic PATH, no node/npm/npx)"
+      duration_s: 2
+    - name: scripts/verify_precommit_manual.sh --eslint-catches-error
       outcome: passed
-      duration_s: 5
-    - name: "scripts/verify_precommit_manual.sh --prettier-catches-misformat (hermetic PATH, no node/npm/npx)"
+      duration_s: 6
+    - name: scripts/verify_precommit_manual.sh --prettier-catches-misformat
       outcome: passed
-      duration_s: 5
+      duration_s: 1
 e2e_gate:
   spec: contracts/specs/derived-asp-3c8.spec.json
-  command: "env -i HOME=\"$HOME\" PATH=/usr/bin:$HOME/.local/bin:$HOME/.bun/bin bash scripts/verify_precommit_manual.sh --full-run && (repeat for --prettier-clean, --eslint-catches-error, --prettier-catches-misformat)"
+  command: "bash scripts/verify_precommit_manual.sh --full-run && bash scripts/verify_precommit_manual.sh --prettier-clean && bash scripts/verify_precommit_manual.sh --eslint-catches-error && bash scripts/verify_precommit_manual.sh --prettier-catches-misformat"
   result: passed
-  ran_at_sha: "c745b22812f8a8760b56368852759418136f4698"
+  ran_at_sha: "ae987fafbd31129720978681875f7c7c69872b70"
   mocks_in_path: false
 discrimination:
   - mechanism: red_first
@@ -103,11 +121,11 @@ discrimination:
       --full-run) against the pre-fix commit
       8eb332d207097b30ea2cdd7649fee74f7f15ee8e (the branch tip before any
       fix in this task), then against the fixed commit
-      c745b22812f8a8760b56368852759418136f4698.
+      ae987fafbd31129720978681875f7c7c69872b70.
     took:
       applied:
         observable: "commit the oracle's detached worktree is built from"
-        moved: ["8eb332d207097b30ea2cdd7649fee74f7f15ee8e", "c745b22812f8a8760b56368852759418136f4698"]
+        moved: ["8eb332d207097b30ea2cdd7649fee74f7f15ee8e", "ae987fafbd31129720978681875f7c7c69872b70"]
       observed:
         observable: "pre-commit run --all-files --hook-stage manual exit code inside the oracle's worktree"
         moved: ["1", "0"]
@@ -121,15 +139,16 @@ discrimination:
     exit_code_after: 0
     reverted: true
   - mechanism: ablation
-    oracle: scripts/verify_precommit_manual.sh --full-run (acceptance clause c1), run under a PATH restricted to the exophial oracle's toolchain allowlist
+    oracle: scripts/verify_precommit_manual.sh --full-run (acceptance clause c1), run under a PATH restricted to the exophial oracle's base toolchain allowlist
     target: .pre-commit-config.yaml eslint/prettier hook entries and scripts/verify_precommit_manual.sh's dependency bootstrap
     perturbation: >
       Removed node, npm, and npx from PATH entirely (env -i HOME="$HOME"
       PATH=/usr/bin:$HOME/.local/bin:$HOME/.bun/bin — the union of
-      directories the oracle's allowlisted binaries actually resolve
-      through) and ran scripts/verify_precommit_manual.sh --full-run
-      against commit 16a2f273362b00ce318707761bb5e6859547c564 (hooks ran
-      via node_modules/.bin/eslint's node shebang, bootstrap was `npm
+      directories the base allowlist's binaries resolve through, before
+      EXOPHIAL_ORACLE_TOOLCHAIN_BINARIES was extended to add node back)
+      and ran scripts/verify_precommit_manual.sh --full-run against commit
+      16a2f273362b00ce318707761bb5e6859547c564 (hooks ran via
+      node_modules/.bin/eslint's node shebang, bootstrap was `npm
       install`), then against commit
       c745b22812f8a8760b56368852759418136f4698 (hooks run via `bun
       node_modules/.bin/eslint`, bootstrap is `bun install
