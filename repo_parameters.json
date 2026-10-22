@@ -11,6 +11,7 @@
     "infrastructure",
     "pebble-filing"
   ],
+  "environment_command": ["bun", "install"],
   "gate_commands": {
     "python": "uv run --directory python pytest tests -q"
   },
