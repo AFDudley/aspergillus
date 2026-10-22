@@ -27,24 +27,35 @@ summary: >
   pending a severity-flip workflow the repo's own code has not completed.
   Reformatted the handful of TS/JS files that did not match the shared
   prettier config and fixed the one real import/order error (init.ts
-  imported ./layouts.js after ./wrappers.js). Verified by building a
-  detached worktree of the committed branch tip and running
-  scripts/verify_precommit_manual.sh (a new committed acceptance probe)
-  in each of its four modes: --full-run (pre_commit_exit_code 0),
+  imported ./layouts.js after ./wrappers.js). This task was resumed after
+  an earlier gate run FAILED all four behavior clauses with exit_code=127:
+  the gate-grading subprocess's non-interactive PATH had node but no
+  npm/corepack symlink, so verify_precommit_manual.sh's `npm install`
+  could not run — a host-level PATH gap, unrelated to this fix, already
+  repaired separately (npm/corepack symlinked into ~/.local/bin). The
+  worktree had been reset to the pre-fix base commit in the interim; this
+  session fast-forwarded worker/asp-3c8 back onto the preserved fix
+  commits, reinstalled node_modules, and re-ran every check. Verified by
+  building a detached worktree of the committed branch tip and running
+  scripts/verify_precommit_manual.sh (a committed acceptance probe) in
+  each of its four modes: --full-run (pre_commit_exit_code 0),
   --prettier-clean (prettier_exit_code 0, modified_tracked_files 0),
   --eslint-catches-error (adds a real unused-variable TypeScript file,
   eslint_exit_code_with_error 1, clean_files_checked 20), and
   --prettier-catches-misformat (adds a real misformatted TypeScript file,
   prettier_exit_code_with_misformat 1, clean_files_checked 25). Also
+  reconfirmed npm resolves under a stripped, non-interactive PATH
+  (env -i HOME=... PATH=/usr/bin:/bin:/usr/local/bin:~/.local/bin), and
   reproduced the original failure directly: running
   `pre-commit run --all-files --hook-stage manual` against the pre-fix
   commit 8eb332d exits 1, with both eslint and prettier hooks reporting
   Failed and prettier rewriting docs/design.md, several
   contracts/specs/*.json files, and .pebbles/handoffs/*.yaml — the same
   failure mode the pebble describes.
-cost: ~95k tokens
+cost: ~110k tokens
 commits:
   - "16a2f273362b00ce318707761bb5e6859547c564"
+  - "c4ca9c629a69c025ddde59ea0065825437f0a2b4"
 verify_transcript:
   hooks:
     - name: pre-commit run --all-files --hook-stage manual (this commit)
@@ -66,7 +77,7 @@ e2e_gate:
   spec: contracts/specs/derived-asp-3c8.spec.json
   command: "bash scripts/verify_precommit_manual.sh --full-run && bash scripts/verify_precommit_manual.sh --prettier-clean && bash scripts/verify_precommit_manual.sh --eslint-catches-error && bash scripts/verify_precommit_manual.sh --prettier-catches-misformat"
   result: passed
-  ran_at_sha: "16a2f273362b00ce318707761bb5e6859547c564"
+  ran_at_sha: "c4ca9c629a69c025ddde59ea0065825437f0a2b4"
   mocks_in_path: false
 discrimination:
   - mechanism: red_first
@@ -76,11 +87,11 @@ discrimination:
       Ran the committed oracle (scripts/verify_precommit_manual.sh
       --full-run) against the pre-fix commit 8eb332d207097b30ea2cdd7649fee74f7f15ee8e
       (the branch tip before this task's fix), then against the fixed
-      commit 16a2f273362b00ce318707761bb5e6859547c564.
+      commit c4ca9c629a69c025ddde59ea0065825437f0a2b4.
     took:
       applied:
         observable: "commit the oracle's detached worktree is built from"
-        moved: ["8eb332d207097b30ea2cdd7649fee74f7f15ee8e", "16a2f273362b00ce318707761bb5e6859547c564"]
+        moved: ["8eb332d207097b30ea2cdd7649fee74f7f15ee8e", "c4ca9c629a69c025ddde59ea0065825437f0a2b4"]
       observed:
         observable: "pre-commit run --all-files --hook-stage manual exit code inside the oracle's worktree"
         moved: ["1", "0"]
