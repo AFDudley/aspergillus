@@ -14,5 +14,48 @@
   "gate_commands": {
     "python": "uv run --directory python pytest tests -q"
   },
+  "oracle_toolchain": [
+    {
+      "name": "bun",
+      "check": "bun --version",
+      "purpose": "runs eslint/prettier and installs their node_modules for the root .pre-commit-config.yaml local eslint/prettier hooks and scripts/verify_precommit_manual.sh's acceptance oracle (asp-3c8)",
+      "install": "curl -fsSL https://bun.sh/install | bash",
+      "required": true,
+      "group": "quality"
+    },
+    {
+      "name": "exophial-check-claude-md",
+      "check": "exophial-check-claude-md --help",
+      "purpose": "the root .pre-commit-config.yaml's claude-md-coverage local hook, run by every acceptance oracle that drives a real pre-commit pass",
+      "install": "uv tool install exophial",
+      "required": true,
+      "group": "quality"
+    },
+    {
+      "name": "exophial-check-subtree-edits",
+      "check": "exophial-check-subtree-edits --help",
+      "purpose": "the root .pre-commit-config.yaml's check-subtree-edits local hook, run by every acceptance oracle that drives a real pre-commit pass",
+      "install": "uv tool install exophial",
+      "required": true,
+      "group": "quality"
+    },
+    {
+      "name": "exophial-reroute-main-commit",
+      "check": "exophial-reroute-main-commit --help",
+      "purpose": "the root .pre-commit-config.yaml's reroute-main-commit local hook, run by every acceptance oracle that drives a real pre-commit pass",
+      "install": "uv tool install exophial",
+      "required": true,
+      "group": "quality"
+    },
+    {
+      "name": "exophial-session-trailer",
+      "check": "exophial-session-trailer --help",
+      "purpose": "the root .pre-commit-config.yaml's session-trailer local hook, run by every acceptance oracle that drives a real pre-commit pass",
+      "install": "uv tool install exophial",
+      "required": true,
+      "group": "quality"
+    }
+  ],
+  "oracle_data_dirs": [".local/lib/python3.12/site-packages"],
   "deploy_surfaces": {}
 }
