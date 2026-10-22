@@ -40,7 +40,10 @@ const elements = [
   { type: 'server-core', pattern: ['**/server/**/core/**', '**/server/**/lib/**'] },
   { type: 'server-db', pattern: ['**/server/**/db/**', '**/server/**/repositories/**'] },
   { type: 'server-services', pattern: '**/server/**/services/**' },
-  { type: 'server-routes', pattern: ['**/server/**/routes/**', '**/server/**/controllers/**', '**/server/**/handlers/**'] },
+  {
+    type: 'server-routes',
+    pattern: ['**/server/**/routes/**', '**/server/**/controllers/**', '**/server/**/handlers/**'],
+  },
   { type: 'client-shared', pattern: ['**/client/**/lib/**', '**/client/**/shared/**'] },
   { type: 'client-services', pattern: ['**/client/**/services/**', '**/client/**/api/**'] },
   { type: 'client-hooks', pattern: '**/client/**/hooks/**' },
@@ -75,15 +78,56 @@ export default [
             },
             { from: { type: 'shared' }, allow: { to: { type: 'shared' } } },
             { from: { type: 'server-core' }, allow: { to: { type: ['server-core', 'shared'] } } },
-            { from: { type: 'server-db' }, allow: { to: { type: ['server-db', 'server-core', 'shared'] } } },
-            { from: { type: 'server-services' }, allow: { to: { type: ['server-services', 'server-db', 'server-core', 'shared'] } } },
-            { from: { type: 'server-routes' }, allow: { to: { type: ['server-routes', 'server-services', 'server-core', 'shared'] } } },
-            { from: { type: 'client-shared' }, allow: { to: { type: ['client-shared', 'shared'] } } },
-            { from: { type: 'client-services' }, allow: { to: { type: ['client-services', 'client-shared', 'shared'] } } },
-            { from: { type: 'client-hooks' }, allow: { to: { type: ['client-hooks', 'client-services', 'client-shared', 'shared'] } } },
+            {
+              from: { type: 'server-db' },
+              allow: { to: { type: ['server-db', 'server-core', 'shared'] } },
+            },
+            {
+              from: { type: 'server-services' },
+              allow: { to: { type: ['server-services', 'server-db', 'server-core', 'shared'] } },
+            },
+            {
+              from: { type: 'server-routes' },
+              allow: {
+                to: { type: ['server-routes', 'server-services', 'server-core', 'shared'] },
+              },
+            },
+            {
+              from: { type: 'client-shared' },
+              allow: { to: { type: ['client-shared', 'shared'] } },
+            },
+            {
+              from: { type: 'client-services' },
+              allow: { to: { type: ['client-services', 'client-shared', 'shared'] } },
+            },
+            {
+              from: { type: 'client-hooks' },
+              allow: {
+                to: { type: ['client-hooks', 'client-services', 'client-shared', 'shared'] },
+              },
+            },
             // Components may use hooks for state — idiomatic React.
-            { from: { type: 'client-components' }, allow: { to: { type: ['client-components', 'client-hooks', 'client-shared', 'shared'] } } },
-            { from: { type: 'client-pages' }, allow: { to: { type: ['client-pages', 'client-components', 'client-hooks', 'client-services', 'client-shared', 'shared'] } } },
+            {
+              from: { type: 'client-components' },
+              allow: {
+                to: { type: ['client-components', 'client-hooks', 'client-shared', 'shared'] },
+              },
+            },
+            {
+              from: { type: 'client-pages' },
+              allow: {
+                to: {
+                  type: [
+                    'client-pages',
+                    'client-components',
+                    'client-hooks',
+                    'client-services',
+                    'client-shared',
+                    'shared',
+                  ],
+                },
+              },
+            },
           ],
         },
       ],

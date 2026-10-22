@@ -3,11 +3,11 @@
 
 import { describe, it, expect } from 'bun:test';
 
+import fullstackMonorepo from './fullstack-monorepo.js';
 import genericThreeLayer from './generic-3-layer.js';
 import nodeService from './node-service.js';
 import reactSpa from './react-spa.js';
 import rnApp from './rn-app.js';
-import fullstackMonorepo from './fullstack-monorepo.js';
 
 const ALL = {
   'generic-3-layer': genericThreeLayer,
@@ -34,18 +34,12 @@ describe.each(Object.entries(ALL))('layout %s', (name, layout) => {
   });
 
   it('has an FC block that warns no-throw-statements', () => {
-    const fc = findBlock(
-      layout,
-      (b) => b.rules?.['functional/no-throw-statements'] === 'warn',
-    );
+    const fc = findBlock(layout, (b) => b.rules?.['functional/no-throw-statements'] === 'warn');
     expect(fc).toBeDefined();
   });
 
   it('has a shell block that disables no-throw-statements', () => {
-    const shell = findBlock(
-      layout,
-      (b) => b.rules?.['functional/no-throw-statements'] === 'off',
-    );
+    const shell = findBlock(layout, (b) => b.rules?.['functional/no-throw-statements'] === 'off');
     expect(shell).toBeDefined();
   });
 });

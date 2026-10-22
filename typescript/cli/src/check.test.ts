@@ -1,10 +1,11 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { init } from './init.js';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+
 import { check } from './check.js';
+import { init } from './init.js';
 
 describe('check', () => {
   let tmp: string;
@@ -49,10 +50,7 @@ export default [...base, { rules: { 'no-console': 'error' } }];
 
   test('returns 1 when tsconfig.json extends something else', async () => {
     await init({ target: tmp });
-    writeFileSync(
-      join(tmp, 'tsconfig.json'),
-      JSON.stringify({ extends: './other/tsconfig.json' }),
-    );
+    writeFileSync(join(tmp, 'tsconfig.json'), JSON.stringify({ extends: './other/tsconfig.json' }));
     const code = await check({ target: tmp });
     expect(code).toBe(1);
   });

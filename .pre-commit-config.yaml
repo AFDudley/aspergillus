@@ -26,36 +26,18 @@ repos:
       - id: mixed-line-ending
         args:
           - --fix=lf
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.17.0
+  - repo: local
     hooks:
       - id: eslint
-        files: \.[jt]sx?$
-        types:
-          - file
-        args:
-          - --fix
-          - --max-warnings=0
-        additional_dependencies:
-          - eslint@9.17.0
-          - typescript@5.7.2
-          - typescript-eslint@8.18.2
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
-    hooks:
+        name: eslint (typescript/configs/eslint.config.js)
+        entry: node_modules/.bin/eslint --config typescript/configs/eslint.config.js --fix
+        language: system
+        files: ^typescript/.*\.[jt]sx?$
       - id: prettier
-        types_or:
-          - javascript
-          - jsx
-          - ts
-          - tsx
-          - css
-          - json
-          - markdown
-          - yaml
-        exclude: package-lock\.json$
-        additional_dependencies:
-          - prettier@3.4.2
+        name: prettier (typescript/configs/prettier.config.cjs)
+        entry: node_modules/.bin/prettier --config typescript/configs/prettier.config.cjs --check
+        language: system
+        files: ^typescript/.*\.(js|jsx|ts|tsx|mjs|cjs|json)$
   - repo: local
     hooks:
       - id: check-subtree-edits

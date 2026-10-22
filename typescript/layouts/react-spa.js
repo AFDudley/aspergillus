@@ -58,8 +58,14 @@ export default [
             { from: { type: 'services' }, allow: { to: { type: ['services', 'shared'] } } },
             { from: { type: 'hooks' }, allow: { to: { type: ['hooks', 'services', 'shared'] } } },
             // Components may use hooks for state — idiomatic React.
-            { from: { type: 'components' }, allow: { to: { type: ['components', 'hooks', 'shared'] } } },
-            { from: { type: 'pages' }, allow: { to: { type: ['pages', 'components', 'hooks', 'services', 'shared'] } } },
+            {
+              from: { type: 'components' },
+              allow: { to: { type: ['components', 'hooks', 'shared'] } },
+            },
+            {
+              from: { type: 'pages' },
+              allow: { to: { type: ['pages', 'components', 'hooks', 'services', 'shared'] } },
+            },
           ],
         },
       ],

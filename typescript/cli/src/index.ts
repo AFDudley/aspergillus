@@ -67,10 +67,7 @@ export function parseArgs(argv: readonly string[]): Args {
     if (layoutMatch !== undefined) {
       const v = layoutMatch[0];
       if (isValidLayout(v)) layout = v;
-      else
-        process.stderr.write(
-          `unknown layout: ${v} (valid: ${ALL_LAYOUT_CHOICES.join(', ')})\n`,
-        );
+      else process.stderr.write(`unknown layout: ${v} (valid: ${ALL_LAYOUT_CHOICES.join(', ')})\n`);
       if (layoutMatch[1]) i++;
       continue;
     }
