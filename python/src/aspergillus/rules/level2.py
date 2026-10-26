@@ -2,93 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from functools import partial
+from collections.abc import Sequence
 
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
 
-_PositionOf = Callable[[cst.CSTNode], cst.metadata.CodeRange]
-
-
-def positions_of(rule: LintRule) -> _PositionOf:
-    """``rule``'s ``PositionProvider`` lookup, as a plain position function.
-
-    Lets the line-counting helpers below stay pure functions of a node
-    plus a position oracle — unit-testable without a fixit rule instance —
-    while each rule binds its own metadata resolver once per visit.
-    """
-    return partial(rule.get_metadata, cst.metadata.PositionProvider)
-
-
-def _noncode_line_numbers(node: cst.CSTNode, position_of: _PositionOf) -> set[int]:
-    """Physical line numbers inside ``node``'s span that carry no code.
-
-    Blank lines and comment-only lines are ``EmptyLine`` nodes in libcst;
-    a trailing comment on a code line is ``TrailingWhitespace`` and is
-    deliberately NOT one, so an annotated statement still counts as code.
-    A docstring — any bare string-expression statement, at any depth in
-    the span — is prose that happens to be a string EXPRESSION, so every
-    physical line it occupies is excluded as well.
-    """
-    span = position_of(node)
-    skip: set[int] = set()
-    for descendant in _iter_all_nodes(node):
-        if isinstance(descendant, cst.EmptyLine):
-            skip.add(position_of(descendant).start.line)
-        elif isinstance(descendant, cst.SimpleStatementLine) and len(descendant.body) == 1:
-            item = descendant.body[0]
-            if isinstance(item, cst.Expr) and isinstance(item.value, cst.BaseString):
-                string_span = position_of(item.value)
-                skip.update(range(string_span.start.line, string_span.end.line + 1))
-    return {line for line in skip if span.start.line <= line <= span.end.line}
-
-
-def _iter_all_nodes(node: cst.CSTNode) -> list[cst.CSTNode]:
-    """``node`` and every descendant, nested functions included."""
-    found: list[cst.CSTNode] = [node]
-    for child in node.children:
-        if isinstance(child, cst.CSTNode):
-            found.extend(_iter_all_nodes(child))
-    return found
-
-
-def code_line_count(node: cst.CSTNode, position_of: _PositionOf) -> int:
-    """Physical lines in ``node``'s span that carry code.
-
-    The length measure for ASP201 and for ASP202's triviality exemption.
-    It is the same measure ``duplicates.n_code_lines`` already applies to
-    a function's span, and for the same reason recorded there: a raw span
-    makes the verdict depend on how a function is DOCUMENTED rather than
-    on what it does, so relocating a docstring or deleting an explanatory
-    comment moves a length verdict without changing one line of behaviour.
-    A gate that shortens a function by deleting its explanation has the
-    incentive backwards.
-    """
-    span = position_of(node)
-    return (span.end.line - span.start.line + 1) - len(_noncode_line_numbers(node, position_of))
-
 
 class FunctionTooLong(LintRule):
-    """ASP201: Functions must fit on one page (<=60 CODE lines).
+    """ASP201: Functions must fit on one page (<=60 lines).
 
     NASA Power of 10 Rule #4: Functions should fit on a single
     printed page. This improves readability and testability.
-
-    The measure is CODE lines — the span minus its blank lines,
-    comment-only lines and docstrings (``code_line_count``) — not the
-    raw physical span. ``duplicates.n_code_lines`` already made exactly
-    this correction for the duplicate-group floor, with the argument
-    that a span "counts the docstring, which made the verdict depend on
-    how a function is DOCUMENTED, not on what it does"; ASP201 measures
-    the same property of the same node and owes the same answer.
-
-    Measured on exophial's src + tests, which documents in the literate
-    style: 24 functions exceeded 60 raw span lines, 3 exceeded 60 code
-    lines. ``Dispatcher.__init__`` spans 139 lines of which 53 are code;
-    ``ops.intake.generate_spec`` spans 125 of which 59 are code. Under
-    the raw span the only way to pass is to delete the explanation,
-    which is the incentive backwards.
     """
 
     MESSAGE = "ASP201: Function has {actual} lines (max {max_lines})"
@@ -101,21 +25,6 @@ class FunctionTooLong(LintRule):
         ),
         Valid("def one_liner(): pass"),
         Valid("class Foo:\n    def method(self):\n        pass\n"),
-        # 40 code lines carrying 40 lines of explanation: documenting a
-        # function is not lengthening it.
-        Valid(
-            "def documented():\n"
-            + "".join(f"    # explain x{i}\n    x{i} = {i}\n" for i in range(40))
-            + "    return x0\n"
-        ),
-        # A long docstring does not make a two-statement function long.
-        Valid(
-            "def prose():\n"
-            + '    """\n'
-            + "".join(f"    line {i}\n" for i in range(80))
-            + '    """\n'
-            + "    return 1\n"
-        ),
     ]
     INVALID = [
         Invalid(
@@ -123,16 +32,11 @@ class FunctionTooLong(LintRule):
             + "".join(f"    x{i} = {i}\n" for i in range(61))
             + "    return x0\n"
         ),
-        # Comments do not rescue a function that is genuinely too long.
-        Invalid(
-            "def too_long_documented():\n"
-            + "".join(f"    # explain x{i}\n    x{i} = {i}\n" for i in range(61))
-            + "    return x0\n"
-        ),
     ]
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
-        line_count = code_line_count(node, positions_of(self))
+        pos = self.get_metadata(cst.metadata.PositionProvider, node)
+        line_count = pos.end.line - pos.start.line + 1
         if line_count > self.MAX_LINES:
             self.report(
                 node,
@@ -367,20 +271,6 @@ class LowAssertionDensity(LintRule):
             "    shifted = scaled - count\n"
             "    return shifted\n"
         ),
-        # Triviality is measured in CODE lines: a two-statement boundary
-        # reader stays exempt however long its docstring is. Under the
-        # raw span it lost the exemption for being documented, and its
-        # only passing form was to delete the prose.
-        Valid(
-            "def read_config(path: str) -> str:\n"
-            '    """Read the config file.\n'
-            "\n"
-            "    Long-form prose about where this file comes from, who\n"
-            "    writes it, and why the read is unguarded here.\n"
-            '    """\n'
-            "    with open(path) as handle:\n"
-            "        return handle.read()\n"
-        ),
     ]
     INVALID = [
         # --- FC/IS predicate (asp-da5): imperative shell IS in scope ---
@@ -441,11 +331,9 @@ class LowAssertionDensity(LintRule):
         if _has_decorator_in(node, self.VALIDATION_DECORATORS):
             return
 
-        # Triviality exemption measured in CODE lines, the same measure
-        # ASP201 uses: a two-statement reader with a ten-line docstring
-        # is trivial, and a raw span made it lose this exemption for
-        # being documented.
-        if code_line_count(node, positions_of(self)) <= self.MIN_LINES_FOR_RULE:
+        pos = self.get_metadata(cst.metadata.PositionProvider, node)
+        line_count = pos.end.line - pos.start.line + 1
+        if line_count <= self.MIN_LINES_FOR_RULE:
             return
 
         # FC/IS predicate: ASP202 is the imperative-shell mechanism. A
@@ -778,9 +666,6 @@ class UnboundedLoop(LintRule):
         Valid("for i in range(10):\n    print(i)\n"),
         Valid("while True:\n    data = read()\n    if not data:\n        break\n"),
         Valid("count = 0\nwhile count < 100:\n    count += 1\n"),
-        # The counter drives the condition through a call. Same loop as
-        # `while parts != PurePosixPath('.')`, same exemption.
-        Valid('while str(parts) != ".":\n    parts = parts.parent\n'),
     ]
     INVALID = [
         Invalid("while True:\n    process()\n"),
@@ -852,15 +737,7 @@ def _find_break_in_stmts(stmts: Sequence[cst.BaseStatement]) -> bool:
 
 
 def _extract_names(node: cst.BaseExpression) -> set[str]:
-    """Extract all Name references from an expression.
-
-    Recurses through a ``Call``'s arguments: ``while str(parts) != "."`` is
-    the same loop as ``while parts != PurePosixPath(".")`` and the same
-    ``parts`` drives it, but without this the argument was invisible, the
-    name set came back empty, and ASP204's counter-pattern exemption
-    short-circuited to "unbounded" for a loop whose counter it was looking
-    straight at.
-    """
+    """Extract all Name references from an expression."""
     names: set[str] = set()
     if isinstance(node, cst.Name):
         names.add(node.value)
@@ -873,9 +750,6 @@ def _extract_names(node: cst.BaseExpression) -> set[str]:
         names.update(_extract_names(node.right))
     elif isinstance(node, cst.UnaryOperation):
         names.update(_extract_names(node.expression))
-    elif isinstance(node, cst.Call):
-        for arg in node.args:
-            names.update(_extract_names(arg.value))
     return names
 
 
@@ -903,32 +777,7 @@ def _resolve_call_name(node: cst.BaseExpression) -> str | None:
 
 
 def _find_io_calls(body: cst.BaseSuite) -> set[str]:
-    """Find calls to known I/O functions in a function's OWN body.
-
-    The unit of analysis is one function, not one function plus every
-    function nested inside it. ``_count_assertions`` already states that
-    convention ("not descending into nested function/lambda bodies —
-    those are visited as their own units"), and every rule reached from
-    here — ASP202's shell predicate, ASP205, ASP206 — reports per
-    ``visit_FunctionDef``, which fires for the nested def in its own
-    right.
-
-    Descending made a factory impure for the I/O its product performs::
-
-        def make_logger(prefix: str) -> Callable[[str], None]:
-            def emit(line: str) -> None:
-                print(prefix, line)
-            return emit
-
-    ``make_logger`` prints nothing when called, yet was reported as
-    calling ``print`` — and ``emit`` was reported for the same ``print``,
-    so one I/O site produced two findings. Its only passing form was to
-    lift ``emit`` to module scope, which a closure over ``prefix``
-    forbids: a finding with no legal passing form. ASP206 was
-    incoherent for the same reason — it sourced ``io_calls`` from any
-    depth while counting logic statements only at the outer body's top
-    level, so its two halves measured different functions.
-    """
+    """Find calls to known I/O functions in a function body."""
     from aspergillus.io_blocklist import IO_FUNCTIONS, IO_METHOD_NAMES
 
     found: set[str] = set()
@@ -982,11 +831,7 @@ def _walk_for_io_calls(
     io_functions: frozenset[str],
     io_method_names: frozenset[str],
 ) -> None:
-    """Recursively walk CST looking for Call nodes to I/O functions.
-
-    Stops at a nested ``FunctionDef`` / ``Lambda``: that body belongs to
-    its own function, which is visited separately (see ``_find_io_calls``).
-    """
+    """Recursively walk CST looking for Call nodes to I/O functions."""
     if isinstance(node, cst.Call):
         name = _resolve_call_name(node.func)
         if name and name in io_functions:
@@ -1002,317 +847,96 @@ def _walk_for_io_calls(
             ):
                 found.add(method_name)
     for child in node.children:
-        if isinstance(child, cst.FunctionDef | cst.Lambda):
-            continue
         if isinstance(child, cst.CSTNode):
             _walk_for_io_calls(child, found, io_functions, io_method_names)
 
 
-# ASP205 (ImpureFunction) — RETIRED for Python (pebble exo-asp205, this change).
-#
-# ASP205 reported every function whose body called a name in
-# `io_blocklist.py`. Its stated basis was "NASA Level 2: 70%+ of
-# functions should be pure", and its own docstring conceded the verdict:
-# "The function is not necessarily wrong — orchestrator/shell functions
-# are expected to do I/O."
-#
-# Two defects, each fatal on its own.
-#
-# 1. IT REPORTED THE WRONG UNIT. Its criterion is a CORPUS RATIO — what
-#    share of the program's functions are pure. Its report was PER
-#    FUNCTION. A fixit rule sees one file and cannot compute a ratio, so
-#    the rule substituted "this function does I/O" for "too little of
-#    this program is pure". Those are different claims. The corpus
-#    ratio was then measured by `aspergillus purity-ratio`, and that
-#    command is now deleted too (pebble exo-c6ce). Its floor was 70%
-#    against a corpus measured at 89.8%, so it could not fail, and its
-#    denominator rose when a pure function was added while no effect
-#    moved. What replaces both is `aspergillus io-census` (see
-#    `census.py`), which enumerates the effects and reaches no verdict.
-#    On the tree at de33d712^, ASP205 emitted 298 findings over 298 of
-#    2918 functions that call a blocklist name, and the census
-#    reproduces that finding set exactly.
-#
-# 2. IT HAD NO LEGAL PASSING FORM. A boundary function exists in order
-#    to perform its effect. The only edit that clears the finding is to
-#    delete the effect, which deletes the function. `_find_io_calls`
-#    already states this test in its own docstring, for the nested-def
-#    case it fixed: "a finding with no legal passing form". exophial's
-#    src carries 361 `# lint-ignore: ImpureFunction` directive lines for
-#    233 functions — and 126 of those lines suppress NOTHING, because
-#    the author added them by pattern rather than by measurement. A rule
-#    that teaches its users to suppress it blind has stopped informing
-#    anyone.
-#
-# THE LITERATURE DOES NOT SUPPORT THE PER-FUNCTION FORM. Every system
-# that separates effect from computation TRACKS the effect and lets the
-# effectful expression compute:
-#
-#   - Lucassen & Gifford, "Polymorphic Effect Systems", POPL 1988,
-#     doi:10.1145/73560.73564. The effect is part of the type and is
-#     computed for every expression. The paper's own polymorphism
-#     showcase, `mapcar`, has effect `(MAXEFF (ALLOC r) (READ r) e)` and
-#     a body that branches and recurses. The system's ONE restriction is
-#     on generalisation, "by limiting polymorphism to expressions
-#     without side-effects" — not on control flow.
-#   - Peyton Jones & Wadler, "Imperative Functional Programming",
-#     POPL 1993, doi:10.1145/158511.158524. "the style in which one
-#     writes the functional program's internal computation is
-#     unaffected."
-#   - Leijen, "Koka: Programming with Row-polymorphic Effect Types",
-#     arXiv:1406.2061, 2014. Its opening example is typed
-#     `int -> io int` and computes: "there was no need to change the
-#     original function nor to promote the expression x*x into the io
-#     effect."
-#
-# So the effect literature licenses a rule that MARKS an effect. It
-# licenses no rule that forbids the marked function from computing.
-#
-# WHAT STILL COVERS THE GROUND. Nothing safety-relevant is uncovered.
-# `_find_io_calls` — ASP205's whole mechanism — stays live and keeps two
-# consumers: ASP202's imperative-shell predicate (`_is_imperative_shell`,
-# which decides where NASA Rule #5's assertion requirement applies) and
-# ASP206's gate (which decides where the mixing check applies). The
-# enumeration ASP205 produced beside its verdict moves to
-# `aspergillus io-census`. The per-function
-# verdict, the only thing removed, was the part the rule's own docstring
-# disclaimed.
-#
-# STAYS IN FORCE ELSEWHERE. This retirement is scoped to Python, exactly
-# as asp-80c scoped ASP301's. A language whose type system carries the
-# effect — Haskell's `IO`, Koka's `io`, an ML region-and-effect
-# annotation — states the same fact in the type, where it is checked
-# rather than reported. Python has no effect type; a per-function lint
-# was the wrong substitute for one, not a weaker version of one.
+class ImpureFunction(LintRule):
+    """ASP205: Function calls known I/O — mark as impure or refactor.
 
+    NASA Level 2: 70%+ of functions should be pure. This rule flags
+    functions that call known I/O functions (from io_blocklist.py).
 
-# Expression nodes that COMPUTE rather than move a value.
-_COMPUTING_NODES = (
-    cst.BinaryOperation,
-    cst.UnaryOperation,
-    cst.Comparison,
-    cst.BooleanOperation,
-    cst.IfExp,
-    cst.ListComp,
-    cst.SetComp,
-    cst.DictComp,
-    cst.GeneratorExp,
-)
-
-
-def _iter_own_nodes(node: cst.CSTNode) -> list[cst.CSTNode]:
-    """Every descendant of ``node`` in the SAME function.
-
-    A nested ``def`` / ``lambda`` / ``class`` is its own unit of
-    analysis, the convention ``_find_io_calls`` states and every rule
-    reached from here shares.
+    The function is not necessarily wrong — orchestrator/shell functions
+    are expected to do I/O. But the flag encourages separating pure
+    logic from I/O at the boundaries.
     """
-    out: list[cst.CSTNode] = []
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        for child in current.children:
-            if isinstance(child, cst.FunctionDef | cst.Lambda | cst.ClassDef):
-                continue
-            out.append(child)
-            stack.append(child)
-    return out
 
+    MESSAGE = "ASP205: Function calls I/O: {calls}"
 
-def _derived_names(body: cst.BaseSuite) -> frozenset[str]:
-    """Names the function BINDS itself — the results it derived.
+    VALID = [
+        Valid(
+            "def add(a: int, b: int) -> int:\n"
+            "    assert a >= 0\n"
+            "    assert b >= 0\n"
+            "    return a + b\n"
+        ),
+        # asp-108: pandas DataFrame.rename(columns=...) is a pure in-memory
+        # transform, NOT filesystem I/O — the `columns=` kwarg distinguishes
+        # it from `Path.rename(target)`.
+        Valid(
+            "def normalize_df(df: object) -> object:\n"
+            "    renamed = df.rename(columns={'old': 'new'})\n"
+            "    return renamed\n"
+        ),
+        # asp-108: Series.rename on a COMPUTED receiver (arithmetic result)
+        # is pure — you cannot filesystem-rename an expression result.
+        Valid(
+            "def label_spread(a: object, b: object) -> object:\n"
+            "    spread = (a - b).rename('spread')\n"
+            "    return spread\n"
+        ),
+    ]
+    INVALID = [
+        Invalid(
+            "def save(data: str) -> None:\n"
+            "    assert data\n"
+            "    assert isinstance(data, str)\n"
+            "    print(data)\n"
+        ),
+        Invalid(
+            "def load(path: object) -> str:\n"
+            "    assert path is not None\n"
+            "    assert hasattr(path, 'read_text')\n"
+            "    return path.read_text()\n",
+        ),
+        # asp-108: a filesystem `Path.rename(target)` — simple-name receiver,
+        # single positional, no pandas kwarg — STILL counts as I/O.
+        Invalid(
+            "def move(p: object, q: object) -> None:\n"
+            "    assert p is not None\n"
+            "    assert q is not None\n"
+            "    p.rename(q)\n"
+        ),
+    ]
 
-    A parameter, a module attribute and a literal are INPUTS: the shell
-    receives them and feeds them to its effects. A name the function
-    assigned is a value the function produced. Computing over an input is
-    argument construction; computing over a derived value is logic. That
-    definition-use distinction is what separates
-    ``os.open(p, os.O_RDWR | os.O_CREAT)`` — a POSIX flag word built from
-    two module constants — from ``result = int(avg * 100)``, where ``avg``
-    is a value this function computed two lines earlier. Both are
-    arithmetic in call-argument position, so no purely syntactic test
-    tells them apart; the binding does.
-    """
-    names: set[str] = set()
-    for node in _iter_own_nodes(body):
-        if isinstance(node, cst.Assign):
-            for target in node.targets:
-                names.update(_extract_names(target.target))
-        elif isinstance(node, cst.AnnAssign | cst.AugAssign):
-            names.update(_extract_names(node.target))
-        elif isinstance(node, cst.NamedExpr):
-            names.update(_extract_names(node.target))
-        elif isinstance(node, cst.For):
-            names.update(_extract_names(node.target))
-        elif isinstance(node, cst.AsName):
-            if isinstance(node.name, cst.Name | cst.Tuple | cst.List):
-                names.update(_extract_names(node.name))
-    return frozenset(names)
-
-
-def _computes_on_derived(node: cst.CSTNode, derived: frozenset[str]) -> bool:
-    """True if ``node`` computes over a value the function derived itself.
-
-    See ``_derived_names`` for why the test is definition-use rather than
-    syntactic.
-    """
-    for candidate in [node, *_iter_own_nodes(node)]:
-        if not isinstance(candidate, _COMPUTING_NODES):
-            continue
-        referenced = set()
-        for inner in [candidate, *_iter_own_nodes(candidate)]:
-            if isinstance(inner, cst.Name):
-                referenced.add(inner.value)
-        if referenced & derived:
-            return True
-    return False
-
-
-def _is_effect_error_report(stmt: cst.BaseStatement) -> bool:
-    """True if ``stmt`` is an effect's own failure report, not logic.
-
-    Shape: ``if <test>: raise ...`` with no ``else`` and nothing in the
-    body but ``raise``. A subprocess's return code, an HTTP status and an
-    ``errno`` are how the effect ANSWERS; converting that answer into an
-    exception is part of performing the effect, not business logic laid
-    on top of it. Cockburn's adapter is required to keep business logic
-    out, and reporting the boundary's own failure is not business logic
-    (Cockburn, "Hexagonal (Ports & Adapters) Architecture", HaT TR
-    2005.02, https://alistair.cockburn.us/hexagonal-architecture/).
-
-    The closest existing art agrees by construction:
-    ``eslint-plugin-functional``'s ``no-conditional-statements`` ships
-    ``allowReturningBranches: true`` in its recommended preset, for
-    exactly the ``if (error) { return; }`` shape
-    (https://github.com/eslint-functional/eslint-plugin-functional).
-
-    Measured on exophial: this one exemption clears
-    ``realize._run_git`` (``subprocess.run`` then
-    ``if result.returncode != 0: raise``), which carried a
-    ``lint-ignore`` for a finding it should never have received.
-    """
-    if not isinstance(stmt, cst.If) or stmt.orelse is not None:
-        return False
-    body = stmt.body
-    if not isinstance(body, cst.IndentedBlock):
-        return False
-    raises: list[cst.BaseSmallStatement] = []
-    for line in body.body:
-        if not isinstance(line, cst.SimpleStatementLine):
-            return False
-        raises.extend(line.body)
-    return bool(raises) and all(isinstance(item, cst.Raise) for item in raises)
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
+        io_calls = _find_io_calls(node.body)
+        if io_calls:
+            self.report(
+                node,
+                self.MESSAGE.format(calls=", ".join(sorted(io_calls))),
+            )
 
 
 class MixedIOAndLogic(LintRule):
     """ASP206: Function mixes I/O with non-trivial logic.
 
     The functional core / imperative shell pattern separates pure
-    business logic from I/O (Gary Bernhardt, "Boundaries", 2012,
-    https://www.destroyallsoftware.com/talks/boundaries). This rule
-    flags a function that does both: it calls I/O (``_find_io_calls``,
-    the ``io_blocklist`` signal) AND computes enough beside the I/O to
-    show that business logic sits in the boundary. Cockburn states the
-    same constraint for an adapter: "the entanglement between the
-    business logic and the interaction with external entities" is the
-    error to remove (Cockburn, "Hexagonal (Ports & Adapters)
-    Architecture", HaT TR 2005.02, 2005,
-    https://alistair.cockburn.us/hexagonal-architecture/).
+    business logic from I/O. This rule flags functions that do both:
+    they call I/O functions AND have enough non-I/O statements to
+    suggest business logic is mixed in.
 
-    Threshold: I/O calls AND more than ``LOGIC_THRESHOLD`` statements
-    that COMPUTE. Three statement classes are not counted, each for a
-    stated reason:
+    Threshold: function has I/O calls AND >3 non-I/O statements
+    (assignments, returns, conditionals, loops).
 
-    - **an assertion.** ASP202 REQUIRES at least two assertions on every
-      imperative-shell function — which, by ``_is_imperative_shell``, is
-      every function ASP206 examines. Counting a statement one rule
-      mandates against a three-statement ceiling another rule imposes
-      left one statement of headroom for the whole boundary, so the pair
-      had no common satisfying form. NASA Power of 10 Rule #5 asks for
-      the assertions; ASP206 must not charge for them.
-    - **value threading** — ``x = call(...)``, ``return x``,
-      ``return call(...)`` (``_threads_a_value``). The docstring below
-      promised orchestrators pass; before this change they did not. An
-      orchestrator threading four effects scored 4 assignments plus a
-      return and fired, and no edit fixed it: the ``VALID`` example
-      here passes on exactly three statements and fires on a fourth
-      effect. That is a finding with no legal passing form, the same
-      defect ``_find_io_calls`` records for the nested-def case.
-    - **the effect's own error report** — ``if <test>: raise ...``
-      (``_is_effect_error_report``).
-
-    WHAT THIS RULE IS NOT. It is not "an effectful function may not
-    compute". That stricter, structural form was proposed and is
-    REFUTED, by the literature and by measurement:
-
-    - Alexis King's recommended boundary function reads an environment
-      variable, splits the string and branches on the parse
-      ("Parse, don't validate", 2019,
-      https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/).
-      A parser IS logic: "a parser is just a function that consumes
-      less-structured input and produces more-structured output."
-      Read-then-parse is the largest class of boundary function here,
-      and the strict form rejects King's own exemplar.
-    - Cockburn's own published adapter contains three ``if`` statements.
-      Martin's Dependency Rule governs the DIRECTION of a dependency,
-      not the shape of a function ("The Clean Architecture", 2012,
-      https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html).
-    - Every effect system quoted in the ASP205 retirement note above
-      lets an effectful expression compute.
-    - Measured on exophial's src: the strict form fires on 242 of the
-      298 I/O-bearing functions (81%), and still fires on
-      ``realize._observe_claim_lease`` — a flock probe cited as a false
-      positive — because ``os.O_RDWR | os.O_CREAT`` and
-      ``fcntl.LOCK_EX | fcntl.LOCK_NB`` are arithmetic in syntax and
-      POSIX flag words in meaning.
-
-    - Bernhardt's own shell is not conditional-free. In the talk, at
-      29:36: "The only conditional in the shell is the case statement
-      that we saw that was choosing between keys." His screencast page
-      says the design "leads to an imperative shell with FEW
-      conditionals" — few, and as a consequence, not none as a
-      constraint.
-
-    IT IS ALSO NOT COMMAND-QUERY SEPARATION, and it must not borrow
-    CQS's authority. CQS says a value-returning function has no effect
-    (Meyer, ADFOCS 2003 Lecture 1, slide 26: "This principle excludes
-    many common schemes, such as using functions for input (e.g. C's
-    ``getint`` or equivalent)"; ECMA-367 2nd ed. 2006 §8.5.11, Meyer
-    editing: "A command is a procedure"). This rule PERMITS an effectful
-    function to return a value, because threading the effect's result
-    out is how a shell function is useful. That is the exact construct
-    Meyer excludes, so the rule takes the side CQS's critics defended.
-    The usual ``stack.pop()`` objection to CQS therefore does not apply
-    here: this rule already concedes what that objection demands.
-    Eiffel's own CQS lint rule, CA004, likewise constrains only what a
-    value-returning function may CALL, never whether it may branch.
-
-    The closest NAMED relative is the Humble Object pattern (Feathers,
-    "The Humble Dialog Box", Object Mentor, 2002; Meszaros, "Humble
-    Object", xunitpatterns.com), whose criterion is "so simple that we
-    often don't bother writing tests for it". That is testability, not
-    syntax, and Feathers' own untested humble dialog contains a ``for``
-    loop. Treat this rule as a decidable proxy for the Humble Object
-    property, not as a statement any of these authors made.
-
-    WHY THE THRESHOLD IS 3. It is anchored, not tuned. Cockburn's
-    published adapter, ``MockRateRepository.getRate``, has exactly three
-    ``if`` statements and is presented as the pattern with no caveat, so
-    three is the largest count the cited exemplar requires to pass. A
-    fourth logic statement is past every published example of a boundary
-    in this tradition.
-
-    ``_is_imperative_shell`` is deliberately NOT consulted here. It
-    returns ``True`` whenever ``_find_io_calls`` is non-empty, which is
-    already this rule's gate, so the call would be a no-op — the same
-    circularity that made it useless to ASP205. It earns its keep in
-    ASP202 alone, where the ``_has_untrusted_param`` disjunct reaches a
-    population ``_find_io_calls`` does not: measured on exophial's src,
-    393 functions are in ASP202's scope against 298 I/O-bearing ones.
+    Orchestrator functions that just wire I/O calls together (call A,
+    pass result to B, return) are fine — the statement threshold
+    filters them out.
     """
 
     MESSAGE = (
-        "ASP206: Function mixes I/O ({io_calls}) with {logic_count} computing statements"
+        "ASP206: Function mixes I/O ({io_calls}) with {logic_count} logic statements"
         " — consider functional core / imperative shell"
     )
     LOGIC_THRESHOLD = 3
@@ -1320,18 +944,6 @@ class MixedIOAndLogic(LintRule):
 
     VALID = [
         Valid("def orchestrator():\n    data = fetch()\n    save(data)\n    return data\n"),
-        # The same orchestrator threading FIVE effects. Before the
-        # value-threading exemption this fired at 6 counted statements and
-        # had no passing form, contradicting the docstring's promise.
-        Valid(
-            "def orchestrate_more():\n"
-            "    a = fetch()\n"
-            "    b = enrich(a)\n"
-            "    c = shape(b)\n"
-            "    print(c)\n"
-            "    d = persist(c)\n"
-            "    return d\n"
-        ),
         Valid(
             "def pure_logic(items: list) -> int:\n"
             "    assert len(items) > 0\n"
@@ -1340,109 +952,18 @@ class MixedIOAndLogic(LintRule):
             "    avg = total / len(items)\n"
             "    return int(avg)\n"
         ),
-        # Same unit-of-analysis rule ``_find_io_calls`` states: the
-        # enclosing factory is not mixing I/O with logic — its product
-        # does the I/O.
-        Valid(
-            "def make_writer(prefix: str):\n"
-            "    tag = prefix.strip()\n"
-            "    upper = tag.upper()\n"
-            "    width = len(upper)\n"
-            "    return lambda line: print(upper, width, line)\n"
-        ),
-        # REAL CODE, src/exophial/realize.py:269 `_run_git` — a subprocess
-        # boundary whose only branch raises on the return code. It carried a
-        # `# lint-ignore: MixedIOAndLogic` for a finding it should never have
-        # received: two ASP202-mandated asserts + one threading assignment +
-        # the effect's own error report + one threading return.
-        Valid(
-            "def _run_git(cwd: Path, *args: str) -> str:\n"
-            '    assert cwd, "_run_git needs a real cwd"\n'
-            '    assert args, "_run_git needs at least one git argument"\n'
-            "    result = subprocess.run(\n"
-            '        ["git", "-C", str(cwd), *args], capture_output=True, text=True\n'
-            "    )\n"
-            "    if result.returncode != 0:\n"
-            '        raise RuntimeError(f"git failed in {cwd}: {result.stderr}")\n'
-            "    return result.stdout.strip()\n"
-        ),
-        # REAL CODE, src/exophial/realize.py:418 `_observe_claim_lease` — a
-        # non-blocking flock probe. The two `|` expressions are POSIX flag
-        # words in argument position, and the try/except IS the probe's
-        # held-vs-not-held answer.
-        Valid(
-            "def _observe_claim_lease(repo: Path, pebble_id: str) -> str:\n"
-            '    assert repo, "needs a bus root"\n'
-            '    assert pebble_id, "needs a non-empty pebble id"\n'
-            "    lock_path = bus.lock_path(repo, PebbleId(pebble_id))\n"
-            "    lock_path.parent.mkdir(parents=True, exist_ok=True)\n"
-            "    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)\n"
-            "    try:\n"
-            "        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
-            "    except OSError:\n"
-            '        return "held"\n'
-            "    else:\n"
-            "        fcntl.flock(fd, fcntl.LOCK_UN)\n"
-            '        return "not_held"\n'
-            "    finally:\n"
-            "        os.close(fd)\n"
-        ),
     ]
     INVALID = [
-        # REAL CODE, src/exophial/odc.py `read_odc_close` (SPLIT at exo-d80 —
-        # the codemod lifted the scan into `_read_odc_close_core`, so the
-        # shape below is what the function looked like when it fired) (abridged to the
-        # shape that fires; the real body is 36 lines). It shells out to `pb`,
-        # then scans every comment for the last ODC marker and reshapes it.
-        # The scan is a pure fold over a list the effect already returned, so
-        # the split is mechanical: keep the `subprocess.run` here, move the
-        # scan to a `_latest_odc_marker(comments)` core.
         Invalid(
-            "def read_odc_close(repo: Path, pebble_id: str) -> dict[str, str] | None:\n"
-            '    assert pebble_id, "reading ODC fields needs the pebble id"\n'
-            "    proc = subprocess.run(\n"
-            '        ["pb", "show", "--json", pebble_id], capture_output=True, text=True\n'
-            "    )\n"
-            "    if proc.returncode != 0:\n"
-            "        return None\n"
-            "    data = json.loads(proc.stdout)\n"
-            "    if not isinstance(data, dict):\n"
-            "        return None\n"
-            '    comments = data.get("comments") or []\n'
-            "    fields: dict[str, str] | None = None\n"
-            "    for comment in comments:\n"
-            '        body = comment.get("body", "")\n'
-            "        if not body.startswith(_ODC_MARKER_PREFIX):\n"
-            "            continue\n"
-            "        fields = {str(k): str(v) for k, v in json.loads(body).items()}\n"
-            "    return fields\n"
-        ),
-        # REAL CODE, src/exophial/generators/generate_domain_types.py
-        # `load_declarations` (abridged; SPLIT at exo-d80 — the codemod lifted
-        # the ordering fold into `_load_declarations_core`). Read-then-parse-then-classify is the
-        # largest class of mixed function in this corpus: the glob and the
-        # `read_text` are the effect, and the discriminator that decides which
-        # declaration is a machine is a pure fold over the parsed values.
-        Invalid(
-            "def load_declarations() -> dict[str, dict[str, Any]]:\n"
-            "    machines: dict[str, dict[str, Any]] = {}\n"
-            "    skipped: list[str] = []\n"
-            '    for path in sorted(DECL_DIR.glob("*.json")):\n'
-            '        decl = json.loads(path.read_text(encoding="utf-8"))\n'
-            '        if not isinstance(decl, dict) or not isinstance(decl.get("aspects"), list):\n'
-            "            continue\n"
-            '        if "decision_invariants" not in decl:\n'
-            "            skipped.append(path.name)\n"
-            "            continue\n"
-            "        machines[path.name] = decl\n"
-            "    if FIRST_DECLARATION not in machines:\n"
-            '        raise SystemExit(f"{FIRST_DECLARATION} is missing")\n'
-            "    for name in skipped:\n"
-            '        print(f"  skipped {name}: no decision_invariants")\n'
-            "    ordered = [FIRST_DECLARATION] + sorted(\n"
-            "        n for n in machines if n != FIRST_DECLARATION\n"
-            "    )\n"
-            "    return {n: machines[n] for n in ordered}\n"
+            "def mixed(url: str) -> int:\n"
+            "    data = urllib.request.urlopen(url)\n"
+            "    assert data is not None\n"
+            "    assert len(data) > 0\n"
+            "    parsed = json.loads(data)\n"
+            "    total = sum(parsed['values'])\n"
+            "    avg = total / len(parsed['values'])\n"
+            "    result = int(avg * 100)\n"
+            "    return result\n"
         ),
     ]
 
@@ -1463,30 +984,17 @@ class MixedIOAndLogic(LintRule):
 
     @staticmethod
     def _count_logic_statements(body: cst.BaseSuite) -> int:
-        """Count top-level statements that carry LOGIC.
-
-        A statement carries logic when it computes over a value the
-        function derived itself (``_derived_names``,
-        ``_computes_on_derived``), or when it is control flow that is not
-        the effect's own failure report (``_is_effect_error_report``). An
-        assertion is never counted: ASP202 mandates two on every function
-        this rule examines. See the class docstring for why each
-        exemption removes a miscount rather than weakening the rule.
-        """
+        """Count non-trivial logic statements (assignments, returns, ifs, loops)."""
         count = 0
-        if not isinstance(body, cst.IndentedBlock):
-            return count
-        derived = _derived_names(body)
-        for stmt in body.body:
-            if isinstance(stmt, cst.SimpleStatementLine):
-                for item in stmt.body:
-                    if isinstance(item, cst.Assert):
-                        continue
-                    if isinstance(item, cst.AugAssign):
-                        count += 1
-                    elif _computes_on_derived(item, derived):
-                        count += 1
-            elif isinstance(stmt, cst.If | cst.For | cst.While | cst.Match):
-                if not _is_effect_error_report(stmt):
+        if isinstance(body, cst.IndentedBlock):
+            for stmt in body.body:
+                if isinstance(stmt, cst.SimpleStatementLine):
+                    for item in stmt.body:
+                        if isinstance(
+                            item,
+                            cst.Assign | cst.AnnAssign | cst.AugAssign | cst.Return | cst.Assert,
+                        ):
+                            count += 1
+                elif isinstance(stmt, cst.If | cst.For | cst.While):
                     count += 1
         return count
