@@ -30,13 +30,15 @@ repos:
     hooks:
       - id: eslint
         name: eslint (typescript/configs/eslint.config.js)
-        entry: bun node_modules/.bin/eslint --config typescript/configs/eslint.config.js --fix
+        entry: scripts/bun_hook.sh eslint --config typescript/configs/eslint.config.js --fix
         language: system
+        require_serial: true
         files: ^typescript/.*\.[jt]sx?$
       - id: prettier
         name: prettier (typescript/configs/prettier.config.cjs)
-        entry: bun node_modules/.bin/prettier --config typescript/configs/prettier.config.cjs --check
+        entry: scripts/bun_hook.sh prettier --config typescript/configs/prettier.config.cjs --check
         language: system
+        require_serial: true
         files: ^typescript/.*\.(js|jsx|ts|tsx|mjs|cjs|json)$
   - repo: local
     hooks:
