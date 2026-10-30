@@ -24,6 +24,9 @@ node_modules/
 # exophial runtime state (config.yaml stays committed)
 .exophial/*
 !.exophial/config.yaml
+# The gate image (exophial docs/REPO_INIT.md, "The gate Dockerfile").
+!.exophial/gate/
+!.exophial/gate/Dockerfile
 .worktrees/
 .claude/worktrees/
 .scratch/
