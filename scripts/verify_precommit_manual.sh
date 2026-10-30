@@ -22,7 +22,6 @@ trap cleanup EXIT
 git -C "$repo_root" worktree add --detach --quiet "$workdir" "$src_sha"
 
 cd "$workdir"
-bun install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
 
 # Reads the `files:` regex pre-commit uses to select files for a given
 # local hook id, straight from .pre-commit-config.yaml. Keeps the oracle's
