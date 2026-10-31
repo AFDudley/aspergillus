@@ -24,12 +24,13 @@
 // in a dedicated PR once violations reach zero. See typescript/README.md.
 
 import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import importPlugin from 'eslint-plugin-import';
-import functional from 'eslint-plugin-functional';
 import neverthrow from '@okee-tech/eslint-plugin-neverthrow';
-import unusedImports from 'eslint-plugin-unused-imports';
 import prettierConfig from 'eslint-config-prettier';
+import functional from 'eslint-plugin-functional';
+import importPlugin from 'eslint-plugin-import';
+import unusedImports from 'eslint-plugin-unused-imports';
+import tseslint from 'typescript-eslint';
+
 import aspergillus from '../rules/index.js';
 
 export default [
@@ -87,6 +88,24 @@ export default [
       // Level 1 baseline — lands at warn (promotes at Level 2).
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+
+  // `.cjs` files are CommonJS, not ES modules. Declare that explicitly so
+  // `module`/`require`/`exports` resolve as known globals instead of
+  // tripping `no-undef`.
+  {
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        module: 'writable',
+        exports: 'writable',
+        require: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        process: 'readonly',
+      },
     },
   },
 

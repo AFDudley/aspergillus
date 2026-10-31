@@ -1,0 +1,7 @@
+[package]
+name = "asp303-determinism-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+asp303-determinism-leaf = { path = "../leaf" }

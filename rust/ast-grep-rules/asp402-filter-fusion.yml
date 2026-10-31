@@ -1,0 +1,9 @@
+rule:
+  pattern: $RECV.filter($P).filter($Q)
+id: ASP402
+language: rust
+severity: error
+message: |
+  `.filter($P).filter($Q)` traverses twice where one predicate suffices —
+  fuse into a single `.filter(|x| $P(x) && $Q(x))`. See docs/rust-rules.md,
+  ASP402 (filter-fusion).

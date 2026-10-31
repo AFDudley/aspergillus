@@ -1,0 +1,4 @@
+[package]
+name = "asp502-violating-a"
+version = "0.1.0"
+edition = "2021"

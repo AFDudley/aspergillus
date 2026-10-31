@@ -1,0 +1,400 @@
+{
+  "id": "derived-asp-ce6.6",
+  "original_statement": "In one sentence, what is the user-facing outcome you want? A Rust workspace that adopts Aspergillus gets every ASP rule checked mechanically on commit, the same way Python and TypeScript consumers do, including two whole-workspace checks: the same function body defined twice, and the same concept declared as a type in more than one crate.\nWho is it for? Who uses this and in what situation? Maintainers of Rust repositories that adopt Aspergillus (first consumer: lobaria, a Cargo workspace of 33 crates), and the exophial workers committing into them.\nHow does a person USE the finished thing \u2014 what do they SEE and DO? Describe the observable behavior, i.e. how you would demo it. A consumer copies or depends on aspergillus/rust (as it does today for rust/configs/clippy.toml) and runs the Rust rules over its workspace; each finding prints as `path:line: ASPnnn` and a finding in a blocking rule fails the run. docs/design.md's Rust column names, for every rule of Levels 2 and 3 and every ASP4xx rule that applies to Rust, the enforcing check: a clippy lint, a declarative ast-grep YAML rule under rust/ast-grep-rules/ (the engine TypeScript already uses under typescript/ast-grep-rules/), or a whole-workspace check; a rule the Rust language already enforces names the language feature, and a rule that does not apply to Rust says why. No entry reads 'Manual', 'planned' or 'Module structure'. A duplicate-function check reports two Rust functions whose normalized bodies are identical, as `aspergillus check-duplicates` does for Python. A duplicate-type check reports a struct or enum declared in one crate whose concept a type in another crate of the same workspace already declares, with an allowlist for intended cases.\nWhat does 'done' look like in plain language? State the acceptance you could check without reading any code. Run against lobaria integrated a027fb9, the duplicate-type check reports the three declarations of Nanos (statechart/src/units.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) and of Receipt (statechart/src/edge.rs, pump-strategy/src/units.rs, hold-time-curve/src/input.rs) as findings. The ASP202, ASP204, ASP205 and ASP206 Rust checks each report a finding on a committed Rust fixture that violates the rule and none on a committed fixture that satisfies it, for every rule that has a Rust check. docs/design.md's Rust column has no 'Manual', 'planned' or 'Module structure' entry. A Rust consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language), with no Python or Node runtime in its gate path.\nWhat are the non-goals / constraints? What must this NOT do? Not a change to the Python or TypeScript rules. Not autofix: report-only, as the other languages are. Not a dylint compiler plugin as the required engine: ast-grep YAML plus the ast-grep crates is the engine lobaria already runs (lobaria chart/src/ast_grep_gate.rs, lob-979). The duplicate-type check does not flag two types that share only a name when their shapes differ (lobaria's per-module Refused, Carried, Hit and Finding types are distinct types with local meaning).\nAny examples or references? (links, prior art, a similar thing you like) aspergillus docs/design.md sections 'Level 2', 'Level 3', 'Catalog rules ASP4xx', 'Whole-project CLI tools' (check-duplicates, asp-21d); typescript/ast-grep-rules/*.yml; lobaria chart/src/ast_grep_gate.rs and scripts/gates/core-types-rules/*.yml (ast-grep YAML rules run on ast-grep-core/config/language 0.40.0 from Rust); lobaria integrated a027fb9: 454 pub type declarations carry 384 distinct names, 45 names declared more than once.\nWhat priority is this? (P0\u2013P4) and why now? P1\n\nDecomposed child: Aspergillus must give a Rust workspace a report-only check runner. A consumer copies or depends on aspergillus/rust, as it does today for rust/configs/clippy.toml. The runner reads declarative ast-grep YAML rules under rust/ast-grep-rules/. This is the same engine TypeScript uses under typescript/ast-grep-rules/. The runner runs the rules over a whole Cargo workspace. The runner prints each finding as `path:line: ASPnnn`. A finding in a blocking rule makes the run fail. The runner defines the closed set of severity values that decides whether a finding fails the run. The runner does not autofix. It reports only, as the Python checks and the TypeScript checks do. A consumer runs the checks with cargo and the ast-grep crates (ast-grep-core, ast-grep-config, ast-grep-language). No Python runtime and no Node runtime is in the gate path. A dylint compiler plugin is not the required engine. lobaria chart/src/ast_grep_gate.rs and lobaria scripts/gates/core-types-rules/*.yml show the prior art. lobaria runs ast-grep-core, ast-grep-config and ast-grep-language 0.40.0 from Rust. The first consumer is lobaria, a Cargo workspace of 33 crates. This work does not change the Python rules or the TypeScript rules.",
+  "restatement": "Aspergillus today gives a Rust consumer only reference configuration: a consumer copies or depends on the aspergillus/rust folder, as it does for rust/configs/clippy.toml. This request adds a real check runner to that same rust/ surface.\n\nThe runner is a Rust program. A consumer builds it and runs it with cargo. It depends on the ast-grep libraries ast-grep-core, ast-grep-config and ast-grep-language. A dylint compiler plugin is not the engine. The prior art is lobaria chart/src/ast_grep_gate.rs with lobaria scripts/gates/core-types-rules/*.yml, where lobaria drives ast-grep 0.40.0 from Rust.\n\nThe runner reads its checks from declarative ast-grep YAML rule files under rust/ast-grep-rules/. This is the same engine and the same rule format that the TypeScript surface already uses under typescript/ast-grep-rules/. Nobody writes a check in Rust code; a check is a YAML rule file.\n\nThe runner scans a whole Cargo workspace, not one crate. It reports a finding from every member crate. The first consumer is lobaria, a Cargo workspace of 33 crates.\n\nThe runner prints one line per finding, in the form path:line: ASPnnn.\n\nThe runner owns a closed set of severity values. That set decides the outcome: a finding from a rule whose severity is a blocking value makes the run fail with a non-zero exit status. A run with no blocking finding exits zero. A severity value outside the closed set is an error, not a silently non-blocking rule.\n\nThe runner never rewrites source. It reports only, exactly as the Python checks and the TypeScript checks do. It has no autofix.\n\nThe gate path is cargo and the ast-grep crates only. No Python runtime and no Node runtime runs when a consumer runs the checks.\n\nThe work adds the Rust surface. It leaves the existing Python rules and the existing TypeScript rules as they are.",
+  "restatement_clauses": [
+    {
+      "id": "c1",
+      "text": "A cargo-built Rust check runner lives in the aspergillus rust/ folder, beside rust/configs/clippy.toml, and its Cargo manifest depends on ast-grep-core, ast-grep-config and ast-grep-language."
+    },
+    {
+      "id": "c2",
+      "text": "The runner takes its checks from declarative ast-grep YAML rule files under rust/ast-grep-rules/, in the same rule format the TypeScript surface uses under typescript/ast-grep-rules/."
+    },
+    {
+      "id": "c3",
+      "text": "Every rule file under rust/ast-grep-rules/ declares a severity value."
+    },
+    {
+      "id": "c4",
+      "text": "The runner runs the rules over a whole Cargo workspace and reports findings from every member crate, not only the root crate."
+    },
+    {
+      "id": "c5",
+      "text": "The runner prints each finding as a line in the form path:line: ASPnnn."
+    },
+    {
+      "id": "c6",
+      "text": "A finding from a rule with a blocking severity makes the run fail with a non-zero exit status, and a run with no blocking finding exits zero."
+    },
+    {
+      "id": "c7",
+      "text": "The runner defines the closed set of severity values that decides whether a finding fails the run, and it rejects a severity value outside that set instead of treating it as non-blocking."
+    },
+    {
+      "id": "c8",
+      "text": "The runner does not autofix: a run that reports findings leaves every source file in the scanned workspace unchanged."
+    },
+    {
+      "id": "c9",
+      "text": "No Python runtime and no Node runtime is in the gate path: a consumer runs the checks with cargo and the ast-grep crates alone."
+    },
+    {
+      "id": "c10",
+      "text": "A dylint compiler plugin is not the engine: no Cargo manifest under rust/ depends on dylint."
+    },
+    {
+      "id": "c11",
+      "text": "The work does not change the TypeScript rules: every existing rule file under typescript/ast-grep-rules/ stays in place with its severity line."
+    },
+    {
+      "id": "c12",
+      "text": "The work does not change the Python rules: the rule modules python/src/aspergillus/rules/level2.py and level3.py keep at least their 27 existing rule functions."
+    }
+  ],
+  "goal": "Ship a report-only ast-grep check runner for Cargo workspaces in the aspergillus rust/ surface, driven by declarative YAML rules under rust/ast-grep-rules/, printing path:line: ASPnnn and failing only on blocking severities.",
+  "acceptance_criteria": [
+    "A Cargo manifest inside the rust/ folder names all three ast-grep libraries the runner is built on: ast-grep-core, ast-grep-config and ast-grep-language.",
+    "The folder rust/ast-grep-rules/ holds at least one check written as an ast-grep YAML rule file, with a rule: block, the same way the TypeScript rule files are written.",
+    "Every rule file in rust/ast-grep-rules/ states a severity.",
+    "Given a throwaway Cargo workspace with two member crates, each holding a violation the rules catch, one run of the checks reports a finding in both crates.",
+    "Running the checks over a workspace that holds known violations prints every finding as a file path, then a line number, then an ASP identifier of three digits, and prints no finding line in any other shape.",
+    "A run over a workspace that trips a blocking rule ends in failure, and a run over a clean workspace ends in success.",
+    "The runner lists the severity values it accepts, that list holds at least two values, and a rule file that names a severity outside the list makes the run report an error instead of quietly passing.",
+    "After a run that reports findings over a throwaway workspace, every file in that workspace has the same content it had before the run.",
+    "With stand-in programs put in front of python, python3, node and npx that record every call, a run of the checks still reports findings and records no call to any of them.",
+    "No Cargo manifest in the rust/ folder names dylint.",
+    "Every rule file that exists today under typescript/ast-grep-rules/ is still there and still states its severity.",
+    "The two Python rule modules still define at least the 27 rule functions they define today."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "A Cargo manifest inside the rust/ folder names all three ast-grep libraries the runner is built on: ast-grep-core, ast-grep-config and ast-grep-language."
+    },
+    {
+      "id": "c2",
+      "text": "The folder rust/ast-grep-rules/ holds at least one check written as an ast-grep YAML rule file, with a rule: block, the same way the TypeScript rule files are written."
+    },
+    {
+      "id": "c3",
+      "text": "Every rule file in rust/ast-grep-rules/ states a severity."
+    },
+    {
+      "id": "c4",
+      "text": "Given a throwaway Cargo workspace with two member crates, each holding a violation the rules catch, one run of the checks reports a finding in both crates."
+    },
+    {
+      "id": "c5",
+      "text": "Running the checks over a workspace that holds known violations prints every finding as a file path, then a line number, then an ASP identifier of three digits, and prints no finding line in any other shape."
+    },
+    {
+      "id": "c6",
+      "text": "A run over a workspace that trips a blocking rule ends in failure, and a run over a clean workspace ends in success."
+    },
+    {
+      "id": "c7",
+      "text": "The runner lists the severity values it accepts, that list holds at least two values, and a rule file that names a severity outside the list makes the run report an error instead of quietly passing."
+    },
+    {
+      "id": "c8",
+      "text": "After a run that reports findings over a throwaway workspace, every file in that workspace has the same content it had before the run."
+    },
+    {
+      "id": "c9",
+      "text": "With stand-in programs put in front of python, python3, node and npx that record every call, a run of the checks still reports findings and records no call to any of them."
+    },
+    {
+      "id": "c10",
+      "text": "No Cargo manifest in the rust/ folder names dylint."
+    },
+    {
+      "id": "c11",
+      "text": "Every rule file that exists today under typescript/ast-grep-rules/ is still there and still states its severity."
+    },
+    {
+      "id": "c12",
+      "text": "The two Python rule modules still define at least the 27 rule functions they define today."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "grep",
+      "restatement_clause_id": "c1",
+      "description": "A Cargo manifest inside the rust/ folder names all three ast-grep libraries the runner is built on: ast-grep-core, ast-grep-config and ast-grep-language.",
+      "proves": "Proves the check runner is a cargo-built Rust program shipped in the same rust/ folder a consumer already copies, and that it runs on the ast-grep engine rather than something else.",
+      "pattern": "ast-grep-core",
+      "additional_patterns": [
+        "ast-grep-config",
+        "ast-grep-language"
+      ],
+      "files": [
+        "rust/**/Cargo.toml"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 3
+      },
+      "clause_id": "c1"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c2",
+      "description": "The folder rust/ast-grep-rules/ holds at least one check written as an ast-grep YAML rule file, with a rule: block, the same way the TypeScript rule files are written.",
+      "proves": "Proves the checks are declarative YAML rules in the expected folder, so a consumer adds or reads a check without touching Rust code.",
+      "pattern": "^rule:",
+      "files": [
+        "rust/ast-grep-rules/*.yml"
+      ],
+      "count": {
+        "unit": "files",
+        "op": "ge",
+        "value": 1
+      },
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c3",
+      "description": "Every rule file in rust/ast-grep-rules/ states a severity.",
+      "proves": "Proves each rule carries the severity the runner reads to decide whether that rule's finding fails the run.",
+      "pattern": "^severity:",
+      "files": [
+        "rust/ast-grep-rules/*.yml"
+      ],
+      "count": {
+        "unit": "files_without_match",
+        "op": "eq",
+        "value": 0
+      },
+      "clause_id": "c3"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c4",
+      "description": "Given a throwaway Cargo workspace with two member crates, each holding a violation the rules catch, one run of the checks reports a finding in both crates.",
+      "proves": "Proves the checks cover the whole workspace, so a consumer such as lobaria, with 33 crates, sees findings from every crate and not only the root one.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_rust_ast_grep_workspace_scan.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "workspace_member_count",
+          "op": "ge",
+          "value": 2
+        },
+        {
+          "observe": "stdout_json",
+          "field": "member_crates_with_findings",
+          "op": "ge",
+          "value": 2
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c4"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c5",
+      "description": "Running the checks over a workspace that holds known violations prints every finding as a file path, then a line number, then an ASP identifier of three digits, and prints no finding line in any other shape.",
+      "proves": "Proves a reader and any tool that reads the output gets the promised path:line: ASPnnn line for each finding.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_rust_ast_grep_finding_format.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_total",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "findings_off_format",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c6",
+      "description": "A run over a workspace that trips a blocking rule ends in failure, and a run over a clean workspace ends in success.",
+      "proves": "Proves the checks act as a gate: blocking findings stop the consumer's build, and a clean workspace passes.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_rust_ast_grep_blocking_exit.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "exit_code_blocking_finding",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "exit_code_no_finding",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c6"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c7",
+      "description": "The runner lists the severity values it accepts, that list holds at least two values, and a rule file that names a severity outside the list makes the run report an error instead of quietly passing.",
+      "proves": "Proves the runner owns one fixed, named set of severity values, so a typo in a rule file can never turn a blocking check into a silent one.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_rust_ast_grep_severity_domain.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "accepted_severity_count",
+          "op": "ge",
+          "value": 2
+        },
+        {
+          "observe": "stdout_json",
+          "field": "unknown_severity_rejected",
+          "op": "eq",
+          "value": true
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c8",
+      "description": "After a run that reports findings over a throwaway workspace, every file in that workspace has the same content it had before the run.",
+      "proves": "Proves the checks report only and never edit a consumer's source, the same way the Python checks and the TypeScript checks behave.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_rust_ast_grep_no_autofix.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_total",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "files_changed",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c8"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c9",
+      "description": "With stand-in programs put in front of python, python3, node and npx that record every call, a run of the checks still reports findings and records no call to any of them.",
+      "proves": "Proves a consumer needs neither Python nor Node installed to run the checks, so the gate depends on cargo and the ast-grep libraries alone.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_rust_ast_grep_no_python_no_node.sh",
+        "args": [],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "stdout_json",
+          "field": "findings_total",
+          "op": "ge",
+          "value": 1
+        },
+        {
+          "observe": "stdout_json",
+          "field": "python_or_node_invocations",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 1800,
+      "clause_id": "c9"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "c10",
+      "description": "No Cargo manifest in the rust/ folder names dylint.",
+      "proves": "Proves the checks run on the ast-grep libraries and do not require a compiler plugin toolchain.",
+      "pattern": "dylint",
+      "files": [
+        "rust/**/Cargo.toml"
+      ],
+      "clause_id": "c10"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c11",
+      "description": "Every rule file that exists today under typescript/ast-grep-rules/ is still there and still states its severity.",
+      "proves": "Proves the new Rust surface arrives beside the TypeScript rules and does not remove or empty them.",
+      "pattern": "^severity:",
+      "files": [
+        "typescript/ast-grep-rules/*.yml"
+      ],
+      "count": {
+        "unit": "files_without_match",
+        "op": "eq",
+        "value": 0
+      },
+      "clause_id": "c11"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c12",
+      "description": "The two Python rule modules still define at least the 27 rule functions they define today.",
+      "proves": "Proves the new Rust surface leaves the Python checks whole.",
+      "pattern": "^def ",
+      "files": [
+        "python/src/aspergillus/rules/level2.py",
+        "python/src/aspergillus/rules/level3.py"
+      ],
+      "count": {
+        "unit": "lines",
+        "op": "ge",
+        "value": 27
+      },
+      "clause_id": "c12"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/verify_rust_ast_grep_blocking_exit.sh",
+    "scripts/verify_rust_ast_grep_finding_format.sh",
+    "scripts/verify_rust_ast_grep_no_autofix.sh",
+    "scripts/verify_rust_ast_grep_no_python_no_node.sh",
+    "scripts/verify_rust_ast_grep_severity_domain.sh",
+    "scripts/verify_rust_ast_grep_workspace_scan.sh"
+  ]
+}

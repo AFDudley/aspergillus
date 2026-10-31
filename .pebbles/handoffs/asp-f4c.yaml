@@ -1,0 +1,79 @@
+status: completed
+pebble_id: asp-f4c
+summary: >
+  Added a repeatable `--exclude <glob>` flag to all three aspergillus Rust
+  check binaries (aspergillus-rust-dup-type-check, aspergillus-rust-dup-check,
+  aspergillus-rust-gate) so a consumer can skip a path subtree, matching
+  what the workspace walker already does for target/ and hidden
+  directories. The worker branch's recorded base commit predated the
+  ce6.1-ce6.4 work that ships these three binaries (it forked before
+  those pebbles merged into the integration branch), so before writing
+  any code I rebased the branch onto `integrated`, which carries that
+  work; `git diff --name-only integrated...HEAD` now names only this
+  pebble's own files. workspace::take_excludes extracts every
+  `--exclude GLOB` pair from a binary's raw arguments ahead of its own
+  flag parsing; workspace::build_excludes compiles the extracted
+  patterns into a globset::GlobSet (globset was already a transitive
+  dependency pinned in Cargo.lock, so no new crate entered the offline
+  build); rust_source_files skips a matching file during its walk, so an
+  excluded file is never read and never contributes an occurrence to a
+  cross-crate duplicate group — meaning a concept whose only OTHER
+  declaration sat under an excluded path stops being a duplicate at all,
+  not just an unreported one, which is what the request's Owed/Hole
+  scenario needs. The gate binary additionally filters
+  clippy::clippy_findings's result by the same excludes after the fact,
+  since cargo clippy compiles the whole workspace regardless of which
+  files the file walker skips. The existing --allowlist flag
+  (dup-type-check only) is untouched and coexists with --exclude in the
+  same run. I wrote all 8 declared acceptance-oracle entrypoints under
+  scripts/ (none existed before this branch): a shared
+  scripts/lib_rust_exclude.sh builds all three binaries and writes a
+  throwaway four-crate fixture (kept-a/kept-b never excluded, alpha/dup
+  and beta/dup each under its own glob) for the c1/c2/c3/c6/c8 probes; a
+  committed synthetic fixture rust/fixtures/lobaria-exclude-shape/ (see
+  its PROVENANCE.md, which states plainly it is NOT a copy of the real
+  lobaria repository) reproduces the request's named scenario — a
+  statechart/src/chart.rs declaring Owed/Hole and a
+  scripts/oracles/fixtures/ subtree redeclaring them, plus five
+  production concepts (Bps, SignedLamports, TrajectoryRow, Cut, Run)
+  crossing the statechart/pump-strategy crate boundary — for the c4/c5
+  probes, with each probe locating a concept's declaration line by
+  grepping the committed fixture rather than a hardcoded line number.
+  The c7 metamorphic oracle (scripts/rust_exclude_conservation_relation.py)
+  builds its own throwaway fixture, runs the real binary with and
+  without --exclude, and emits flows=[without, -with, -under_excluded],
+  which sums to zero. All 8 probes pass locally against the real
+  cargo-built binaries (values shown in the e2e_gate command below match
+  the spec's `then` clauses exactly), cargo build/test/clippy/fmt are
+  clean, uv run --directory python pytest tests -q still passes (310
+  passed, 1 skipped, confirming c9: none of the named Python/TypeScript
+  files mention --exclude), and pre-commit passes on every changed file.
+cost: ~145k tokens
+commits:
+  - "9ace69da0e77f4e094f6d7a5a1b63ad819190ecd"
+verify_transcript:
+  hooks:
+    - name: "cargo build --manifest-path rust/Cargo.toml --offline"
+      outcome: passed
+      duration_s: 10
+    - name: "cargo test --manifest-path rust/Cargo.toml --offline"
+      outcome: passed
+      duration_s: 1
+    - name: "cargo clippy --manifest-path rust/Cargo.toml --offline --all-targets"
+      outcome: passed
+      duration_s: 2
+    - name: "cargo fmt --manifest-path rust/Cargo.toml --check"
+      outcome: passed
+      duration_s: 1
+    - name: "uv run --directory python pytest tests -q"
+      outcome: passed
+      duration_s: 4
+    - name: "pre-commit run --files <all changed files>"
+      outcome: passed
+      duration_s: 3
+e2e_gate:
+  spec: contracts/specs/derived-asp-f4c.spec.json
+  command: "bash scripts/rust_exclude_flag_accepted_probe.sh && bash scripts/rust_exclude_two_crate_fixture_probe.sh && bash scripts/rust_exclude_union_probe.sh && bash scripts/rust_exclude_lobaria_shape_probe.sh --exclude 'scripts/oracles/fixtures/**' && bash scripts/rust_exclude_lobaria_shape_default_probe.sh && bash scripts/rust_exclude_allowlist_coexist_probe.sh && python3 scripts/rust_exclude_conservation_relation.py && bash scripts/rust_exclude_no_write_probe.sh"
+  result: passed
+  ran_at_sha: "9ace69d"
+  mocks_in_path: false

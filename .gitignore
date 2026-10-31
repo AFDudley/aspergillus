@@ -24,6 +24,16 @@ node_modules/
 # exophial runtime state (config.yaml stays committed)
 .exophial/*
 !.exophial/config.yaml
+# The gate image (exophial docs/REPO_INIT.md, "The gate Dockerfile").
+!.exophial/gate/
+!.exophial/gate/Dockerfile
 .worktrees/
 .claude/worktrees/
 .scratch/
+/rust/target/
+rust/fixtures/*/*/target/
+rust/fixtures/*/*/Cargo.lock
+# The ASP303-determinism fixture is a multi-crate workspace, so its build
+# artifacts sit one level shallower than the violating/satisfying pairs.
+rust/fixtures/**/target/
+rust/fixtures/**/Cargo.lock

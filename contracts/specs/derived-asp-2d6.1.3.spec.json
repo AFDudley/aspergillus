@@ -1,0 +1,242 @@
+{
+  "id": "asp-2d6.1.3",
+  "goal": "Gate enforces ASP401/402/406/407/408/409/410 with fixtures; ASP405 stated N/A.",
+  "acceptance_criteria": [
+    "ASP401 violating fixture is committed",
+    "ASP401 satisfying fixture is committed",
+    "the gate fires ASP401 on its violating fixture and exits 1",
+    "the gate is silent for ASP401 on its satisfying fixture and exits 0",
+    "ASP402 violating fixture is committed",
+    "ASP402 satisfying fixture is committed",
+    "the gate fires ASP402 on its violating fixture and exits 1",
+    "the gate is silent for ASP402 on its satisfying fixture and exits 0",
+    "ASP406 violating fixture is committed",
+    "ASP406 satisfying fixture is committed",
+    "the gate fires ASP406 on its violating fixture and exits 1",
+    "the gate is silent for ASP406 on its satisfying fixture and exits 0",
+    "ASP407 violating fixture is committed",
+    "ASP407 satisfying fixture is committed",
+    "the gate fires ASP407 on its violating fixture and exits 1",
+    "the gate is silent for ASP407 on its satisfying fixture and exits 0",
+    "ASP408 violating fixture is committed",
+    "ASP408 satisfying fixture is committed",
+    "the gate fires ASP408 on its violating fixture and exits 1",
+    "the gate is silent for ASP408 on its satisfying fixture and exits 0",
+    "ASP409 violating fixture is committed",
+    "ASP409 satisfying fixture is committed",
+    "the gate fires ASP409 on its violating fixture and exits 1",
+    "the gate is silent for ASP409 on its satisfying fixture and exits 0",
+    "ASP410 violating fixture is committed",
+    "ASP410 satisfying fixture is committed",
+    "the gate fires ASP410 on its violating fixture and exits 1",
+    "the gate is silent for ASP410 on its satisfying fixture and exits 0",
+    "design.md states ASP405 is deliberately unassigned"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP401 violating fixture is committed",
+      "path": "rust/fixtures/ASP401/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP401 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP401/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP401 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP401",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP401 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP401",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP402 violating fixture is committed",
+      "path": "rust/fixtures/ASP402/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP402 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP402/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP402 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP402",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP402 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP402",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP406 violating fixture is committed",
+      "path": "rust/fixtures/ASP406/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP406 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP406/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP406 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP406",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP406 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP406",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP407 violating fixture is committed",
+      "path": "rust/fixtures/ASP407/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP407 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP407/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP407 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP407",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP407 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP407",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP408 violating fixture is committed",
+      "path": "rust/fixtures/ASP408/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP408 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP408/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP408 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP408",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP408 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP408",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP409 violating fixture is committed",
+      "path": "rust/fixtures/ASP409/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP409 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP409/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP409 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP409",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP409 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP409",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP410 violating fixture is committed",
+      "path": "rust/fixtures/ASP410/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP410 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP410/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP410 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP410",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP410 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP410",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md states ASP405 is deliberately unassigned",
+      "pattern": "ASP405 is deliberately unassigned",
+      "files": [
+        "docs/design.md"
+      ]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. This spec pins that the rule(s) named in the goal are enforced (blocking, with committed violating/satisfying fixtures) or documented as not-applicable in docs/design.md, graded deterministically against the integration branch."
+}

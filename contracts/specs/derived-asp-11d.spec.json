@@ -1,0 +1,41 @@
+{
+  "id": "asp-11d",
+  "goal": "ASP502 finds renamed + reordered structural type duplicates (violating fires, satisfying clean).",
+  "acceptance_criteria": [
+    "ASP502 violating fixture is committed (crate-a of the duplicate pair)",
+    "ASP502 satisfying fixture is committed (crate-a of the duplicate pair)",
+    "the gate fires ASP502 on its violating fixture and exits 1",
+    "the gate is silent for ASP502 on its satisfying fixture and exits 0"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP502 violating fixture is committed (crate-a of the duplicate pair)",
+      "path": "rust/fixtures/ASP502/violating/crate-a/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP502 satisfying fixture is committed (crate-a of the duplicate pair)",
+      "path": "rust/fixtures/ASP502/satisfying/crate-a/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP502 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP502",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP502 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP502",
+        "satisfying"
+      ]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. This spec pins that the rule(s) named in the goal are enforced (blocking, with committed violating/satisfying fixtures) or documented as not-applicable in docs/design.md, graded deterministically against the integration branch."
+}

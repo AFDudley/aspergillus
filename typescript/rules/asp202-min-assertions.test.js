@@ -1,8 +1,8 @@
 // RuleTester suite for asp202-min-assertions. Run via `bun test`.
 
-import { RuleTester } from 'eslint';
-import { describe, it } from 'bun:test';
 import tsParser from '@typescript-eslint/parser';
+import { describe, it } from 'bun:test';
+import { RuleTester } from 'eslint';
 
 import rule from './asp202-min-assertions.js';
 

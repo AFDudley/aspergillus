@@ -1,0 +1,308 @@
+{
+  "id": "derived-asp-3c8",
+  "original_statement": "What must hold? State the invariant or expectation this concerns. A clean checkout of aspergillus main passes the command: pre-commit run --all-files --hook-stage manual.\nWhat holds now? Describe the current, observed state. On a clean detached worktree of main (HEAD f750526), pre-commit run --all-files --hook-stage manual fails two hooks. eslint exits 2 with: ESLint couldn't find an eslint.config.(js|mjs|cjs) file. prettier fails with: files were modified by this hook, and reformats many non-JS tracked files such as docs/testing.md and contracts/specs/derived-asp-ce6.8.spec.json.\nHow do you see it? Describe exactly how to observe this for yourself \u2014 the steps to reproduce, or how you would demo it. Run: git -C /home/rix/code/git_puller/repos/aspergillus worktree add --detach <path> main. Then cd <path> and run: pre-commit run --all-files --hook-stage manual.\nWhat constraints apply? State them in plain prose. Do not delete the eslint hook or the prettier hook. Do not add a path exclude that skips a whole tree to make a hook pass. Point each hook at the config and the files the language actually uses, for example typescript/configs/eslint.config.js for eslint. Keep the three local hooks the root config already runs: claude-md-coverage, check-subtree-edits, reroute-main-commit, session-trailer.\nWhere does this apply? (e.g. gateway route, mobile screen, CLI verb) .pre-commit-config.yaml at the aspergillus repo root",
+  "restatement": "A clean checkout of aspergillus main must pass the command pre-commit run --all-files --hook-stage manual. Today the eslint hook fails because it cannot find an eslint config, and the prettier hook reformats non-JS tracked files such as docs/testing.md and contracts/specs/derived-asp-ce6.8.spec.json. The fix is in .pre-commit-config.yaml at the repo root. Each hook must point at the config and files its language uses, for example typescript/configs/eslint.config.js for eslint. Both hooks stay. No exclude that skips a whole tree is added. The four local hooks claude-md-coverage, check-subtree-edits, reroute-main-commit and session-trailer stay. The hooks must still do real work: eslint fails a TypeScript file with a real lint error, prettier fails a mis-formatted TypeScript file, and a hook that matches zero files does not count as a pass.",
+  "restatement_clauses": [
+    {
+      "id": "c1",
+      "text": "A clean detached worktree of aspergillus main passes the command: pre-commit run --all-files --hook-stage manual (exit code 0)."
+    },
+    {
+      "id": "c2",
+      "text": "The eslint hook is not deleted from .pre-commit-config.yaml."
+    },
+    {
+      "id": "c3",
+      "text": "The prettier hook is not deleted from .pre-commit-config.yaml."
+    },
+    {
+      "id": "c4",
+      "text": "No path exclude that skips a whole tree is added to make a hook pass."
+    },
+    {
+      "id": "c5",
+      "text": "The eslint hook points at the config the language uses, typescript/configs/eslint.config.js."
+    },
+    {
+      "id": "c6",
+      "text": "The prettier hook runs only on the files its language uses, so it modifies no tracked files such as docs/testing.md or contracts/specs/derived-asp-ce6.8.spec.json."
+    },
+    {
+      "id": "c7",
+      "text": "The local hooks claude-md-coverage, check-subtree-edits, reroute-main-commit and session-trailer are still run by the root config."
+    },
+    {
+      "id": "c8",
+      "text": "A file under the TypeScript tree that contains a real lint error (for example an unused variable that the config forbids) fails the eslint hook, and the eslint hook matches at least one file on a clean checkout."
+    },
+    {
+      "id": "c9",
+      "text": "A mis-formatted TypeScript file fails the prettier hook, and the prettier hook matches at least one file on a clean checkout."
+    }
+  ],
+  "goal": "The command pre-commit run --all-files --hook-stage manual passes on a clean checkout of aspergillus main, with the eslint and prettier hooks kept, pointed at the TypeScript config and files, and still able to catch real errors.",
+  "acceptance_criteria": [
+    "On a fresh clean copy of main, the full manual pre-commit run finishes with no failing hook.",
+    "The pre-commit config still lists an eslint hook.",
+    "The pre-commit config still lists a prettier hook.",
+    "The pre-commit config has no exclude line that skips a whole top-level folder such as docs, contracts, typescript or python.",
+    "The pre-commit config names typescript/configs/eslint.config.js as the eslint config.",
+    "After the prettier hook runs on a fresh clean copy of main, it passes and has changed no tracked file.",
+    "The pre-commit config still names all four local hooks.",
+    "A TypeScript file with a real lint error, such as an unused variable, is added to a fresh copy of main. The eslint hook fails on it. The hook also checks at least one file on the clean copy.",
+    "A badly formatted TypeScript file is added to a fresh copy of main. The prettier hook fails on it. The hook also checks at least one file on the clean copy."
+  ],
+  "request_clauses": [
+    {
+      "id": "c1",
+      "text": "On a fresh clean copy of main, the full manual pre-commit run finishes with no failing hook."
+    },
+    {
+      "id": "c2",
+      "text": "The pre-commit config still lists an eslint hook."
+    },
+    {
+      "id": "c3",
+      "text": "The pre-commit config still lists a prettier hook."
+    },
+    {
+      "id": "c4",
+      "text": "The pre-commit config has no exclude line that skips a whole top-level folder such as docs, contracts, typescript or python."
+    },
+    {
+      "id": "c5",
+      "text": "The pre-commit config names typescript/configs/eslint.config.js as the eslint config."
+    },
+    {
+      "id": "c6",
+      "text": "After the prettier hook runs on a fresh clean copy of main, it passes and has changed no tracked file."
+    },
+    {
+      "id": "c7",
+      "text": "The pre-commit config still names all four local hooks."
+    },
+    {
+      "id": "c8",
+      "text": "A TypeScript file with a real lint error, such as an unused variable, is added to a fresh copy of main. The eslint hook fails on it. The hook also checks at least one file on the clean copy."
+    },
+    {
+      "id": "c9",
+      "text": "A badly formatted TypeScript file is added to a fresh copy of main. The prettier hook fails on it. The hook also checks at least one file on the clean copy."
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c1",
+      "description": "On a fresh clean copy of main, the full manual pre-commit run finishes with no failing hook.",
+      "proves": "The whole manual pre-commit run passes on a clean checkout of main.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_precommit_manual.sh",
+        "args": [
+          "--full-run"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "pre_commit_exit_code",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 900,
+      "clause_id": "c1"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c2",
+      "description": "The pre-commit config still lists an eslint hook.",
+      "proves": "The eslint hook was kept, not deleted.",
+      "pattern": "id:\\s*eslint\\b",
+      "files": [
+        ".pre-commit-config.yaml"
+      ],
+      "clause_id": "c2"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c3",
+      "description": "The pre-commit config still lists a prettier hook.",
+      "proves": "The prettier hook was kept, not deleted.",
+      "pattern": "id:\\s*prettier\\b",
+      "files": [
+        ".pre-commit-config.yaml"
+      ],
+      "clause_id": "c3"
+    },
+    {
+      "type": "grep_absent",
+      "restatement_clause_id": "c4",
+      "description": "The pre-commit config has no exclude line that skips a whole top-level folder such as docs, contracts, typescript or python.",
+      "proves": "No hook was made to pass by hiding a whole tree from it.",
+      "pattern": "^\\s*exclude:\\s*['\"]?\\^?\\(?(docs|contracts|typescript|python)\\b",
+      "additional_patterns": [
+        "^\\s*exclude:.*\\b(docs|contracts|typescript|python)/\\)?\\.?\\*?['\"]?\\s*$"
+      ],
+      "files": [
+        ".pre-commit-config.yaml"
+      ],
+      "clause_id": "c4"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c5",
+      "description": "The pre-commit config names typescript/configs/eslint.config.js as the eslint config.",
+      "proves": "The eslint hook points at the config the TypeScript tree uses.",
+      "pattern": "typescript/configs/eslint\\.config\\.js",
+      "files": [
+        ".pre-commit-config.yaml"
+      ],
+      "clause_id": "c5"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c6",
+      "description": "After the prettier hook runs on a fresh clean copy of main, it passes and has changed no tracked file.",
+      "proves": "The prettier hook passes and leaves every tracked file, including docs and contract specs, untouched.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_precommit_manual.sh",
+        "args": [
+          "--prettier-clean"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "prettier_exit_code",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "modified_tracked_files",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c6"
+    },
+    {
+      "type": "grep",
+      "restatement_clause_id": "c7",
+      "description": "The pre-commit config still names all four local hooks.",
+      "proves": "The four local hooks are still run by the root config.",
+      "pattern": "claude-md-coverage",
+      "additional_patterns": [
+        "check-subtree-edits",
+        "reroute-main-commit",
+        "session-trailer"
+      ],
+      "files": [
+        ".pre-commit-config.yaml"
+      ],
+      "count": {
+        "unit": "patterns",
+        "op": "eq",
+        "value": 4
+      },
+      "clause_id": "c7"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c8",
+      "description": "A TypeScript file with a real lint error, such as an unused variable, is added to a fresh copy of main. The eslint hook fails on it. The hook also checks at least one file on the clean copy.",
+      "proves": "The eslint hook really lints TypeScript and is not an empty pass.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_precommit_manual.sh",
+        "args": [
+          "--eslint-catches-error"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "clean_files_checked",
+          "op": "gt",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "eslint_exit_code_with_error",
+          "op": "ne",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c8"
+    },
+    {
+      "type": "behavior",
+      "restatement_clause_id": "c9",
+      "description": "A badly formatted TypeScript file is added to a fresh copy of main. The prettier hook fails on it. The hook also checks at least one file on the clean copy.",
+      "proves": "The prettier hook really checks TypeScript formatting and is not an empty pass.",
+      "when": {
+        "interpreter": "bash",
+        "script": "scripts/verify_precommit_manual.sh",
+        "args": [
+          "--prettier-catches-misformat"
+        ],
+        "stdin": ""
+      },
+      "then": [
+        {
+          "observe": "exit_code",
+          "field": "",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "clean_files_checked",
+          "op": "gt",
+          "value": 0
+        },
+        {
+          "observe": "stdout_json",
+          "field": "prettier_exit_code_with_misformat",
+          "op": "ne",
+          "value": 0
+        }
+      ],
+      "max_runs": 1,
+      "timeout_seconds": 600,
+      "clause_id": "c9"
+    }
+  ],
+  "declared_new_entrypoints": [
+    "scripts/verify_precommit_manual.sh"
+  ]
+}

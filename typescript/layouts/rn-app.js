@@ -53,8 +53,14 @@ export default [
             { from: { type: 'services' }, allow: { to: { type: ['services', 'core'] } } },
             { from: { type: 'hooks' }, allow: { to: { type: ['hooks', 'services', 'core'] } } },
             // Components may use hooks for state — that's idiomatic React.
-            { from: { type: 'components' }, allow: { to: { type: ['components', 'hooks', 'core'] } } },
-            { from: { type: 'screens' }, allow: { to: { type: ['screens', 'hooks', 'components', 'core'] } } },
+            {
+              from: { type: 'components' },
+              allow: { to: { type: ['components', 'hooks', 'core'] } },
+            },
+            {
+              from: { type: 'screens' },
+              allow: { to: { type: ['screens', 'hooks', 'components', 'core'] } },
+            },
           ],
         },
       ],

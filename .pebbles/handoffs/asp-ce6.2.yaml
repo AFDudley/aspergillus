@@ -1,0 +1,69 @@
+status: completed
+pebble_id: asp-ce6.2
+summary: >
+  Wrote docs/rust-rules.md, naming a Rust disposition for all 27 aspergillus
+  rules (Level 2 ASP201-206, Level 3 ASP301-304, catalog ASP401-417): a
+  clippy lint, an ast-grep rule under rust/ast-grep-rules/, a gate-native
+  check in the aspergillus-rust-gate crate, a Rust language feature, or a
+  specific stated reason the rule does not apply to Rust. Added three new
+  gate-native checks to rust/src/purity.rs (ASP202 assertion density, ASP205
+  impure function, ASP206 functional core / imperative shell), each a pure
+  function over an already-parsed ast-grep tree, mirroring
+  python/src/aspergillus/rules/level2.py and io_blocklist.py. Added
+  clippy::redundant_closure (ASP403) to the gate's forced clippy lints and a
+  new ast-grep rule for ASP404. Every checked rule (ASP201, ASP202, ASP204,
+  ASP205, ASP206, ASP301, ASP403, ASP404 — 8 total) has a committed
+  rust/fixtures/<ASPnnn>/{violating,satisfying}/ Cargo crate pair. Wrote
+  five verification scripts (scripts/asp_rust_rule_audit.py,
+  asp_rust_rule_probe.py, asp_rust_finding_format.py, asp_rust_no_autofix.py,
+  asp_python_ts_rules_intact.py) and ran the full acceptance spec
+  (contracts/specs/derived-asp-ce6.2.spec.json) end to end against the real
+  built gate binary: all 10 clauses (C1-C10) pass. Also ran cargo test (13
+  unit tests pass, including 8 new purity.rs tests), cargo clippy -D
+  warnings (clean), cargo fmt --check (clean after one fmt pass), the full
+  Python pytest suite (0 failures) and the full TypeScript bun test suite
+  (60 pass, 0 fail, after `bun install` to populate this worktree's
+  previously-empty node_modules), and pre-commit on every changed file
+  (all hooks pass). This branch forked from main before the sibling
+  asp-ce6.1 branch (the Rust gate runner crate) merged into `integrated`,
+  so it started by fast-forward-merging `integrated` to pick that crate up
+  before adding this deliverable on top; no new commit was created by that
+  merge.
+cost: ~230k tokens
+commits:
+  - "9b85d62"
+verify_transcript:
+  hooks:
+    - name: cargo test --manifest-path rust/Cargo.toml --offline
+      outcome: passed
+      duration_s: 2
+    - name: cargo clippy --manifest-path rust/Cargo.toml --offline --all-targets -- -D warnings
+      outcome: passed
+      duration_s: 1
+    - name: cargo fmt --manifest-path rust/Cargo.toml --check
+      outcome: passed
+      duration_s: 1
+    - name: uv run --directory python pytest tests -q
+      outcome: passed
+      duration_s: 60
+    - name: bun test typescript/rules typescript/layouts typescript/errors
+      outcome: passed
+      duration_s: 1
+    - name: pre-commit run --files <all changed files>
+      outcome: passed
+      duration_s: 5
+e2e_gate:
+  spec: contracts/specs/derived-asp-ce6.2.spec.json
+  command: >-
+    python3 scripts/asp_rust_rule_audit.py --json && python3
+    scripts/asp_rust_rule_audit.py --fixtures --json && python3
+    scripts/asp_rust_rule_probe.py --rule ASP202 --json && python3
+    scripts/asp_rust_rule_probe.py --rule ASP204 --json && python3
+    scripts/asp_rust_rule_probe.py --rule ASP205 --json && python3
+    scripts/asp_rust_rule_probe.py --rule ASP206 --json && python3
+    scripts/asp_rust_finding_format.py --format-regex '^\S+:[0-9]+: ASP[0-9]{3}$' --json
+    && python3 scripts/asp_rust_no_autofix.py --json && python3
+    scripts/asp_python_ts_rules_intact.py --json
+  result: passed
+  ran_at_sha: "9b85d62"
+  mocks_in_path: false

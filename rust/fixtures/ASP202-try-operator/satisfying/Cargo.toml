@@ -1,0 +1,4 @@
+[package]
+name = "asp202-try-operator-satisfying"
+version = "0.1.0"
+edition = "2021"

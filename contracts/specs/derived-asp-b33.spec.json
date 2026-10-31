@@ -1,0 +1,54 @@
+{
+  "id": "asp-b33",
+  "goal": "The clippy-backed rules (ASP201/301/303/403/413) report a deterministic, complete finding count across a cold, warm or already-checked cargo target dir, and apply the same test-path / #[test] / #[cfg(test)] exemption the gate applies to ASP202/ASP206.",
+  "acceptance_criteria": [
+    "The gate forces its clippy lints at warn (not deny), so every workspace crate is checked and cargo replays cached diagnostics: cold, warm and repeated runs report identical, complete clippy-backed counts.",
+    "A clippy-backed violation in production code (src/lib.rs) fires its ASP id and exits 1.",
+    "The SAME clippy-backed violation under a tests/ path is exempt: the gate is silent for that ASP id and exits 0, matching ASP202/ASP206.",
+    "The ASP303 test-path exemption fixture pair is committed.",
+    "The two-crate ASP303 determinism fixture is committed."
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP303 test-path exemption: the violating production fixture is committed",
+      "path": "rust/fixtures/ASP303-test-path/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP303 test-path exemption: the same violation under a tests/ path is committed",
+      "path": "rust/fixtures/ASP303-test-path/satisfying/tests/continuation.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "the two-crate ASP303 determinism fixture workspace is committed",
+      "path": "rust/fixtures/ASP303-determinism/Cargo.toml"
+    },
+    {
+      "type": "command",
+      "description": "ASP303 in production src/lib.rs fires ASP303 and the run exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP303-test-path",
+        "violating",
+        "ASP303"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the same ASP303 violation under a tests/ path is exempt: silent for ASP303, exit 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP303-test-path",
+        "satisfying",
+        "ASP303"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "clippy-backed counts are deterministic and complete across a cold and warm target dir: two consecutive runs print equal JSON counts ({\"run1\": N, \"run2\": M, \"expected\": K}) and pass iff N == M == K",
+      "command": ["scripts/asp_clippy_determinism_probe.sh"]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace; five rules (ASP201/301/303/403/413) are backed by clippy lints (rust/src/clippy.rs). Forcing those lints at deny made a denied crate fail to build, so cargo never checked the crates depending on it and dropped their findings, and cargo does not replay build errors: a cold or fresh-worktree target dir reported FEWER clippy findings than a warm one, so a judge could fail open on real violations (lobaria backtest/tests/continuation.rs:70 and the walk-forward maxhold sites drifted between runs). The clippy-backed findings also skipped the tests/-path / #[test] / #[cfg(test)] exemption the gate applies to ASP202/ASP206, holding test code to production rules. The fix forces the lints at warn (every crate compiles and cargo caches+replays each unit's diagnostics, so cold==warm==repeat and the set is complete), assigns each finding its own blocking severity, and routes clippy findings through the same test-code exemption (is_clippy_test_exempt). Graded deterministically against the integration branch with committed fixtures: an ASP303 test-path exemption pair and a two-crate determinism workspace whose app depends on leaf so the deny cascade's undercount is observable."
+}

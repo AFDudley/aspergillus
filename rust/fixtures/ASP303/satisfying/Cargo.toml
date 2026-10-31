@@ -1,0 +1,8 @@
+[package]
+name = "asp303-satisfying"
+version = "0.1.0"
+edition = "2021"
+
+# Own workspace root so the gate can run cargo clippy standalone when the
+# fixture is nested inside the gate crate's workspace.
+[workspace]

@@ -1,0 +1,607 @@
+{
+  "id": "asp-2d6",
+  "goal": "Every ASP rule id has a blocking Rust check with committed fixtures, or docs/design.md names why it does not apply to Rust.",
+  "acceptance_criteria": [
+    "ASP203 violating fixture is committed",
+    "ASP203 satisfying fixture is committed",
+    "the gate fires ASP203 on its violating fixture and exits 1",
+    "the gate is silent for ASP203 on its satisfying fixture and exits 0",
+    "ASP303 violating fixture is committed",
+    "ASP303 satisfying fixture is committed",
+    "the gate fires ASP303 on its violating fixture and exits 1",
+    "the gate is silent for ASP303 on its satisfying fixture and exits 0",
+    "ASP304 violating fixture is committed",
+    "ASP304 satisfying fixture is committed",
+    "the gate fires ASP304 on its violating fixture and exits 1",
+    "the gate is silent for ASP304 on its satisfying fixture and exits 0",
+    "ASP401 violating fixture is committed",
+    "ASP401 satisfying fixture is committed",
+    "the gate fires ASP401 on its violating fixture and exits 1",
+    "the gate is silent for ASP401 on its satisfying fixture and exits 0",
+    "ASP402 violating fixture is committed",
+    "ASP402 satisfying fixture is committed",
+    "the gate fires ASP402 on its violating fixture and exits 1",
+    "the gate is silent for ASP402 on its satisfying fixture and exits 0",
+    "ASP404 violating fixture is committed",
+    "ASP404 satisfying fixture is committed",
+    "the gate fires ASP404 on its violating fixture and exits 1",
+    "the gate is silent for ASP404 on its satisfying fixture and exits 0",
+    "ASP406 violating fixture is committed",
+    "ASP406 satisfying fixture is committed",
+    "the gate fires ASP406 on its violating fixture and exits 1",
+    "the gate is silent for ASP406 on its satisfying fixture and exits 0",
+    "ASP407 violating fixture is committed",
+    "ASP407 satisfying fixture is committed",
+    "the gate fires ASP407 on its violating fixture and exits 1",
+    "the gate is silent for ASP407 on its satisfying fixture and exits 0",
+    "ASP408 violating fixture is committed",
+    "ASP408 satisfying fixture is committed",
+    "the gate fires ASP408 on its violating fixture and exits 1",
+    "the gate is silent for ASP408 on its satisfying fixture and exits 0",
+    "ASP409 violating fixture is committed",
+    "ASP409 satisfying fixture is committed",
+    "the gate fires ASP409 on its violating fixture and exits 1",
+    "the gate is silent for ASP409 on its satisfying fixture and exits 0",
+    "ASP410 violating fixture is committed",
+    "ASP410 satisfying fixture is committed",
+    "the gate fires ASP410 on its violating fixture and exits 1",
+    "the gate is silent for ASP410 on its satisfying fixture and exits 0",
+    "ASP411 violating fixture is committed",
+    "ASP411 satisfying fixture is committed",
+    "the gate fires ASP411 on its violating fixture and exits 1",
+    "the gate is silent for ASP411 on its satisfying fixture and exits 0",
+    "ASP413 violating fixture is committed",
+    "ASP413 satisfying fixture is committed",
+    "the gate fires ASP413 on its violating fixture and exits 1",
+    "the gate is silent for ASP413 on its satisfying fixture and exits 0",
+    "ASP414 violating fixture is committed",
+    "ASP414 satisfying fixture is committed",
+    "the gate fires ASP414 on its violating fixture and exits 1",
+    "the gate is silent for ASP414 on its satisfying fixture and exits 0",
+    "ASP416 violating fixture is committed",
+    "ASP416 satisfying fixture is committed",
+    "the gate fires ASP416 on its violating fixture and exits 1",
+    "the gate is silent for ASP416 on its satisfying fixture and exits 0",
+    "ASP501 violating fixture is committed",
+    "ASP501 satisfying fixture is committed",
+    "the gate fires ASP501 on its violating fixture and exits 1",
+    "the gate is silent for ASP501 on its satisfying fixture and exits 0",
+    "ASP502 violating fixture is committed (crate-a of the duplicate pair)",
+    "ASP502 satisfying fixture is committed (crate-a of the duplicate pair)",
+    "the gate fires ASP502 on its violating fixture and exits 1",
+    "the gate is silent for ASP502 on its satisfying fixture and exits 0",
+    "design.md marks ASP302 as a language feature (Option<T>, no null)",
+    "design.md states ASP405 is deliberately unassigned",
+    "design.md marks ASP412 does-not-apply with a named-feature reason",
+    "design.md marks ASP415 does-not-apply with a named-feature reason",
+    "design.md marks ASP417 does-not-apply with a named-feature reason",
+    "no ASP catalog ROW's Rust column is left unported (no 'not yet ported'/'planned'/'Python only'/'Manual' in an ASP table row)"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP203 violating fixture is committed",
+      "path": "rust/fixtures/ASP203/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP203 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP203/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP203 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP203",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP203 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP203",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP303 violating fixture is committed",
+      "path": "rust/fixtures/ASP303/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP303 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP303/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP303 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP303",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP303 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP303",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP304 violating fixture is committed",
+      "path": "rust/fixtures/ASP304/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP304 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP304/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP304 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP304",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP304 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP304",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP401 violating fixture is committed",
+      "path": "rust/fixtures/ASP401/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP401 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP401/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP401 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP401",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP401 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP401",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP402 violating fixture is committed",
+      "path": "rust/fixtures/ASP402/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP402 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP402/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP402 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP402",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP402 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP402",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP404 violating fixture is committed",
+      "path": "rust/fixtures/ASP404/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP404 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP404/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP404 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP404",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP404 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP404",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP406 violating fixture is committed",
+      "path": "rust/fixtures/ASP406/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP406 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP406/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP406 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP406",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP406 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP406",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP407 violating fixture is committed",
+      "path": "rust/fixtures/ASP407/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP407 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP407/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP407 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP407",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP407 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP407",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP408 violating fixture is committed",
+      "path": "rust/fixtures/ASP408/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP408 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP408/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP408 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP408",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP408 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP408",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP409 violating fixture is committed",
+      "path": "rust/fixtures/ASP409/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP409 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP409/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP409 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP409",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP409 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP409",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP410 violating fixture is committed",
+      "path": "rust/fixtures/ASP410/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP410 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP410/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP410 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP410",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP410 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP410",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP411 violating fixture is committed",
+      "path": "rust/fixtures/ASP411/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP411 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP411/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP411 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP411",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP411 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP411",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP413 violating fixture is committed",
+      "path": "rust/fixtures/ASP413/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP413 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP413/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP413 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP413",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP413 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP413",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP414 violating fixture is committed",
+      "path": "rust/fixtures/ASP414/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP414 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP414/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP414 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP414",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP414 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP414",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP416 violating fixture is committed",
+      "path": "rust/fixtures/ASP416/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP416 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP416/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP416 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP416",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP416 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP416",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP501 violating fixture is committed",
+      "path": "rust/fixtures/ASP501/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP501 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP501/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP501 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP501",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP501 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP501",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP502 violating fixture is committed (crate-a of the duplicate pair)",
+      "path": "rust/fixtures/ASP502/violating/crate-a/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP502 satisfying fixture is committed (crate-a of the duplicate pair)",
+      "path": "rust/fixtures/ASP502/satisfying/crate-a/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the gate fires ASP502 on its violating fixture and exits 1",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP502",
+        "violating"
+      ]
+    },
+    {
+      "type": "command",
+      "description": "the gate is silent for ASP502 on its satisfying fixture and exits 0",
+      "command": [
+        "scripts/asp_rule_probe.sh",
+        "ASP502",
+        "satisfying"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP302 as a language feature (Option<T>, no null)",
+      "pattern": "ASP302.*Language",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md states ASP405 is deliberately unassigned",
+      "pattern": "ASP405 is deliberately unassigned",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP412 does-not-apply with a named-feature reason",
+      "pattern": "ASP412.*named-feature",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP415 does-not-apply with a named-feature reason",
+      "pattern": "ASP415.*named-feature",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep",
+      "description": "design.md marks ASP417 does-not-apply with a named-feature reason",
+      "pattern": "ASP417.*named-feature",
+      "files": [
+        "docs/design.md"
+      ]
+    },
+    {
+      "type": "grep_absent",
+      "description": "no ASP catalog ROW's Rust column is left unported (no 'not yet ported'/'planned'/'Python only'/'Manual' in an ASP table row)",
+      "pattern": "^\\| ASP[0-9]+ .*(not yet ported|planned port|not yet implemented|Python only|Manual port)",
+      "files": [
+        "docs/design.md"
+      ]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. This spec pins that the rule(s) named in the goal are enforced (blocking, with committed violating/satisfying fixtures) or documented as not-applicable in docs/design.md, graded deterministically against the integration branch."
+}

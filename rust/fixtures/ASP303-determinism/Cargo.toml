@@ -1,0 +1,9 @@
+# A two-crate workspace where `app` depends on `leaf`, both carrying one
+# ASP303 discard. It exercises the cold/warm determinism guarantee: under the
+# old `deny` behaviour `leaf`'s denied lint failed its build, so `app` (which
+# depends on it) was never checked and its finding vanished on a cold run —
+# a COUNT that changed with target-dir state. At `warn` both crates always
+# compile and report, so a cold, warm and repeated run all count 2.
+[workspace]
+members = ["leaf", "app"]
+resolver = "2"

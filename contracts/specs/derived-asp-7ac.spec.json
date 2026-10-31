@@ -1,0 +1,33 @@
+{
+  "id": "asp-7ac",
+  "goal": "ASP501's statement-spine pass stops reporting short coincidental spines as clones: parallel typed variants and the guard/copy/sort preamble idiom stay silent, while a genuine 6+-statement copied block still fires.",
+  "acceptance_criteria": [
+    "ASP501 violating fixture (a genuine 6+-statement copied block in two otherwise-different functions) is committed",
+    "ASP501 satisfying fixture (holding both lobaria shapes: parallel typed `push` variants and the stats/median sort-preamble idiom) is committed",
+    "the dup-check fires ASP501 on its violating fixture and exits 1",
+    "the dup-check is silent for ASP501 on its satisfying fixture and exits 0"
+  ],
+  "acceptance_tests": [
+    {
+      "type": "file_exists",
+      "description": "ASP501 violating fixture is committed",
+      "path": "rust/fixtures/ASP501/violating/src/lib.rs"
+    },
+    {
+      "type": "file_exists",
+      "description": "ASP501 satisfying fixture is committed",
+      "path": "rust/fixtures/ASP501/satisfying/src/lib.rs"
+    },
+    {
+      "type": "command",
+      "description": "the dup-check fires ASP501 on its violating 6+-statement copied block and exits 1",
+      "command": ["scripts/asp_rule_probe.sh", "ASP501", "violating"]
+    },
+    {
+      "type": "command",
+      "description": "the dup-check is silent for ASP501 on its satisfying fixture (both lobaria shapes) and exits 0",
+      "command": ["scripts/asp_rule_probe.sh", "ASP501", "satisfying"]
+    }
+  ],
+  "problem": "Aspergillus ships a Rust gate over a Cargo workspace. ASP501's statement-spine pass (asp-2d6.2) reported short coincidental spines as clones: a four-statement spine shared by two `push` methods differing only in the count newtype they construct, and a three-statement guard/copy/sort preamble shared by two unrelated analytics routines. Neither has a non-harmful shared-helper extraction. This spec pins that the spine pass now skips a window shared only by parallel typed variants (equal type-erased whole bodies) and the guard/copy/sort preamble idiom, while still firing on a genuine 6+-statement copied block - graded deterministically against the integration branch with committed violating/satisfying fixtures."
+}

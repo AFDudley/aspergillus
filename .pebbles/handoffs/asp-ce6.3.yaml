@@ -1,0 +1,60 @@
+status: completed
+pebble_id: asp-ce6.3
+summary: >
+  Added a Rust whole-workspace duplicate-function check to aspergillus.
+  The check ships as a new `aspergillus-rust-dup-check` binary in the
+  existing `aspergillus-rust-gate` crate (rust/). Its functional core
+  (rust/src/duplicates.rs) walks a Cargo workspace's *.rs files across
+  every crate, parses each function_item with the pinned ast-grep-core /
+  ast-grep-config / ast-grep-language 0.40.0 crates, and normalizes it the
+  same way python/src/aspergillus/duplicates.py normalizes a Python
+  function: every variable-position `identifier` leaf collapses to one
+  placeholder, while literal values, called-function names, macro names,
+  and field/method names (a distinct tree-sitter-rust node kind,
+  field_identifier, so kept exact by construction) stay exact. Two
+  functions whose normalized bodies match anywhere in the workspace are
+  reported as `path:line: ASP501` per member; the check never rewrites a
+  scanned file and exits non-zero when it reports a finding. I derived the
+  exact node-kind rules (call_expression.function, macro_invocation.macro,
+  scoped_identifier chains, field_expression's field vs value) empirically
+  by building a small throwaway dump program against the repo's own
+  vendored tree-sitter-rust 0.24.2 grammar rather than guessing. I merged
+  the already-integrated asp-ce6.1 Rust gate crate into this branch first
+  (fast-forward, no conflicts) since this check builds on it per the
+  pebble's husband-note. I wrote all 8 named acceptance-oracle probe
+  scripts under scripts/ (they did not exist before this branch) plus a
+  shared scripts/lib_rust_dup_check.sh fixture helper, ran each one and
+  observed it fail before the check existed (red), then implemented the
+  check and reran each probe to green. Running the new check against its
+  own crate caught a real duplicate I had introduced (the *.rs file walk
+  copy-pasted verbatim between the two binaries); I fixed it by extracting
+  rust/src/workspace.rs and re-verified the fix drove the finding to zero
+  without breaking any test or probe. 12 rust unit tests pass, clippy is
+  clean, cargo fmt is clean, all 7 asp-ce6.1 regression oracles still pass
+  unchanged, and the existing Python check-duplicates CLI still reports a
+  duplicate group on its own reference fixture. I did not touch the
+  TypeScript rule files or .pre-commit-config.yaml.
+cost: ~145k tokens
+commits:
+  - "53e8674"
+  - "4848055"
+verify_transcript:
+  hooks:
+    - name: "cargo test --manifest-path rust/Cargo.toml --offline"
+      outcome: passed
+      duration_s: 3
+    - name: "cargo clippy --manifest-path rust/Cargo.toml --offline --all-targets"
+      outcome: passed
+      duration_s: 1
+    - name: "cargo fmt --manifest-path rust/Cargo.toml --check"
+      outcome: passed
+      duration_s: 1
+    - name: "pre-commit run --files <all changed files>"
+      outcome: passed
+      duration_s: 5
+e2e_gate:
+  spec: contracts/specs/derived-asp-ce6.3.spec.json
+  command: "bash scripts/asp_rust_dup_cross_crate_probe.sh && bash scripts/asp_rust_dup_detect_probe.sh && bash scripts/asp_rust_dup_clean_probe.sh && bash scripts/asp_rust_dup_format_probe.sh && bash scripts/asp_rust_dup_readonly_probe.sh && bash scripts/asp_rust_dup_cargo_deps_probe.sh && bash scripts/asp_rust_dup_no_python_no_node_probe.sh && bash scripts/asp_python_duplicates_regression_probe.sh"
+  result: passed
+  ran_at_sha: "4848055"
+  mocks_in_path: false

@@ -1,0 +1,6 @@
+# Aspergillus reference clippy config.
+# Copy into consumer repo root as `clippy.toml`.
+
+too-many-lines-threshold = 60        # ASP201
+cognitive-complexity-threshold = 15
+allow-unwrap-in-tests = true

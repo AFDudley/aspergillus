@@ -1,7 +1,15 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, copyFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  renameSync,
+  copyFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { promptForLayout, type LayoutName } from './layouts.js';
 import {
   CONFLICTS,
   INLINE_KEYS,
@@ -10,7 +18,6 @@ import {
   isPrettierWrapper,
   isTsconfigWrapper,
 } from './wrappers.js';
-import { promptForLayout, type LayoutName } from './layouts.js';
 
 // Reference pre-commit scaffold lives next to the configs. Works at both
 // bun-test time (src/) and post-build (dist/).
@@ -126,9 +133,7 @@ function handleConflicts(
     }
 
     const backupPath = path + '.local.bak';
-    const finalBackup = existsSync(backupPath)
-      ? `${backupPath}.${Date.now()}`
-      : backupPath;
+    const finalBackup = existsSync(backupPath) ? `${backupPath}.${Date.now()}` : backupPath;
     renameSync(path, finalBackup);
     backups.push({ from: name, to: finalBackup.slice(target.length + 1) });
     sawConflict = true;
@@ -173,9 +178,7 @@ async function runInit(opts: InitOpts): Promise<number> {
   const backups: { from: string; to: string }[] = [];
 
   const layoutImport =
-    layout === 'none'
-      ? ''
-      : `import layout from '@afdudley/aspergillus/layouts/${layout}';\n`;
+    layout === 'none' ? '' : `import layout from '@afdudley/aspergillus/layouts/${layout}';\n`;
 
   const layoutSpread = layout === 'none' ? '' : '  layout,\n';
 
@@ -225,8 +228,7 @@ module.exports = {
 };
 `;
 
-  const tsconfigWrapper =
-    JSON.stringify({ extends: PACKAGE_SPECIFIERS.tsconfig }, null, 2) + '\n';
+  const tsconfigWrapper = JSON.stringify({ extends: PACKAGE_SPECIFIERS.tsconfig }, null, 2) + '\n';
 
   writeSlot(target, 'eslint', eslintWrapper, backups);
   writeSlot(target, 'prettier', prettierWrapper, backups);
@@ -255,7 +257,9 @@ module.exports = {
   if (inline.length > 0) printInlineWarning(inline);
 
   const pm = detectPackageManager(target);
-  process.stdout.write(`\nNext: install aspergillus and its peer devDependencies (${pm} detected) —\n`);
+  process.stdout.write(
+    `\nNext: install aspergillus and its peer devDependencies (${pm} detected) —\n`,
+  );
   process.stdout.write(`  ${devDepCommand(pm, layout)}\n`);
   return 0;
 }

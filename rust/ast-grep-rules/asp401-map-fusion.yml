@@ -1,0 +1,9 @@
+rule:
+  pattern: $RECV.map($F).map($G)
+id: ASP401
+language: rust
+severity: error
+message: |
+  `.map($F).map($G)` traverses twice where one pass suffices — the fusion
+  law `map g . map f == map (g . f)` collapses the pair into a single
+  `.map(|x| $G($F(x)))`. See docs/rust-rules.md, ASP401 (map-fusion).
