@@ -327,9 +327,13 @@ class FailureDiscardsEvidence(LintRule):
 
     1. *No capture.* ``subprocess.run`` without ``capture_output=True`` /
        ``stdout=`` / ``stderr=`` — no evidence was captured to discard.
-    2. *Evidence surfaced.* The failure representation ALSO references an
-       evidence attribute of the same result (any of stdout/stderr/output/
-       report) — the cause is being reported.
+    2. *Evidence surfaced.* The failure SURFACE — the whole reporting call,
+       not the message expression alone — ALSO references an evidence
+       attribute of the same result (any of stdout/stderr/output/report):
+       the cause is being reported. ``fail(f"exited {p.returncode}",
+       extra=p.stdout + p.stderr)`` is exempt, because the reporter prints
+       ``extra``; scoping the window to the ``FormattedString`` alone made
+       the rule flag the very shape this exemption describes.
     3. *Non-failure returncode use.* ``if r.returncode == 0`` guards, or
        returncode stored/returned as data, build no surfaced failure string,
        so nothing fires.
@@ -344,9 +348,13 @@ class FailureDiscardsEvidence(LintRule):
       proven evidence-bearing (its type is invisible to the AST) and is not
       flagged.
     - Evidence surfaced only via an *intermediate variable*
-      (``err = r.stderr`` then logged separately) is not tracked; exemption 2
-      recognizes evidence referenced directly inside the failure
-      representation.
+      (``err = r.stderr`` then logged separately), or by a separate
+      statement on the same path (``print(r.stdout)`` above the
+      ``if r.returncode: bail(...)``), is not tracked. Distinguishing the
+      latter from exemption 2's motivating counter-case — evidence used on
+      the SUCCESS path and dropped on the failure path — needs path
+      analysis LibCST does not provide, so it is documented rather than
+      guessed at.
 
     Sibling to ASP303 (error swallowed into a success sentinel): both target
     a failure that hides its cause — ASP303 in the return *type*, ASP304 in
@@ -384,6 +392,15 @@ class FailureDiscardsEvidence(LintRule):
             "    if r.returncode == 0:\n"
             "        return r.stdout\n"
             "    return r.stderr\n"
+        ),
+        # Evidence surfaced one argument over: the reporter prints `extra`,
+        # so the cause IS reported. The window is the whole call.
+        Valid(
+            "import subprocess\n"
+            "def run_gate() -> None:\n"
+            "    p = subprocess.run(['pb', 'ready'], capture_output=True)\n"
+            "    if p.returncode != 0:\n"
+            "        fail(f'gate exited {p.returncode}', extra=p.stdout + p.stderr)\n"
         ),
     ]
     INVALID = [
@@ -511,17 +528,47 @@ def _is_failure_representation(node: cst.CSTNode) -> bool:
     )
 
 
+def _failure_surfaces(node: cst.CSTNode) -> Iterator[cst.CSTNode]:
+    """The MAXIMAL failure-surfacing nodes in this function.
+
+    A failure is surfaced by a whole reporting CALL, not by the message
+    expression alone: ``fail(f"exited {p.returncode}", extra=p.stdout +
+    p.stderr)`` reports the cause, and the reporter prints ``extra``. When
+    the window was the ``FormattedString`` alone, ``p.returncode`` landed in
+    the surfaced set while the evidence one argument away never did, so the
+    rule flagged code that satisfies its own exemption 2 ("the failure
+    representation ALSO references an evidence attribute of the same result
+    — the cause is being reported"). Yielding the enclosing call, and not
+    descending into it again, makes the window the whole report.
+
+    A ``raise`` is already a whole statement, and a representation that is
+    not inside a call (``return f"..."``) is its own surface.
+    """
+    if isinstance(node, cst.Raise) or _is_failure_representation(node):
+        yield node
+        return
+    if isinstance(node, cst.Call) and any(
+        _is_failure_representation(inner) for inner in _walk_same_function(node)
+    ):
+        yield node
+        return
+    for child in node.children:
+        if not isinstance(child, cst.CSTNode):
+            continue
+        if isinstance(child, (cst.FunctionDef, cst.Lambda)):
+            continue
+        yield from _failure_surfaces(child)
+
+
 def _surfaced_result_vars(body: cst.CSTNode) -> tuple[set[str], set[str]]:
-    """Scan every failure representation in this function; return the names
-    whose ``.returncode`` is surfaced and the names whose evidence attribute is
-    surfaced inside one. ``if r.returncode == 0`` guards and ``return
-    r.returncode`` data uses are NOT failure representations, so they never
-    populate the returncode set (exemption 3)."""
+    """Scan every failure surface in this function; return the names whose
+    ``.returncode`` is surfaced and the names whose evidence attribute is
+    surfaced in the same surface. ``if r.returncode == 0`` guards and ``return
+    r.returncode`` data uses are NOT failure surfaces, so they never populate
+    the returncode set (exemption 3)."""
     returncode_vars: set[str] = set()
     evidence_vars: set[str] = set()
-    for surface in _walk_same_function(body):
-        if not _is_failure_representation(surface):
-            continue
+    for surface in _failure_surfaces(body):
         for inner in _walk_same_function(surface):
             attr = _attr_of_name(inner)
             if attr is None:
