@@ -2,17 +2,93 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import partial
 
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
 
+_PositionOf = Callable[[cst.CSTNode], cst.metadata.CodeRange]
+
+
+def positions_of(rule: LintRule) -> _PositionOf:
+    """``rule``'s ``PositionProvider`` lookup, as a plain position function.
+
+    Lets the line-counting helpers below stay pure functions of a node
+    plus a position oracle — unit-testable without a fixit rule instance —
+    while each rule binds its own metadata resolver once per visit.
+    """
+    return partial(rule.get_metadata, cst.metadata.PositionProvider)
+
+
+def _noncode_line_numbers(node: cst.CSTNode, position_of: _PositionOf) -> set[int]:
+    """Physical line numbers inside ``node``'s span that carry no code.
+
+    Blank lines and comment-only lines are ``EmptyLine`` nodes in libcst;
+    a trailing comment on a code line is ``TrailingWhitespace`` and is
+    deliberately NOT one, so an annotated statement still counts as code.
+    A docstring — any bare string-expression statement, at any depth in
+    the span — is prose that happens to be a string EXPRESSION, so every
+    physical line it occupies is excluded as well.
+    """
+    span = position_of(node)
+    skip: set[int] = set()
+    for descendant in _iter_all_nodes(node):
+        if isinstance(descendant, cst.EmptyLine):
+            skip.add(position_of(descendant).start.line)
+        elif isinstance(descendant, cst.SimpleStatementLine) and len(descendant.body) == 1:
+            item = descendant.body[0]
+            if isinstance(item, cst.Expr) and isinstance(item.value, cst.BaseString):
+                string_span = position_of(item.value)
+                skip.update(range(string_span.start.line, string_span.end.line + 1))
+    return {line for line in skip if span.start.line <= line <= span.end.line}
+
+
+def _iter_all_nodes(node: cst.CSTNode) -> list[cst.CSTNode]:
+    """``node`` and every descendant, nested functions included."""
+    found: list[cst.CSTNode] = [node]
+    for child in node.children:
+        if isinstance(child, cst.CSTNode):
+            found.extend(_iter_all_nodes(child))
+    return found
+
+
+def code_line_count(node: cst.CSTNode, position_of: _PositionOf) -> int:
+    """Physical lines in ``node``'s span that carry code.
+
+    The length measure for ASP201 and for ASP202's triviality exemption.
+    It is the same measure ``duplicates.n_code_lines`` already applies to
+    a function's span, and for the same reason recorded there: a raw span
+    makes the verdict depend on how a function is DOCUMENTED rather than
+    on what it does, so relocating a docstring or deleting an explanatory
+    comment moves a length verdict without changing one line of behaviour.
+    A gate that shortens a function by deleting its explanation has the
+    incentive backwards.
+    """
+    span = position_of(node)
+    return (span.end.line - span.start.line + 1) - len(_noncode_line_numbers(node, position_of))
+
 
 class FunctionTooLong(LintRule):
-    """ASP201: Functions must fit on one page (<=60 lines).
+    """ASP201: Functions must fit on one page (<=60 CODE lines).
 
     NASA Power of 10 Rule #4: Functions should fit on a single
     printed page. This improves readability and testability.
+
+    The measure is CODE lines — the span minus its blank lines,
+    comment-only lines and docstrings (``code_line_count``) — not the
+    raw physical span. ``duplicates.n_code_lines`` already made exactly
+    this correction for the duplicate-group floor, with the argument
+    that a span "counts the docstring, which made the verdict depend on
+    how a function is DOCUMENTED, not on what it does"; ASP201 measures
+    the same property of the same node and owes the same answer.
+
+    Measured on exophial's src + tests, which documents in the literate
+    style: 24 functions exceeded 60 raw span lines, 3 exceeded 60 code
+    lines. ``Dispatcher.__init__`` spans 139 lines of which 53 are code;
+    ``ops.intake.generate_spec`` spans 125 of which 59 are code. Under
+    the raw span the only way to pass is to delete the explanation,
+    which is the incentive backwards.
     """
 
     MESSAGE = "ASP201: Function has {actual} lines (max {max_lines})"
@@ -25,6 +101,21 @@ class FunctionTooLong(LintRule):
         ),
         Valid("def one_liner(): pass"),
         Valid("class Foo:\n    def method(self):\n        pass\n"),
+        # 40 code lines carrying 40 lines of explanation: documenting a
+        # function is not lengthening it.
+        Valid(
+            "def documented():\n"
+            + "".join(f"    # explain x{i}\n    x{i} = {i}\n" for i in range(40))
+            + "    return x0\n"
+        ),
+        # A long docstring does not make a two-statement function long.
+        Valid(
+            "def prose():\n"
+            + '    """\n'
+            + "".join(f"    line {i}\n" for i in range(80))
+            + '    """\n'
+            + "    return 1\n"
+        ),
     ]
     INVALID = [
         Invalid(
@@ -32,11 +123,16 @@ class FunctionTooLong(LintRule):
             + "".join(f"    x{i} = {i}\n" for i in range(61))
             + "    return x0\n"
         ),
+        # Comments do not rescue a function that is genuinely too long.
+        Invalid(
+            "def too_long_documented():\n"
+            + "".join(f"    # explain x{i}\n    x{i} = {i}\n" for i in range(61))
+            + "    return x0\n"
+        ),
     ]
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
-        pos = self.get_metadata(cst.metadata.PositionProvider, node)
-        line_count = pos.end.line - pos.start.line + 1
+        line_count = code_line_count(node, positions_of(self))
         if line_count > self.MAX_LINES:
             self.report(
                 node,
@@ -67,12 +163,18 @@ class LowAssertionDensity(LintRule):
       ``io_blocklist`` signal ASP205 / ASP206 use; ``_find_io_calls``).
       Side-effecting functions are the shell; preconditions on their
       inputs/environment are exactly NASA Rule #5's domain. OR
-    - **it ingests dynamically-typed / untrusted data** — it has a
-      parameter that is unannotated or annotated with a dynamic,
-      unconstrained type (``DYNAMIC_PARAM_ANNOTATIONS`` — ``Any`` /
-      ``object``). The type system cannot constrain such a value, so a
-      pure function that takes it is still shell-ish: a runtime
-      precondition IS the right guard (``_has_untrusted_param``).
+    - **it ingests dynamically-typed / untrusted data** — it has an
+      unannotated parameter (always in scope, since the type system
+      constrains it not at all), or a parameter annotated with a
+      dynamic, unconstrained type (``DYNAMIC_PARAM_ANNOTATIONS`` —
+      ``Any`` / ``object``) that the function's own body relies on the
+      shape of. The type system cannot constrain such a value, so a
+      function that assumes its structure is still shell-ish: a runtime
+      precondition IS the right guard. A dynamically-typed parameter the
+      body only forwards opaquely — or only names inside an
+      ``isinstance``/``type`` check, itself the precondition — carries
+      no such risk, so it does not by itself pull an otherwise-pure,
+      fully-typed classifier into the shell (``_has_untrusted_param``).
 
     A PURE function whose every parameter is concretely typed is the
     functional core and is EXEMPT — this composes the existing FC/IS
@@ -108,6 +210,20 @@ class LowAssertionDensity(LintRule):
       such field, and each validator method, credits the model's
       methods: a method of a constrained model inherits the model's
       declared invariants and need not restate them as ``assert``.
+    - a ``return`` statement whose value is a failure-detail tuple —
+      a tuple literal, or a call to a tuple-like/NamedTuple constructor
+      (``_StepOutcome(False, [], detail)``) — whose first positional
+      element is the literal sentinel ``None`` or ``False``, when
+      ``COUNT_RAISE_STATEMENTS`` is true. A module whose own contract
+      forbids raising (the pure, ``Result``-returning functional core
+      ASP205/206 already require) states its precondition guard as
+      ``if bad: return None, "..."`` where a sibling module would
+      ``raise ValueError(...)`` — the same NASA equivalence, spelled
+      without a raise.
+    - a bare-Name call (no receiver) to a helper named in
+      ``FAIL_LOUD_HELPER_NAMES`` — ``_require(cond, msg)`` — a module's
+      own designated fail-loud precondition helper. Parity with
+      ``ASSERTION_METHOD_NAMES`` above, spelled without a receiver.
 
     These were blanket-disabled in gateway/backtest because the
     original implementation counted only literal ``assert`` statements,
@@ -144,6 +260,10 @@ class LowAssertionDensity(LintRule):
     ASSERTION_METHOD_NAMES = frozenset(
         {"model_validate", "model_validate_json", "parse", "parse_obj", "validate"}
     )
+    # A module's own designated fail-loud precondition helper, called
+    # bare (no receiver) — e.g. `_require(cond, msg)`. Same idiom as
+    # ASSERTION_METHOD_NAMES, spelled without a receiver.
+    FAIL_LOUD_HELPER_NAMES = frozenset({"_require"})
     # Decorators that mark a method as a pydantic validator (precondition).
     VALIDATION_DECORATORS = frozenset(
         {"field_validator", "model_validator", "validator", "root_validator"}
@@ -196,6 +316,28 @@ class LowAssertionDensity(LintRule):
             "        raise ValueError('hi')\n"
             "    span = hi - lo\n"
             "    return span\n"
+        ),
+        # Return-based failure-detail guards count: a module whose own
+        # contract forbids raising states its preconditions as
+        # `return None, "..."` — the same NASA equivalence as a raise
+        # guard, spelled without raising.
+        Valid(
+            "def parse_pair(data: object, key: str) -> tuple[float | None, str]:\n"
+            "    if not isinstance(data, dict):\n"
+            "        return None, 'expected a dict'\n"
+            "    if key not in data:\n"
+            "        return None, 'missing key'\n"
+            "    raw = data[key]\n"
+            "    return float(raw), ''\n"
+        ),
+        # A bare-Name call to a module's own designated fail-loud helper
+        # counts, the same as a receiver-qualified validation call.
+        Valid(
+            "def read(atom: object, state: dict, key: str) -> object:\n"
+            "    name = str(atom)\n"
+            "    _require(name in state, 'field absent')\n"
+            "    _require(key in state, 'key absent')\n"
+            "    return state[name]\n"
         ),
         # validation method-name calls count regardless of receiver.
         Valid(
@@ -271,6 +413,43 @@ class LowAssertionDensity(LintRule):
             "    shifted = scaled - count\n"
             "    return shifted\n"
         ),
+        # An `object`-typed parameter the body never mentions is not
+        # inspected, so it does not by itself make the function
+        # imperative-shell — a total, otherwise-pure classifier stays
+        # exempt (exo-0b4.1.2).
+        Valid(
+            "def classify(verdict: str, artifact: object = None) -> str:\n"
+            "    upper = verdict.upper()\n"
+            "    trimmed = upper.strip()\n"
+            "    label = trimmed or 'UNKNOWN'\n"
+            "    padded = label.ljust(10)\n"
+            "    return padded\n"
+        ),
+        # An `object`-typed parameter the body type-checks itself is
+        # guarded by that check: the isinstance IS the precondition.
+        Valid(
+            "def is_refusal(clause: object) -> bool:\n"
+            "    if not isinstance(clause, dict):\n"
+            "        return False\n"
+            "    fields: dict = clause\n"
+            "    op = fields.get('op')\n"
+            "    value = fields.get('value')\n"
+            "    return op == 'eq' and value is False\n"
+        ),
+        # Triviality is measured in CODE lines: a two-statement boundary
+        # reader stays exempt however long its docstring is. Under the
+        # raw span it lost the exemption for being documented, and its
+        # only passing form was to delete the prose.
+        Valid(
+            "def read_config(path: str) -> str:\n"
+            '    """Read the config file.\n'
+            "\n"
+            "    Long-form prose about where this file comes from, who\n"
+            "    writes it, and why the read is unguarded here.\n"
+            '    """\n'
+            "    with open(path) as handle:\n"
+            "        return handle.read()\n"
+        ),
     ]
     INVALID = [
         # --- FC/IS predicate (asp-da5): imperative shell IS in scope ---
@@ -331,9 +510,11 @@ class LowAssertionDensity(LintRule):
         if _has_decorator_in(node, self.VALIDATION_DECORATORS):
             return
 
-        pos = self.get_metadata(cst.metadata.PositionProvider, node)
-        line_count = pos.end.line - pos.start.line + 1
-        if line_count <= self.MIN_LINES_FOR_RULE:
+        # Triviality exemption measured in CODE lines, the same measure
+        # ASP201 uses: a two-statement reader with a ten-line docstring
+        # is trivial, and a raw span made it lose this exemption for
+        # being documented.
+        if code_line_count(node, positions_of(self)) <= self.MIN_LINES_FOR_RULE:
             return
 
         # FC/IS predicate: ASP202 is the imperative-shell mechanism. A
@@ -346,6 +527,7 @@ class LowAssertionDensity(LintRule):
             node.body,
             self.COUNT_RAISE_STATEMENTS,
             self.ASSERTION_METHOD_NAMES,
+            self.FAIL_LOUD_HELPER_NAMES,
         )
         if self._class_credit:
             assert_count += self._class_credit[-1]
@@ -377,17 +559,60 @@ def _is_assertion_method_call(node: cst.CSTNode, method_names: frozenset[str]) -
     )
 
 
+def _is_fail_loud_helper_call(node: cst.CSTNode, helper_names: frozenset[str]) -> bool:
+    """True for ``<name>(...)`` — a bare-Name call (no receiver) to a
+    module's own designated fail-loud precondition helper, e.g.
+    ``_require(cond, msg)``. Parity with ``_is_assertion_method_call``,
+    which recognizes the same idiom spelled with a receiver.
+    """
+    return (
+        isinstance(node, cst.Call)
+        and isinstance(node.func, cst.Name)
+        and node.func.value in helper_names
+    )
+
+
+def _is_failure_detail_return(node: cst.CSTNode) -> bool:
+    """True for ``return <sentinel>, <detail>, ...`` — a guard that signals
+    failure by RETURNING a detail tuple instead of raising.
+
+    NASA's ``assert(cond)`` ≡ ``if not cond: raise`` extends to a module
+    whose own contract forbids raising (the pure, ``Result``-returning
+    functional core ASP205/206 already require): such a module's
+    precondition guard reads ``if bad: return None, "..."`` where a
+    sibling module would ``raise ValueError(...)``. Recognizes a tuple
+    literal or a call to a tuple-like/NamedTuple constructor
+    (``_StepOutcome(False, [], detail)``) whose first positional element
+    is the literal failure sentinel ``None`` or ``False``.
+    """
+    if not isinstance(node, cst.Return) or node.value is None:
+        return False
+    value = node.value
+    if isinstance(value, cst.Tuple):
+        elements = [element.value for element in value.elements]
+    elif isinstance(value, cst.Call):
+        elements = [arg.value for arg in value.args if arg.keyword is None]
+    else:
+        return False
+    if len(elements) < 2:
+        return False
+    sentinel = elements[0]
+    return isinstance(sentinel, cst.Name) and sentinel.value in ("None", "False")
+
+
 def _count_assertions(
     body: cst.BaseSuite,
     count_raise: bool,
     method_names: frozenset[str],
+    fail_loud_helper_names: frozenset[str],
 ) -> int:
     """Count assertion-like constructs in a function body.
 
     Recurses through nested ``if`` / ``for`` / ``with`` / ``try`` blocks
     (a ``raise`` inside a guard counts) but not into nested function or
     lambda bodies. Recognized: ``assert`` statements; ``raise``
-    statements when ``count_raise``; calls to ``method_names``.
+    statements and failure-detail ``return`` guards when ``count_raise``;
+    calls to ``method_names``; bare-Name calls to ``fail_loud_helper_names``.
     """
     if not isinstance(body, cst.IndentedBlock):
         return 0
@@ -397,7 +622,11 @@ def _count_assertions(
             count += 1
         elif count_raise and isinstance(node, cst.Raise):
             count += 1
+        elif count_raise and _is_failure_detail_return(node):
+            count += 1
         elif _is_assertion_method_call(node, method_names):
+            count += 1
+        elif _is_fail_loud_helper_call(node, fail_loud_helper_names):
             count += 1
     return count
 
@@ -503,13 +732,118 @@ def _param_annotation_basename(annotation: cst.Annotation | None) -> str:
     return "<other>"
 
 
-def _has_untrusted_param(node: cst.FunctionDef, dynamic_annotations: frozenset[str]) -> bool:
-    """True if a parameter is unannotated or dynamically typed.
+def _is_isinstance_or_type_check(node: cst.CSTNode) -> bool:
+    """True for a call to the builtin ``isinstance`` or ``type``.
 
-    Such a parameter carries no static guarantee, so a function taking
-    it ingests untrusted data and is imperative-shell. The leading
-    ``self`` / ``cls`` of a method is skipped (it is never the untrusted
-    input). ``*args`` / ``**kwargs`` collectors are not considered.
+    Its first argument is a type CHECK on the value, never a use that
+    assumes the value's shape — the precondition ``_has_untrusted_param``
+    is itself looking for, not an instance of ingesting it blindly.
+    """
+    return (
+        isinstance(node, cst.Call)
+        and isinstance(node.func, cst.Name)
+        and node.func.value in ("isinstance", "type")
+    )
+
+
+def _load_name_occurrences(node: cst.CSTNode, name: str) -> list[cst.Name]:
+    """Every ``Name(name)`` occurrence in ``node`` used as a VALUE.
+
+    A blind child walk mistakes a syntactic LABEL that happens to share
+    the parameter's spelling for a reference to it: a call's own
+    keyword-argument name (``Pass(artifact=artifact)`` carries the label
+    ``artifact=`` alongside the actual value ``artifact``), or an
+    attribute's own member name (``x.artifact``). Both are skipped here;
+    everything else, including nested scopes, is still walked.
+    """
+    found: list[cst.Name] = []
+    if isinstance(node, cst.Name):
+        if node.value == name:
+            found.append(node)
+        return found
+    if isinstance(node, cst.Attribute):
+        found.extend(_load_name_occurrences(node.value, name))
+        return found
+    if isinstance(node, cst.Arg):
+        found.extend(_load_name_occurrences(node.value, name))
+        return found
+    for child in node.children:
+        if isinstance(child, cst.CSTNode):
+            found.extend(_load_name_occurrences(child, name))
+    return found
+
+
+def _is_type_checked(body: cst.BaseSuite, name: str) -> bool:
+    """True if ``body`` names ``name`` inside an ``isinstance``/``type`` call.
+
+    That call IS the runtime precondition on the dynamic value: every later
+    use is narrowed by it, so the function already guards what it relies on.
+    """
+    return any(
+        _load_name_occurrences(arg.value, name)
+        for descendant in _iter_all_nodes(body)
+        if isinstance(descendant, cst.Call) and _is_isinstance_or_type_check(descendant)
+        for arg in descendant.args
+    )
+
+
+def _pass_through_return_ids(body: cst.BaseSuite, name: str) -> set[int]:
+    """``id()`` of every ``Name(name)`` occurrence a ``return`` forwards opaquely.
+
+    Two shapes make no assumption about the value: ``name`` as a
+    ``return`` statement's ENTIRE expression, and ``name`` as a direct
+    argument of a call that IS the entire returned expression (a
+    constructor wrapping it, never a deeper expression that operates on
+    it). A ``name`` inside a larger returned expression — an attribute
+    access, a subscript, a comprehension — is not this shape. A bare alias
+    (``raw = name``) is not this shape either: the alias carries the same
+    unchecked value to every later use. Node identity (``id()``)
+    distinguishes these occurrences from other occurrences of the same name.
+    """
+    safe: set[int] = set()
+    for descendant in _iter_all_nodes(body):
+        if not isinstance(descendant, cst.Return) or descendant.value is None:
+            continue
+        returned = descendant.value
+        if isinstance(returned, cst.Name) and returned.value == name:
+            safe.add(id(returned))
+        elif isinstance(returned, cst.Call):
+            for arg in returned.args:
+                safe.update(id(n) for n in _load_name_occurrences(arg.value, name))
+    return safe
+
+
+def _param_relied_on_in_body(body: cst.BaseSuite, name: str) -> bool:
+    """True if ``body`` uses ``name`` without a type check of its own.
+
+    A body that type-checks the parameter (``_is_type_checked``) already
+    states the precondition, so it does not rely on an unchecked shape.
+    Otherwise every load occurrence of ``name`` (``_load_name_occurrences``)
+    counts as reliance UNLESS a ``return`` forwards it opaquely
+    (``_pass_through_return_ids``). An attribute access, a subscript, an
+    alias, or an argument to some OTHER function are reliance. Scoped to
+    the function's body only (never the signature).
+    """
+    if _is_type_checked(body, name):
+        return False
+    safe_ids = _pass_through_return_ids(body, name)
+    return any(id(n) not in safe_ids for n in _load_name_occurrences(body, name))
+
+
+def _has_untrusted_param(node: cst.FunctionDef, dynamic_annotations: frozenset[str]) -> bool:
+    """True if a parameter is unannotated, or dynamically typed and relied on.
+
+    An unannotated parameter carries no static guarantee at all, so a
+    function taking one is untrusted-shell regardless of how its body
+    treats it. A dynamically-typed parameter (``Any`` / ``object``) only
+    makes the function shell-ish when the body relies on its shape
+    (``_param_relied_on_in_body``) — a declared ``object`` parameter the
+    function only forwards opaquely, or type-checks itself with
+    ``isinstance``/``type``, carries no unguarded runtime risk for an
+    assertion to guard, so it does not by itself pull a pure, total
+    classifier into the imperative shell. The leading ``self`` / ``cls``
+    of a method is skipped (it is never the untrusted input). ``*args`` /
+    ``**kwargs`` collectors are not considered.
     """
     params = node.params
     ordered = list(params.posonly_params) + list(params.params) + list(params.kwonly_params)
@@ -517,7 +851,11 @@ def _has_untrusted_param(node: cst.FunctionDef, dynamic_annotations: frozenset[s
         if index == 0 and param.name.value in ("self", "cls"):
             continue
         basename = _param_annotation_basename(param.annotation)
-        if basename == _NO_ANNOTATION or basename in dynamic_annotations:
+        if basename == _NO_ANNOTATION:
+            return True
+        if basename in dynamic_annotations and _param_relied_on_in_body(
+            node.body, param.name.value
+        ):
             return True
     return False
 
@@ -666,6 +1004,9 @@ class UnboundedLoop(LintRule):
         Valid("for i in range(10):\n    print(i)\n"),
         Valid("while True:\n    data = read()\n    if not data:\n        break\n"),
         Valid("count = 0\nwhile count < 100:\n    count += 1\n"),
+        # The counter drives the condition through a call. Same loop as
+        # `while parts != PurePosixPath('.')`, same exemption.
+        Valid('while str(parts) != ".":\n    parts = parts.parent\n'),
     ]
     INVALID = [
         Invalid("while True:\n    process()\n"),
@@ -737,7 +1078,15 @@ def _find_break_in_stmts(stmts: Sequence[cst.BaseStatement]) -> bool:
 
 
 def _extract_names(node: cst.BaseExpression) -> set[str]:
-    """Extract all Name references from an expression."""
+    """Extract all Name references from an expression.
+
+    Recurses through a ``Call``'s arguments: ``while str(parts) != "."`` is
+    the same loop as ``while parts != PurePosixPath(".")`` and the same
+    ``parts`` drives it, but without this the argument was invisible, the
+    name set came back empty, and ASP204's counter-pattern exemption
+    short-circuited to "unbounded" for a loop whose counter it was looking
+    straight at.
+    """
     names: set[str] = set()
     if isinstance(node, cst.Name):
         names.add(node.value)
@@ -750,6 +1099,9 @@ def _extract_names(node: cst.BaseExpression) -> set[str]:
         names.update(_extract_names(node.right))
     elif isinstance(node, cst.UnaryOperation):
         names.update(_extract_names(node.expression))
+    elif isinstance(node, cst.Call):
+        for arg in node.args:
+            names.update(_extract_names(arg.value))
     return names
 
 
@@ -777,7 +1129,32 @@ def _resolve_call_name(node: cst.BaseExpression) -> str | None:
 
 
 def _find_io_calls(body: cst.BaseSuite) -> set[str]:
-    """Find calls to known I/O functions in a function body."""
+    """Find calls to known I/O functions in a function's OWN body.
+
+    The unit of analysis is one function, not one function plus every
+    function nested inside it. ``_count_assertions`` already states that
+    convention ("not descending into nested function/lambda bodies —
+    those are visited as their own units"), and every rule reached from
+    here — ASP202's shell predicate, ASP205, ASP206 — reports per
+    ``visit_FunctionDef``, which fires for the nested def in its own
+    right.
+
+    Descending made a factory impure for the I/O its product performs::
+
+        def make_logger(prefix: str) -> Callable[[str], None]:
+            def emit(line: str) -> None:
+                print(prefix, line)
+            return emit
+
+    ``make_logger`` prints nothing when called, yet was reported as
+    calling ``print`` — and ``emit`` was reported for the same ``print``,
+    so one I/O site produced two findings. Its only passing form was to
+    lift ``emit`` to module scope, which a closure over ``prefix``
+    forbids: a finding with no legal passing form. ASP206 was
+    incoherent for the same reason — it sourced ``io_calls`` from any
+    depth while counting logic statements only at the outer body's top
+    level, so its two halves measured different functions.
+    """
     from aspergillus.io_blocklist import IO_FUNCTIONS, IO_METHOD_NAMES
 
     found: set[str] = set()
@@ -831,7 +1208,11 @@ def _walk_for_io_calls(
     io_functions: frozenset[str],
     io_method_names: frozenset[str],
 ) -> None:
-    """Recursively walk CST looking for Call nodes to I/O functions."""
+    """Recursively walk CST looking for Call nodes to I/O functions.
+
+    Stops at a nested ``FunctionDef`` / ``Lambda``: that body belongs to
+    its own function, which is visited separately (see ``_find_io_calls``).
+    """
     if isinstance(node, cst.Call):
         name = _resolve_call_name(node.func)
         if name and name in io_functions:
@@ -847,6 +1228,8 @@ def _walk_for_io_calls(
             ):
                 found.add(method_name)
     for child in node.children:
+        if isinstance(child, cst.FunctionDef | cst.Lambda):
+            continue
         if isinstance(child, cst.CSTNode):
             _walk_for_io_calls(child, found, io_functions, io_method_names)
 
@@ -886,6 +1269,10 @@ class ImpureFunction(LintRule):
             "    spread = (a - b).rename('spread')\n"
             "    return spread\n"
         ),
+        # A factory whose PRODUCT does I/O performs none itself: calling
+        # `make_printer(...)` prints nothing. The I/O belongs to the
+        # lambda, and a nested `def` is reported in its own right.
+        Valid("def make_printer(prefix: str):\n    return lambda line: print(prefix, line)\n"),
     ]
     INVALID = [
         Invalid(
@@ -951,6 +1338,15 @@ class MixedIOAndLogic(LintRule):
             "    total = sum(items)\n"
             "    avg = total / len(items)\n"
             "    return int(avg)\n"
+        ),
+        # Same unit-of-analysis rule as ASP205: the enclosing factory is
+        # not mixing I/O with logic — its product does the I/O.
+        Valid(
+            "def make_writer(prefix: str):\n"
+            "    tag = prefix.strip()\n"
+            "    upper = tag.upper()\n"
+            "    width = len(upper)\n"
+            "    return lambda line: print(upper, width, line)\n"
         ),
     ]
     INVALID = [

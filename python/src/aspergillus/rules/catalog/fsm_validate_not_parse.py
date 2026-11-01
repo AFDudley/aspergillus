@@ -20,16 +20,27 @@ received. The proof that the check ran is discarded at the one place it
 could have been recorded, so every caller must re-check, or worse, assumes
 the check already happened.
 
-Trigger (decidable from the signature alone; no body dataflow needed):
+Trigger (the signature plus one syntactic look at the `return` values):
 
 - the function's return annotation is a union (`A | B`, `Optional[...]`,
   or `Union[...]`), AND
 - at least one arm of that union is type-equal, by normalized source, to
-  one of the function's parameter annotations.
+  the annotation of a parameter that some `return` hands back: the
+  parameter itself, or a slice, attribute, or method-call chain rooted at
+  it (`return x`, `return x if x else None`, `return text[a:b].strip()`).
+
+The signature alone is not enough in Python. `str` and `Path` carry
+almost every value, so `def find(key: str) -> str | None` shares a type
+with its input while it returns an unrelated value it looked up. Measured
+over exophial's src + tests on 2026-11-01: the signature-only trigger
+reported 56 functions, 49 of them on a `str` arm. Only 4 of the 56 return
+their own parameter or a view of it.
 
 A parser is exempt: its return type appears in no parameter, so no union
 arm can match it. A bare, non-union return (`X -> X`, `X -> int`) is
 exempt too — without a rejection arm it is a transform, not a validation.
+A function whose returns never hand back a parameter is exempt: it
+returns a new value, so it is a lookup or a parser, not a validation.
 
 [1] Alexis King, "Parse, don't validate", 2019.
 https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/
@@ -105,29 +116,80 @@ def _union_arms(node: cst.BaseExpression) -> list[cst.BaseExpression] | None:
     return None
 
 
-def _param_annotations(node: cst.FunctionDef) -> list[cst.BaseExpression]:
-    """Pure: every parameter's annotation expression, across positional-only,
+def _annotated_params(node: cst.FunctionDef) -> list[cst.Param]:
+    """Pure: every annotated parameter, across positional-only,
     positional-or-keyword, keyword-only, `*args`, and `**kwargs` params."""
     params = node.params
     all_params = [*params.posonly_params, *params.params, *params.kwonly_params]
     for star in (params.star_arg, params.star_kwarg):
         if isinstance(star, cst.Param):
             all_params.append(star)
-    return [p.annotation.annotation for p in all_params if p.annotation is not None]
+    return [p for p in all_params if p.annotation is not None]
+
+
+def _root_name(expr: cst.BaseExpression) -> str | None:
+    """Pure: the name an expression hands back unchanged in kind -- the
+    root of an attribute, subscript, or method-call chain (`x`,
+    `x[1:]`, `x.strip()`), or None for any other expression."""
+    if isinstance(expr, cst.Name):
+        return expr.value
+    if isinstance(expr, (cst.Attribute, cst.Subscript)):
+        return _root_name(expr.value)
+    if isinstance(expr, cst.Call) and isinstance(expr.func, cst.Attribute):
+        return _root_name(expr.func.value)
+    return None
+
+
+def _returned_alternatives(expr: cst.BaseExpression) -> list[cst.BaseExpression]:
+    """Pure: the values a returned expression can evaluate to -- both arms
+    of `a if c else b` and both operands of `a or b` / `a and b`."""
+    if isinstance(expr, cst.IfExp):
+        return [*_returned_alternatives(expr.body), *_returned_alternatives(expr.orelse)]
+    if isinstance(expr, cst.BooleanOperation):
+        return [*_returned_alternatives(expr.left), *_returned_alternatives(expr.right)]
+    return [expr]
+
+
+def _returned_root_names(node: cst.CSTNode) -> set[str]:
+    """Pure: the root name of every value a `return` in `node`'s own scope
+    can hand back. Nested functions, classes, and lambdas are skipped:
+    their returns belong to their own signatures."""
+    names: set[str] = set()
+    for child in node.children:
+        if isinstance(child, (cst.FunctionDef, cst.ClassDef, cst.Lambda)):
+            continue
+        if isinstance(child, cst.Return) and child.value is not None:
+            for alternative in _returned_alternatives(child.value):
+                root = _root_name(alternative)
+                if root is not None:
+                    names.add(root)
+        names.update(_returned_root_names(child))
+    return names
 
 
 def _validates_not_parses(node: cst.FunctionDef) -> bool:
     """Pure: True iff `node`'s return annotation is a union with an arm
-    type-equal to one of its parameter annotations."""
+    type-equal to the annotation of a parameter that a `return` hands back
+    -- the parameter itself, or a slice, attribute, or method-call chain
+    rooted at it.
+
+    The signature alone is not enough in Python. `str` and `Path` carry
+    almost every value, so `def find(key: str) -> str | None` shares a type
+    with its input while it returns an unrelated value. Only a function
+    that returns its own input (or a view of it) hands back "the exact type
+    it received" after a check."""
     if node.returns is None:
         return False
     arms = _union_arms(node.returns.annotation)
     if not arms:
         return False
-    param_norms = {_normalize_expr(ann) for ann in _param_annotations(node)}
-    if not param_norms:
-        return False
-    return any(_normalize_expr(arm) in param_norms for arm in arms)
+    returned = _returned_root_names(node.body)
+    returned_norms = {
+        _normalize_expr(param.annotation.annotation)
+        for param in _annotated_params(node)
+        if param.annotation is not None and param.name.value in returned
+    }
+    return any(_normalize_expr(arm) in returned_norms for arm in arms)
 
 
 class FsmValidateNotParse(LintRule):
@@ -159,6 +221,15 @@ class FsmValidateNotParse(LintRule):
         ),
         # Union, but no arm equals a parameter type.
         Valid("class Foo: ...\nclass Bar: ...\n\n\ndef k(x: Foo) -> Bar | None: ...\n"),
+        # A `str` arm matches the `str` parameter, but the function returns
+        # a value it looked up, never its input: a lookup, not a validation.
+        Valid(
+            "def find(table: dict[str, str], key: str) -> str | None:\n"
+            "    value = table.get(key)\n"
+            "    if value is None:\n"
+            "        return None\n"
+            "    return value\n"
+        ),
     ]
     INVALID = [
         # Success arm (`str`) equals the parameter's type (`str`).
@@ -173,6 +244,14 @@ class FsmValidateNotParse(LintRule):
         # type, not the first.
         Invalid(
             "class Bar: ...\n\n\ndef merge(count: int, item: Bar) -> Bar | None:\n    return item\n"
+        ),
+        # A view of the input (a slice, then a method call) is still the
+        # input's own type handed back after a check.
+        Invalid(
+            "def trimmed(text: str) -> str | None:\n"
+            "    if not text.strip():\n"
+            "        return None\n"
+            "    return text[1:].strip()\n"
         ),
     ]
 

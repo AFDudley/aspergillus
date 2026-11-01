@@ -40,6 +40,16 @@ A statement counts as side-effecting when it is:
 - an assignment to a subscript or attribute of one of the function's own
   parameters (`param[...] = ...` / `param.attr = ...`).
 
+A method call in the effect set is NOT an effect when its receiver is a
+bare name the function's own scope binds only to a fresh container (a
+list/dict/set literal or comprehension, or a bare `list()`/`set()`/
+`dict()`/`defaultdict(...)` call). `seen.add(name)` on a frame-local
+`seen = set()` changes an object no caller can reach yet. A rejection
+afterwards discards it with the frame, so no action survives the
+rejection. A name that any other form also binds (a parameter, a plain
+alias, a loop target, a `with ... as`, a walrus) keeps the effect, since
+it can alias an object the caller holds.
+
 A function that rejects all its input before its first effect — parse,
 then act — never trips this rule: the rejection came first, so no effect
 lexically precedes it. A pure function with no effect and no rejection
@@ -79,6 +89,8 @@ https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
@@ -248,6 +260,103 @@ def _rhs_is_effect_derived(rhs: cst.BaseExpression, effect_names: set[str]) -> b
     return base is not None and base in effect_names
 
 
+#: Bare constructor names whose call builds a fresh, empty-or-copied
+#: container that no caller can see until the function hands it out.
+_FRESH_CONTAINER_CALL_NAMES: frozenset[str] = frozenset(
+    {"list", "dict", "set", "bytearray", "defaultdict", "Counter", "OrderedDict", "deque"}
+)
+
+_FRESH_CONTAINER_LITERAL_TYPES = (
+    cst.List,
+    cst.Dict,
+    cst.Set,
+    cst.ListComp,
+    cst.SetComp,
+    cst.DictComp,
+)
+
+
+def _is_fresh_container(value: cst.BaseExpression) -> bool:
+    """Pure: True iff `value` builds a new container in this frame -- a
+    list/dict/set literal or comprehension, or a call to a bare container
+    constructor (`set()`, `defaultdict(list)`)."""
+    if isinstance(value, _FRESH_CONTAINER_LITERAL_TYPES):
+        return True
+    return (
+        isinstance(value, cst.Call)
+        and isinstance(value.func, cst.Name)
+        and value.func.value in _FRESH_CONTAINER_CALL_NAMES
+    )
+
+
+def _frame_local_containers(func: cst.FunctionDef) -> frozenset[str]:
+    """Pure: the names `func`'s own scope binds ONLY to fresh containers.
+
+    A mutation of such a name (`seen.add(name)`, `found.append(x)`) changes
+    an object nothing outside the frame can reach while the function still
+    runs. A rejection afterwards discards the frame and the object with it,
+    so no action survives the rejection: it is not the effect shotgun
+    parsing is about. A name that any other binding form also binds -- a
+    plain alias, a loop target, a `with ... as`, a walrus, a parameter --
+    is excluded, because it can alias an object the caller holds."""
+    fresh: set[str] = set()
+    other: set[str] = set(_param_names(func))
+    _collect_bindings(func.body, fresh, other)
+    return frozenset(fresh - other)
+
+
+def _collect_bindings(node: cst.CSTNode, fresh: set[str], other: set[str]) -> None:
+    """Pure (mutates only `fresh` and `other`): the own-scope walk behind
+    `_frame_local_containers`. An `Assign`/`AnnAssign` of a bare name to a
+    fresh container goes to `fresh`. Every other binding of a bare name
+    goes to `other`. `AugAssign` (`found += [...]`) rebinds nothing new."""
+    if isinstance(node, _SCOPE_BOUNDARY_TYPES):
+        return
+    if isinstance(node, (cst.Assign, cst.AnnAssign)):
+        value = node.value
+        for target in _assignment_targets(node):
+            if isinstance(target, cst.Name):
+                bucket = fresh if value is not None and _is_fresh_container(value) else other
+                bucket.add(target.value)
+    elif isinstance(node, (cst.For, cst.CompFor)):
+        other.update(_bound_names(node.target))
+    elif isinstance(node, cst.AsName):
+        other.update(_bound_names(node.name))
+    elif isinstance(node, cst.NamedExpr):
+        other.update(_bound_names(node.target))
+    for child in node.children:
+        _collect_bindings(child, fresh, other)
+
+
+def _bound_names(target: cst.CSTNode) -> set[str]:
+    """Pure: every bare name a binding target (`a`, `a, b`, `[a, *b]`) binds."""
+    if isinstance(target, cst.Name):
+        return {target.value}
+    names: set[str] = set()
+    for child in target.children:
+        names.update(_bound_names(child))
+    return names
+
+
+def _is_frame_local_mutation(call: cst.Call, frame_local: frozenset[str]) -> bool:
+    """Pure: True iff `call` is a method call on a bare name that
+    `_frame_local_containers` proved fresh in this frame."""
+    func = call.func
+    return (
+        isinstance(func, cst.Attribute)
+        and isinstance(func.value, cst.Name)
+        and func.value.value in frame_local
+    )
+
+
+@dataclass(frozen=True)
+class _ScanContext:
+    """The per-function facts the recursive scan reads but never changes."""
+
+    param_names: frozenset[str]
+    frame_local: frozenset[str]
+
+
 def _scan_shotgun_violations(func: cst.FunctionDef) -> list[cst.CSTNode]:
     """Pure: every rejection node (`raise EXPR`, or a refusal/`None`
     `return`) in `func`'s own scope that follows a side-effecting
@@ -258,20 +367,26 @@ def _scan_shotgun_violations(func: cst.FunctionDef) -> list[cst.CSTNode]:
     only a rejection that tests the function's input after an effect on
     that input is. A bare `raise` (no exception expression) never counts:
     it re-raises the exception an `except` handler is already handling,
-    not a rejection of the function's input."""
+    not a rejection of the function's input. A mutation of a container
+    the frame itself built (`_frame_local_containers`) is not an effect."""
     param_names = _param_names(func)
     violations: list[cst.CSTNode] = []
     effect_names: set[str] = set()
     effect_seen = [False]
     _scan_shotgun_violations_into(
-        func.body, param_names, effect_names, effect_seen, frozenset(), violations
+        func.body,
+        _ScanContext(param_names, _frame_local_containers(func)),
+        effect_names,
+        effect_seen,
+        frozenset(),
+        violations,
     )
     return violations
 
 
 def _scan_shotgun_violations_into(
     node: cst.CSTNode,
-    param_names: frozenset[str],
+    ctx: _ScanContext,
     effect_names: set[str],
     effect_seen: list[bool],
     guard_names: frozenset[str],
@@ -286,14 +401,18 @@ def _scan_shotgun_violations_into(
     beneath it is checking."""
     if isinstance(node, _SCOPE_BOUNDARY_TYPES):
         return
-    if isinstance(node, cst.Call) and _is_effect_call(node):
+    if (
+        isinstance(node, cst.Call)
+        and _is_effect_call(node)
+        and not _is_frame_local_mutation(node, ctx.frame_local)
+    ):
         effect_seen[0] = True
         if isinstance(node.func, cst.Attribute):
             receiver = _base_name(node.func.value)
             if receiver is not None:
                 effect_names.add(receiver)
     elif isinstance(node, (cst.Assign, cst.AugAssign, cst.AnnAssign)) and _is_param_mutation(
-        node, param_names
+        node, ctx.param_names
     ):
         effect_seen[0] = True
     elif isinstance(node, cst.Assign) and _rhs_is_effect_derived(node.value, effect_names):
@@ -310,20 +429,20 @@ def _scan_shotgun_violations_into(
     if isinstance(node, cst.If):
         test_names = _referenced_base_names(node.test)
         _scan_shotgun_violations_into(
-            node.test, param_names, effect_names, effect_seen, guard_names, violations
+            node.test, ctx, effect_names, effect_seen, guard_names, violations
         )
         _scan_shotgun_violations_into(
-            node.body, param_names, effect_names, effect_seen, test_names, violations
+            node.body, ctx, effect_names, effect_seen, test_names, violations
         )
         if node.orelse is not None:
             _scan_shotgun_violations_into(
-                node.orelse, param_names, effect_names, effect_seen, test_names, violations
+                node.orelse, ctx, effect_names, effect_seen, test_names, violations
             )
         return
 
     for child in node.children:
         _scan_shotgun_violations_into(
-            child, param_names, effect_names, effect_seen, guard_names, violations
+            child, ctx, effect_names, effect_seen, guard_names, violations
         )
 
 
@@ -416,6 +535,22 @@ class FsmShotgunParse(LintRule):
             "        raise\n"
             "    return record\n"
         ),
+        # Frame-local accumulator: `seen` and `found` are built in this
+        # frame, so a rejection discards them -- no action survives it.
+        Valid(
+            "def check(names):\n"
+            "    seen = set()\n"
+            "    for name in names:\n"
+            "        if name in seen:\n"
+            '            raise ValueError("repeated name")\n'
+            "        seen.add(name)\n"
+            "    found: list[str] = []\n"
+            "    for name in names:\n"
+            "        found.append(name.upper())\n"
+            "        if not name:\n"
+            '            raise ValueError("empty name")\n'
+            "    return found\n"
+        ),
     ]
     INVALID = [
         # The motivating shape: append to a sink inside a loop, then raise
@@ -443,6 +578,16 @@ class FsmShotgunParse(LintRule):
             "    sink.append(items[0])\n"
             "    if other < 0:\n"
             '        raise ValueError("bad other")\n'
+        ),
+        # A plain alias of a parameter is not a fresh container: `local`
+        # is the caller's `seen`, so its mutation stays an effect.
+        Invalid(
+            "def check(names, seen):\n"
+            "    local = seen\n"
+            "    for name in names:\n"
+            "        local.add(name)\n"
+            "        if not name:\n"
+            '            raise ValueError("empty name")\n'
         ),
     ]
 
