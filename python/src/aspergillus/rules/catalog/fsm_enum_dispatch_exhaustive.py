@@ -183,13 +183,40 @@ def is_unguarded_enum_dispatch(node: cst.If, enum_names: frozenset[str]) -> bool
     return True
 
 
+def lone_guard_ids(statements: Sequence[cst.CSTNode], enum_names: frozenset[str]) -> frozenset[int]:
+    """Pure: object ids of the lone enum GUARDS among sibling ``statements``.
+
+    A lone guard is an ``if`` with no ``elif`` and no ``else`` that tests
+    one enum member (``if drained is Drain.EOF: break``), whose neighbour
+    statements are not ``if`` tests on the same subject. It handles one
+    member and lets every other value continue down the same path, so a
+    new member added later takes that path by design. It is a guard
+    clause, not a dispatch, and has no fallthrough to make exhaustive.
+    Consecutive ``if`` tests on one subject are a dispatch written as
+    guards, so they stay in scope."""
+    subjects = [
+        _enum_dispatch_subject(stmt.test, enum_names) if isinstance(stmt, cst.If) else None
+        for stmt in statements
+    ]
+    ids: set[int] = set()
+    for index, stmt in enumerate(statements):
+        subject = subjects[index]
+        if subject is None or not isinstance(stmt, cst.If) or stmt.orelse is not None:
+            continue
+        neighbours = subjects[max(index - 1, 0) : index] + subjects[index + 1 : index + 2]
+        if subject not in neighbours:
+            ids.add(id(stmt))
+    return frozenset(ids)
+
+
 class FsmEnumDispatchExhaustive(LintRule):
     """ASP413: an if/elif chain dispatching on an Enum-typed subject must be
     exhaustiveness-checkable — either rewritten as a ``match`` statement, or
     ending in ``else: assert_never(subject)``.
 
     Reject-severity (blocking), no autofix: the correct fallback behavior for
-    an unmatched value is a human/agent decision.
+    an unmatched value is a human/agent decision. A lone enum guard
+    (``lone_guard_ids``) is not a dispatch and is not reported.
     """
 
     MESSAGE = (
@@ -206,16 +233,24 @@ class FsmEnumDispatchExhaustive(LintRule):
     _handled_elif_ids: frozenset[int]
     #: Enum classes defined in the current module. Reset per module.
     _enum_names: frozenset[str]
+    #: Object ids of lone enum guards (``lone_guard_ids``). Reset per module.
+    _lone_guard_ids: frozenset[int]
 
     def visit_Module(self, node: cst.Module) -> None:
         # Rule instances may be reused across files by the fixit engine.
         self._handled_elif_ids = frozenset()
         self._enum_names = _enum_class_names(node)
+        self._lone_guard_ids = lone_guard_ids(node.body, self._enum_names)
+
+    def visit_IndentedBlock(self, node: cst.IndentedBlock) -> None:
+        self._lone_guard_ids |= lone_guard_ids(node.body, self._enum_names)
 
     def visit_If(self, node: cst.If) -> None:
         if id(node) in self._handled_elif_ids:
             return  # already covered as an elif of a chain checked at its head
         self._handled_elif_ids |= chain_elif_ids(node)
+        if id(node) in self._lone_guard_ids:
+            return
         if is_unguarded_enum_dispatch(node, self._enum_names):
             self.report(node, self.MESSAGE)
 
@@ -270,6 +305,21 @@ class FsmEnumDispatchExhaustive(LintRule):
             "        return 'working'\n"
             "    return 'unknown'\n"
         ),
+        # A lone guard on one member, not a dispatch: every other member
+        # continues down the same path by design (exo-0b4.1.6).
+        Valid(
+            "from enum import Enum\n"
+            "\n"
+            "class Drain(Enum):\n"
+            "    DATA = 'data'\n"
+            "    EOF = 'eof'\n"
+            "\n"
+            "def poll(reader: object) -> None:\n"
+            "    while True:\n"
+            "        if reader.drain() is Drain.EOF:\n"
+            "            break\n"
+            "        reader.tick()\n"
+        ),
     ]
     INVALID = [
         # The load-bearing shape: if/elif enum dispatch with no
@@ -305,5 +355,21 @@ class FsmEnumDispatchExhaustive(LintRule):
             "        return 'waiting'\n"
             "    else:\n"
             "        return 'other'\n"
+        ),
+        # Consecutive `if` tests on one subject are a dispatch written as
+        # guards: still flagged.
+        Invalid(
+            "from enum import Enum\n"
+            "\n"
+            "class Phase(Enum):\n"
+            "    PENDING = 'pending'\n"
+            "    RUNNING = 'running'\n"
+            "\n"
+            "def handle(phase: Phase) -> str:\n"
+            "    if phase == Phase.PENDING:\n"
+            "        return 'waiting'\n"
+            "    if phase == Phase.RUNNING:\n"
+            "        return 'working'\n"
+            "    return 'unknown'\n"
         ),
     ]

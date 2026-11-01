@@ -138,7 +138,10 @@ class ErrorSwallowedIntoSentinel(LintRule):
     Exempt: test functions, dunders; functions with no return annotation
     (cannot establish the success shape); and functions already returning
     ``Result[...]``/``Optional[...]``/``X | None``/``None`` (the error is
-    already explicit, or the function returns nothing meaningful).
+    already explicit, or the function returns nothing meaningful). A
+    handler that passes its bound exception into a call
+    (``except E as e: err(f"...{e}"); return False``) is exempt too: the
+    error is surfaced on the failure path, not swallowed.
     """
 
     MESSAGE = (
@@ -194,6 +197,17 @@ class ErrorSwallowedIntoSentinel(LintRule):
         Valid(
             "def f():\n    try:\n        return fetch()\n    except OSError:\n        return []\n"
         ),
+        # The handler surfaces the bound exception before the falsy
+        # return: the error is reported, not swallowed (exo-0b4.1.4).
+        Valid(
+            "def start() -> bool:\n"
+            "    try:\n"
+            "        launch()\n"
+            "    except RuntimeError as e:\n"
+            "        err(f'failed to start: {e}')\n"
+            "        return False\n"
+            "    return True\n"
+        ),
     ]
     INVALID = [
         # `-> list` with `return []` in except.
@@ -227,6 +241,14 @@ class ErrorSwallowedIntoSentinel(LintRule):
             "    try:\n"
             "        return query(q)\n"
             "    except httpx.HTTPError:\n"
+            "        return []\n"
+        ),
+        # A bound exception that no call receives is still swallowed.
+        Invalid(
+            "def f() -> list:\n"
+            "    try:\n"
+            "        return fetch()\n"
+            "    except OSError as e:\n"
             "        return []\n"
         ),
     ]
@@ -276,7 +298,9 @@ def _has_falsy_return_in_except(node: cst.CSTNode, in_except: bool) -> bool:
 
     Does not descend into nested function definitions (their returns
     belong to their own signature). ``in_except`` becomes True once we
-    cross an ``ExceptHandler`` boundary.
+    cross an ``ExceptHandler`` boundary. A handler that surfaces its own
+    bound exception (``_surfaces_bound_exception``) is skipped: the error
+    is reported, not swallowed, before the falsy value is returned.
     """
     if isinstance(node, cst.Return) and in_except and node.value is not None:
         if _is_falsy_literal(node.value):
@@ -287,10 +311,55 @@ def _has_falsy_return_in_except(node: cst.CSTNode, in_except: bool) -> bool:
         # Don't descend into nested functions.
         if isinstance(child, cst.FunctionDef):
             continue
+        if isinstance(child, cst.ExceptHandler) and _surfaces_bound_exception(child):
+            continue
         next_in_except = in_except or isinstance(child, cst.ExceptHandler)
         if _has_falsy_return_in_except(child, next_in_except):
             return True
     return False
+
+
+def _surfaces_bound_exception(handler: cst.ExceptHandler) -> bool:
+    """True if ``handler`` binds the exception (``except E as e``) and passes
+    ``e`` into a call in its own body -- ``err(f"failed: {e}")``,
+    ``log.warning("x", e)``, ``print(e)``.
+
+    The caller still receives a falsy value, but the error is no longer
+    swallowed: it reached a call on the failure path (a reporter, or a
+    collector the caller reads). A binding that no call receives does not
+    surface it, so ``except OSError as e: return []`` stays flagged.
+    """
+    if handler.name is None or not isinstance(handler.name.name, cst.Name):
+        return False
+    bound = handler.name.name.value
+    return any(_call_argument_names(call, bound) for call in _iter_calls(handler.body))
+
+
+def _iter_calls(node: cst.CSTNode) -> Iterator[cst.Call]:
+    """Every ``Call`` in ``node``, not descending into nested functions."""
+    if isinstance(node, cst.Call):
+        yield node
+    for child in node.children:
+        if isinstance(child, (cst.FunctionDef, cst.Lambda)):
+            continue
+        if isinstance(child, cst.CSTNode):
+            yield from _iter_calls(child)
+
+
+def _call_argument_names(call: cst.Call, name: str) -> bool:
+    """True if ``name`` occurs as a value anywhere in ``call``'s arguments."""
+    return any(_mentions_name(arg.value, name) for arg in call.args)
+
+
+def _mentions_name(node: cst.CSTNode, name: str) -> bool:
+    """True if ``Name(name)`` occurs in ``node`` (attribute members aside)."""
+    if isinstance(node, cst.Name):
+        return node.value == name
+    if isinstance(node, cst.Attribute):
+        return _mentions_name(node.value, name)
+    return any(
+        _mentions_name(child, name) for child in node.children if isinstance(child, cst.CSTNode)
+    )
 
 
 class FailureDiscardsEvidence(LintRule):
@@ -348,13 +417,16 @@ class FailureDiscardsEvidence(LintRule):
       proven evidence-bearing (its type is invisible to the AST) and is not
       flagged.
     - Evidence surfaced only via an *intermediate variable*
-      (``err = r.stderr`` then logged separately), or by a separate
-      statement on the same path (``print(r.stdout)`` above the
-      ``if r.returncode: bail(...)``), is not tracked. Distinguishing the
-      latter from exemption 2's motivating counter-case — evidence used on
-      the SUCCESS path and dropped on the failure path — needs path
-      analysis LibCST does not provide, so it is documented rather than
-      guessed at.
+      (``err = r.stderr`` then logged separately) is not tracked.
+    - Evidence echoed by a separate statement is tracked in ONE shape
+      only (``_evidence_echoed_on_every_later_path``): a ``print`` of
+      ``r.<evidence>`` later in the SAME block that binds ``r``, with no
+      ``return``/``raise`` and no non-``print`` returncode report between
+      the binding and the echo. That echo dominates every later failure
+      surface, so no path discards the evidence. Any other placement --
+      exemption 2's counter-case, evidence used on the SUCCESS path and
+      dropped on the failure path, among them -- stays flagged, because
+      telling them apart needs path analysis LibCST does not provide.
 
     Sibling to ASP303 (error swallowed into a success sentinel): both target
     a failure that hides its cause — ASP303 in the return *type*, ASP304 in
@@ -402,6 +474,30 @@ class FailureDiscardsEvidence(LintRule):
             "    if p.returncode != 0:\n"
             "        fail(f'gate exited {p.returncode}', extra=p.stdout + p.stderr)\n"
         ),
+        # Evidence echoed by a separate statement before the failure: every
+        # path to the failure has already printed the captured output
+        # (exo-0b4.1.3).
+        Valid(
+            "import subprocess\n"
+            "def install() -> None:\n"
+            "    p = subprocess.run(['sh', 'install.sh'], capture_output=True, text=True)\n"
+            "    print(p.stdout)\n"
+            "    if p.stderr.strip():\n"
+            "        print(p.stderr, file=sys.stderr)\n"
+            "    if p.returncode != 0:\n"
+            "        bail(f'installer failed (exit {p.returncode})')\n"
+        ),
+        # A trace line that names the exit code, then the echo: the trace
+        # does not leave the block, so the echo still runs on every path.
+        Valid(
+            "import subprocess\n"
+            "def run_tool(args: list[str]) -> subprocess.CompletedProcess[str]:\n"
+            "    p = subprocess.run(args, capture_output=True, text=True)\n"
+            "    print(f'--- {args} -> exit {p.returncode} ---')\n"
+            "    if p.stdout:\n"
+            "        print(p.stdout)\n"
+            "    return p\n"
+        ),
     ]
     INVALID = [
         # CompletedProcess: stderr captured, failure surfaces only returncode
@@ -421,6 +517,16 @@ class FailureDiscardsEvidence(LintRule):
             "        return merge(gate.report)\n"
             "    return preserve(f'the re-run gate FAILED (returncode={gate.returncode})')\n"
         ),
+        # The failure leaves the block before the echo: that path
+        # discards the evidence, so the echo after it does not exempt it.
+        Invalid(
+            "import subprocess\n"
+            "def install() -> None:\n"
+            "    p = subprocess.run(['sh', 'install.sh'], capture_output=True, text=True)\n"
+            "    if p.returncode != 0:\n"
+            "        bail(f'installer failed (exit {p.returncode})')\n"
+            "    print(p.stdout)\n"
+        ),
     ]
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
@@ -436,8 +542,126 @@ class FailureDiscardsEvidence(LintRule):
 
         for name in rc_surfaced:
             if name in evidence_bearing and name not in evidence_surfaced:
+                if _evidence_echoed_on_every_later_path(body, name):
+                    continue
                 self.report(node, self.MESSAGE)
                 return
+
+
+def _evidence_echoed_on_every_later_path(body: cst.CSTNode, name: str) -> bool:
+    """True if the block that binds ``name`` echoes its evidence before any
+    path can leave that block.
+
+    The shape: ``r = subprocess.run(...)`` then ``print(r.stdout)`` (or
+    ``if r.stderr: print(r.stderr, file=sys.stderr)``) as a later statement
+    of the SAME block, with nothing between them that can return or raise.
+    Every path that reaches a later failure surface has then already
+    surfaced the evidence, so the failure does not discard it. A trace line
+    between the two (``print(f"exit {r.returncode}")``) does not leave the
+    block, so it is allowed. A failure surface that can leave the block
+    before the echo (a ``raise``, a ``return``, or any call other than
+    ``print`` that names ``r.returncode``) is not: that path discards the
+    evidence, which is the shape ASP304 exists for.
+    """
+    for block in _walk_same_function(body):
+        if not isinstance(block, cst.IndentedBlock):
+            continue
+        statements = list(block.body)
+        bound_at = next((i for i, stmt in enumerate(statements) if _binds_name(stmt, name)), None)
+        if bound_at is None:
+            continue
+        for stmt in statements[bound_at + 1 :]:
+            if _is_evidence_echo(stmt, name):
+                return True
+            if not _stays_in_block(stmt, name):
+                return False
+        return False
+    return False
+
+
+def _binds_name(stmt: cst.CSTNode, name: str) -> bool:
+    """True if ``stmt`` is a simple statement line assigning to bare ``name``."""
+    if not isinstance(stmt, cst.SimpleStatementLine):
+        return False
+    for small in stmt.body:
+        if isinstance(small, cst.Assign) and any(
+            isinstance(t.target, cst.Name) and t.target.value == name for t in small.targets
+        ):
+            return True
+        if (
+            isinstance(small, cst.AnnAssign)
+            and isinstance(small.target, cst.Name)
+            and small.target.value == name
+        ):
+            return True
+    return False
+
+
+def _is_print_call(node: cst.CSTNode) -> bool:
+    """True for a bare ``print(...)`` call."""
+    return (
+        isinstance(node, cst.Call)
+        and isinstance(node.func, cst.Name)
+        and node.func.value == "print"
+    )
+
+
+def _root_names(node: cst.CSTNode) -> set[str]:
+    """The value names ``node`` reads: ``r.stdout.strip()`` reads ``r``.
+    Attribute member names (``stdout``, ``strip``) are not reads."""
+    if isinstance(node, cst.Name):
+        return {node.value}
+    if isinstance(node, cst.Attribute):
+        return _root_names(node.value)
+    names: set[str] = set()
+    for child in node.children:
+        if isinstance(child, cst.CSTNode):
+            names |= _root_names(child)
+    return names
+
+
+def _is_evidence_echo(stmt: cst.CSTNode, name: str) -> bool:
+    """True for ``print(<name>.<evidence>...)``, or an ``if`` with no
+    ``else`` whose test reads only ``name`` and whose body is such prints
+    (``if r.stderr.strip(): print(r.stderr, file=sys.stderr)``)."""
+    if isinstance(stmt, cst.SimpleStatementLine):
+        return bool(stmt.body) and all(
+            isinstance(small, cst.Expr)
+            and _is_print_call(small.value)
+            and _mentions_evidence_of(small.value, name)
+            for small in stmt.body
+        )
+    if isinstance(stmt, cst.If) and stmt.orelse is None:
+        test_names = _root_names(stmt.test)
+        if test_names != {name} or not isinstance(stmt.body, cst.IndentedBlock):
+            return False
+        return all(_is_evidence_echo(inner, name) for inner in stmt.body.body)
+    return False
+
+
+def _mentions_evidence_of(node: cst.CSTNode, name: str) -> bool:
+    """True if ``<name>.<evidence attr>`` occurs anywhere in ``node``."""
+    for inner in _walk_same_function(node):
+        attr = _attr_of_name(inner)
+        if attr is not None and attr[0] == name and attr[1] in _EVIDENCE_ATTRS:
+            return True
+    return False
+
+
+def _stays_in_block(stmt: cst.CSTNode, name: str) -> bool:
+    """True if no path through ``stmt`` can leave the enclosing block:
+    ``stmt`` holds no ``return``/``raise``, and every call that names
+    ``<name>.returncode`` is a ``print`` trace line."""
+    for inner in _walk_same_function(stmt):
+        if isinstance(inner, (cst.Return, cst.Raise)):
+            return False
+        if (
+            isinstance(inner, cst.Call)
+            and not _is_print_call(inner)
+            and any(_attr_of_name(n) == (name, "returncode") for n in _walk_same_function(inner))
+        ):
+            return False
+    return True
 
 
 _EVIDENCE_ATTRS = frozenset({"stdout", "stderr", "output", "report"})
